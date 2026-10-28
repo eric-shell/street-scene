@@ -6,7 +6,7 @@ allowed-tools: Bash(npm run audit *)
 ---
 # A car (or a kit) from references
 
-The numbers and rules are `docs/carDesign.md`; read it first, then this checklist. `$ARGUMENTS` is the car id (`protoHatch`, `protoCoupe`, `protoWagon`, or a new one). Blender mechanics (helpers, traps, saving) are `/blender`; the asset pipeline is `/assets`.
+The numbers and rules are `docs/carDesign.md`; read it first, then this checklist. `$ARGUMENTS` is the car id (`wendtFairway`, `kazamaRotor`, `brandtKombi`, `ridgewayFiend`, or a new one: ids are `<fictional maker><Model>`, e.g. `wendtFairway`, and display names fictional maker + model, never the donor's trademarks). Blender mechanics (helpers, traps, saving) are `/blender`; the asset pipeline is `/assets`.
 
 ## 1. Gather context (no Blender yet)
 
@@ -19,7 +19,7 @@ The numbers and rules are `docs/carDesign.md`; read it first, then this checklis
 
 Model edits go through the Blender MCP only (`/blender`): with no `blender` MCP tools in the session (not even deferred), run `.claude/skills/blender/mcp.sh status` (`register` if it reports them missing) and ask the user to restart Claude Code first.
 
-Every call: `exec` carKit.py, then carRefs.py, then carFeatures.py (`/blender`, "Every MCP call"). Append the car's collections (`/blender`, "Edit an authored car live"); a new car starts from `protoCoupe.py` (loft from profiles) with its own `cid`.
+Every call: `exec` carKit.py, then carRefs.py, then carFeatures.py (`/blender`, "Every MCP call"). Append the car's collections (`/blender`, "Edit an authored car live"); a new car starts from `kazamaRotor.py` (loft from profiles) with its own `cid`.
 
 5. `load_refs(cid)` then `ortho_sheet(cid, OUT)`; Read the PNGs. `spec_check(cid)` for the live table. Numbers first, pictures to confirm; one `look` is worth less than one printed line.
 6. **Shape** before details: proportions (length, width, overhangs, height), glass rakes, the belt line. Coupe: edit the `PROFILE` keyframes and rebuild. Kitbashed cars: `displace` fields pinned with `plane_seam`, or `bake` with a matrix for whole moves; apply the same field to every Car and Parts mesh so seams stay closed (flares, chops). Re-run `spec_check` after each change.

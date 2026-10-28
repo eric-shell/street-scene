@@ -1,9 +1,9 @@
 """
-The Proto Coupe base body: an E46 M3 x Mk4 Supra coupe, lofted from cross sections.
+The original Proto Coupe base body (a loft template, not the shipped Kazama Rotor): an E46 M3 x Mk4 Supra coupe, lofted from cross sections.
 
     exec(open(REPO + '/scripts/blender/carKit.py').read())
-    exec(open(REPO + '/scripts/blender/protoCoupe.py').read())
-    body = build_coupe()          # one closed shell in collection protoCoupe:Car
+    exec(open(REPO + '/scripts/blender/kazamaRotor.py').read())
+    body = build_coupe()          # one closed shell in collection kazamaRotor:Car
 
 Car space at the shared scale (standardWheel 0.28 m), Blender axes: front is -Y.
 The shell is a loft of mirrored rings (bottom, sill, side, shoulder, window line,
@@ -191,7 +191,7 @@ def details(o):
     box(o, (-0.7, -0.75, 0.3), (0.7, 1.15, 0.86), 'Interior')
 
 
-def build_coupe(cid='protoCoupe'):
+def build_coupe(cid='kazamaRotor'):
     for sub in ('Car', 'Parts', 'Wheels', 'Rig'):
         c = coll(f'{cid}:{sub}')
         for ob in list(c.objects):
@@ -209,7 +209,7 @@ def build_coupe(cid='protoCoupe'):
     return o
 
 
-def spoilers(cid='protoCoupe'):
+def spoilers(cid='kazamaRotor'):
     """Supra style hoop wing and an E46 CSL style ducktail, both mounted on the trunk lid."""
     out = []
     body = [bpy.data.objects[f'{cid}.{n}'] for n in ('Body', 'Bumper_Rear', 'Roof')]

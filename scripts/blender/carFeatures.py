@@ -8,10 +8,10 @@ before, found by material and place rather than by name, so running twice is saf
     exec(open(REPO + '/scripts/blender/carKit.py').read())
     exec(open(REPO + '/scripts/blender/carRefs.py').read())
     exec(open(REPO + '/scripts/blender/carFeatures.py').read())
-    apply_features('protoHatch')                        # everything, then spec_check
-    apply_features('protoHatch', ['mirrors', 'lamps'])  # some
-    m = measure('protoHatch', quiet=True)
-    lamps('protoHatch', m, 'front', cover='slab')       # try another signature
+    apply_features('wendtFairway')                        # everything, then spec_check
+    apply_features('wendtFairway', ['mirrors', 'lamps'])  # some
+    m = measure('wendtFairway', quiet=True)
+    lamps('wendtFairway', m, 'front', cover='slab')       # try another signature
 
 Blender space (Z up, car facing -Y). Forward distances (fwd) are car space, positive toward
 the nose, so a station from measure() becomes Blender y = -fwd.

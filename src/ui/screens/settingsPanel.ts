@@ -272,9 +272,11 @@ const CC_BY = 'https://creativecommons.org/licenses/by/4.0/';
 /** The donor models (Sketchfab, CC BY 4.0) the garage cars and wheels are made from: each credit names
  * the model, its author and the licence, as CC BY asks (docs/carDonors.md, docs/carWheels.md). */
 const DONOR_CREDITS: { use: string; title: string; uid: string; author: string }[] = [
-  { use: 'Proto Hatch', title: '2002_volkswagen_golf_r32_mk4', uid: '98e6828648084ae3b877ad69e8ad36dc', author: 'tangwang920' },
-  { use: 'Proto Coupe', title: 'Mazda RX7 FD 1999', uid: '06986b70c65b44c5a7315ed467b621a6', author: 'niev' },
-  { use: 'Proto Wagon', title: '1992 Audi S2 Avant', uid: '939dc6336dfe4fbd99fdb3608d58de56', author: 'tonielpro520' },
+  { use: 'Wendt Fairway R6', title: '2002_volkswagen_golf_r32_mk4', uid: '98e6828648084ae3b877ad69e8ad36dc', author: 'tangwang920' },
+  { use: 'Kazama Rotor', title: 'Mazda RX7 FD 1999', uid: '06986b70c65b44c5a7315ed467b621a6', author: 'niev' },
+  { use: 'Brandt Kombi S', title: '1992 Audi S2 Avant', uid: '939dc6336dfe4fbd99fdb3608d58de56', author: 'tonielpro520' },
+  { use: 'Ridgeway Fiend', title: 'Dodge Challenger SRT DEMON SDC', uid: '54d229c2c0ff4eac8bc872f50b25e36c', author: 'SDC PERFORMANCE' },
+  { use: 'Hinode Horizon GT', title: 'Nissan Skyline R33 GT-R', uid: '9107448c53f3452888f2ccf96acc3d3f', author: 'greddy295' },
   { use: 'Kumo wheels', title: 'WORK VS-TX', uid: '31c76095a0754cb1b08591d63973a2c2', author: 'jonver87' },
   { use: 'Yari wheels', title: 'Work Equip 03', uid: '13c021b58f2b4c42ac747feb5457750b', author: 'jonver87' },
   { use: 'Tsume wheels', title: 'Work Equip 40', uid: 'ac9b1a3ffbd8400a9b364d0596fdcc56', author: 'jonver87' },
@@ -319,6 +321,8 @@ const DONOR_CREDITS: { use: string; title: string; uid: string; author: string }
   { use: 'Homura wheels', title: 'SSR Koenig', uid: '391ab57dc25a4aa69771fbb9114f3d40', author: 'jonver87' },
   { use: 'Hane wheels', title: 'BBS E52', uid: '8168cc3dce114b19b617c17fea0ab364', author: 'jonver87' },
   { use: 'Iwa wheels', title: 'Volk Rays 21C', uid: 'd053af8f24bc4a5dbaf9d21f31ae25da', author: 'jonver87' },
+  { use: 'Kiseki wheels', title: 'Enkei Nt03+m Wheels', uid: '6d31c56557b945a5abd4015884461dc4', author: 'flathat3d' },
+  { use: 'Hien wheels', title: 'BBS CH-R + Goodyear Eagle F1 Supercar 3', uid: '2acc32fc79684a2c8b7df9faaa5a5c35', author: 'MozzarellaARC' },
 ];
 
 /** One credit in a credits group: what it is in the game, beside the work (linked) over its author and licence. */

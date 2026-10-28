@@ -73,12 +73,18 @@ export const VOICE_OPTIONS = {
   intake: ['plenum', 'itb'],
   /** V8 crankshaft: cross-plane banks fire unevenly (the burble), flat-plane evenly (the scream). */
   crank: ['cross', 'flat'],
+  /** Supercharger lobe passes per rotor turn, the whine's order: a twin screw's male rotor lobes (3 to 5), twice the lobes of one rotor on a Roots blower (4 or 6). */
+  blowerLobes: [3, 4, 5, 6],
 } as const;
 
 /** Numeric voice fields: [min, max]. */
 export const VOICE_RANGES = {
   /** How much longer the long bank's primaries run with unequal headers (m): a boxer's crossover under the engine is about 0.5. */
   headerSpread: [0, 1],
+  /** Supercharger rotor turns per crank turn (the pulley ratio times any step-up gear inside the blower). */
+  blowerRatio: [1, 5],
+  /** Peak boost (psi): how hard the blower works at the top, so how loud its whine gets. */
+  boost: [0, 35],
 } as const;
 
 export interface EngineVoiceSpec {
@@ -90,6 +96,12 @@ export interface EngineVoiceSpec {
   crossover?: (typeof VOICE_OPTIONS.crossover)[number];
   /** Extra primary length on the long bank with unequal headers (m, VOICE_RANGES). */
   headerSpread?: number;
+  /** Supercharger lobe passes per rotor turn (supercharged engines). */
+  blowerLobes?: (typeof VOICE_OPTIONS.blowerLobes)[number];
+  /** Supercharger rotor turns per crank turn (VOICE_RANGES). */
+  blowerRatio?: number;
+  /** Peak boost (psi, VOICE_RANGES). */
+  boost?: number;
 }
 
 /** The `engine` block of a car in carManifest.json. */

@@ -5,7 +5,7 @@ How a Street Scene wheel is made from one real wheel model. The wheel is kept as
 ## 1. Pick a donor
 
 - **Licence:** the same rules as cars (`docs/carDonors.md`). CC0 or CC BY only, downloadable on Sketchfab. Check the model really contains the wheel: some "packs" on Sketchfab are a picture on a plane with the real files sold elsewhere, under terms of their own.
-- **Clean showpiece models reduce best.** The current set is all by one author (jonver87's Work, Rotiform, Vossen and single models from HRE, Fifteen52, SSR, BBS and Volk): no tire, each piece its own mesh, and most of the triangles in bolt hardware, which the pipeline replaces anyway. 13k to 1,060k triangles.
+- **Clean showpiece models reduce best.** The set was all by one author until 2026-10-28 (jonver87's Work, Rotiform, Vossen and single models from HRE, Fifteen52, SSR, BBS and Volk): no tire, each piece its own mesh, and most of the triangles in bolt hardware, which the pipeline replaces anyway. 13k to 1,060k triangles.
 - **Branding:** real wheel makers' names (BBS, Work, Mugen, Enkei, ...) never ship. Each wheel gets a fictional tuner name (`displayName`), and its maker a fictional maker name (`GROUPS` in `carWheels.py`: the garage lists the wheels under it); badge planes, their glass and lettering are flat and go as decals. A name embossed in the face itself (the Equip 02's small "Equip" on its plate) survives, too small to read at game scale.
 
 Record the donor in `WHEELS` in `carWheels.py`: its name, uid, author, licence and `maker` (the real maker its title leads with; a new maker needs a fictional name in `GROUPS`). Credit the author in the README and in the settings' credits (`DONOR_CREDITS`).
@@ -56,6 +56,7 @@ Most wheels need none. The fields:
 | `drop` | a regex of material or object names the junk words miss |
 | `bolts` | `0` to keep no bolt circle |
 | `normals` | `'geometry'` to shade the face from its own shape (split at 35°) when the donor's authored normals lean off its faces (the face reads dark) |
+| `dark` | a luminance (0 to 1): faces whose base colour texture is darker go, for a tire welded to the wheel in one textured mesh (the CH-R: tire 0.10, wheel 0.45, cut at 0.25) |
 
 ## 5. Check
 
@@ -124,6 +125,21 @@ Open:
 
 Names retired in `RENAMED_WHEELS` (`kiba`, `hoshi`, `rensa`, `tsuki`, `ginga`, `hibana`, `senko`, `arashi`) are never reused: a saved build with one would load the Work wheel it maps to. The one check that found a wheel the sheet hid: the mean shading normal of each wheel's front facing `Rim` faces along +X, 0.75 to 0.97 on a good wheel, 0.19 on the E52 before `normals: 'geometry'`.
 
+### Two new authors (2026-10-28)
+
+The user sent five links; three were refused before import: a TE37 Ultra Track Edition II (Sketchfab Standard, not downloadable), a Rotiform LHR-M (no licence, not downloadable) and an Enkei RS05RR (tagged `noai`). The two kept are the first wheels not by jonver87, and both arrive differently from his:
+
+| Group | Maker | Wheel (donor, author) | Recipe |
+|---|---|---|---|
+| Kohaku | Enkei (new group) | Kiseki (Enkei Nt03+m Wheels, flathat3d) | `drop` its three stacked logo caps and the lip lettering (a flat 4,500 face piece); `normals: 'geometry'` |
+| Suzaku | BBS | Hien (BBS CH-R + Goodyear Eagle F1 Supercar 3, MozzarellaARC) | `dark: 0.25` |
+
+- **Kiseki**: one welded mesh, wheel only, 71,000 faces: read as a one-piece wheel, its stepped lip turned from 20 points; 9,158 triangles. Its authored normals lean off the spokes (the front facing score 0.14 by face normals), so it shades from geometry: 0.55 on the shading normal score, where the set reads 0.47 to 0.63.
+- **Hien**: a 20,700 face low poly model with its tire welded to the wheel in one mesh and one textured material, UVs overlapping: neither islands, names nor UVs separate them, the texture's colour does. 8,716 triangles, score 0.57. Its centre cap logo is only in the texture, which the game does not use.
+- The shading score above is the mean +X of the shading normals over front facing `Rim` faces; it is a different number from the face normal score quoted for the E52.
+
 ## Credits
 
 All by **jonver87** on Sketchfab, CC BY 4.0: WORK VS-TX, Work Equip 03, Work Equip 40, WORK EMITZ, WORK VS-KF, Work VS XV, WORK VS-XX, WORK ZISTANCE W5S, WORK Schwert SC2, Work Equip 02, Work Euroline DH, WORK IMPORT LABEL AL4, WORK LS CHIAREZZA SUV, Rotiform ZMO, Aerodisc, VCE, SIX, AVS, KB1, USF, MLW, OZR, BM1, WRO, CCV, LHR, LSR, KLU, SNA, KPS and PNT, 3D Vossen LC104T, Vossen LC109T, VPS302, VPS301, ERA3, GNS-1, VPS 315T and CG203, HRE P200, Fifteen52 Rally Sport, SSR Koenig, BBS E52, Volk Rays 21C. Each is kept as its face, lip and barrel, reduced, with its bolts, badges and tire replaced by the house's.
+
+Enkei Nt03+m Wheels by **flathat3d** and BBS CH-R + Goodyear Eagle F1 Supercar 3 by **MozzarellaARC** on Sketchfab, CC BY 4.0, each kept the same way (the CH-R's own tire cut away).

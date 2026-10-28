@@ -22,7 +22,7 @@ const world = {
 } as unknown as World;
 
 const DEG = Math.PI / 180;
-const carId = process.argv[2] ?? 'protoHatch';
+const carId = process.argv[2] ?? 'wendtFairway';
 const t = getBaseTuning(carId);
 /** TUNE='{"tires":{"slideGrip":0.6}}' lays a trial override over the car (merged key by key) without touching the JSON. */
 const merge = (into: Record<string, unknown>, over: Record<string, unknown>): void => {

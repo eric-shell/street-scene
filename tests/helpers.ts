@@ -14,7 +14,7 @@ import params from '../src/sim/drivingParams.json';
  * to the retired Proto RS the scenario tests were written on (4.31 by 1.88 m against 4.36 by 1.82, rear wheel drive
  * like base). The Hatch is 2.04 m wide and clips the level crossing arms and kerbs those tests thread.
  */
-export const TEST_CAR = 'protoCoupe';
+export const TEST_CAR = 'kazamaRotor';
 
 /**
  * drivingParams.json's `base` exactly, with no car's overrides, on TEST_CAR's geometry: the tuning the physics
@@ -45,7 +45,7 @@ export function raceConfig(seed: number, mode: RaceConfig['mode'], opponents = 3
     mode,
     laps,
     player: { name: 'Player', carId: TEST_CAR, performance: perf },
-    opponents: Array.from({ length: opponents }, (_, i) => ({ name: `AI ${i + 1}`, carId: ['protoHatch', 'protoWagon'][i % 2], performance: stockPerformance() })),
+    opponents: Array.from({ length: opponents }, (_, i) => ({ name: `AI ${i + 1}`, carId: ['wendtFairway', 'brandtKombi'][i % 2], performance: stockPerformance() })),
     difficulty: 'medium',
     manualGearbox: false,
   };

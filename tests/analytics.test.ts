@@ -88,7 +88,7 @@ const pageview = (visitorId: string, sessionId: string) => ({
   device: { gpu: 'ANGLE (Apple, ANGLE Metal Renderer: Apple M2 Pro, Unspecified Version)', dpr: 2, cores: 10, memoryGb: 8, touch: false },
 });
 const event = (visitorId: string, sessionId: string, type: string, metadata: unknown) => ({ op: 'event', visitorId, sessionId, type, metadata });
-const START = { mode: 'circuit', seed: 42, seedText: 'neon', carId: 'protoHatch', opponents: 5, difficulty: 'medium', replay: false, ghost: false };
+const START = { mode: 'circuit', seed: 42, seedText: 'neon', carId: 'wendtFairway', opponents: 5, difficulty: 'medium', replay: false, ghost: false };
 const perf = (medianFps: number) => ({ reason: 'race_end', mode: 'circuit', level: 4, tier: 'medium', auto: true, aimFps: 120, medianFps, p95FrameMs: 14.2, slowShare: 0.01, frames: 9000 });
 
 beforeAll(async () => {
@@ -106,9 +106,9 @@ beforeAll(async () => {
     await beacon(event(v, s, 'race_start', START));
     await beacon(event(v, s, 'perf', perf(fps)));
   }
-  await beacon(event(V, S, 'race_finish', { mode: 'circuit', seed: 42, carId: 'protoHatch', timeMs: 183_400, place: 2, entrants: 6, personalBest: true }));
-  await beacon(event(V2, S2, 'race_quit', { mode: 'circuit', seed: 42, carId: 'protoHatch', elapsedMs: 40_000, progress: 0.3, reason: 'quit' }));
-  await beacon(event(V, S, 'build_save', { carId: 'protoHatch', slot: 0 }));
+  await beacon(event(V, S, 'race_finish', { mode: 'circuit', seed: 42, carId: 'wendtFairway', timeMs: 183_400, place: 2, entrants: 6, personalBest: true }));
+  await beacon(event(V2, S2, 'race_quit', { mode: 'circuit', seed: 42, carId: 'wendtFairway', elapsedMs: 40_000, progress: 0.3, reason: 'quit' }));
+  await beacon(event(V, S, 'build_save', { carId: 'wendtFairway', slot: 0 }));
   await beacon(event(V, S, 'sign_in', { newAccount: true }), { cookie: cookieFor('g-player') });
   // An events-only visitor: no page view, a session nobody created.
   await beacon(event('55555555-5555-4555-8555-555555555555', '66666666-6666-4666-8666-666666666666', 'garage_open', { viaDoor: true }));

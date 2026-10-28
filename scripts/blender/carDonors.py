@@ -10,8 +10,8 @@ and the differences in construction found (docs/carDesign.md, "Donor models").
     exec(open(REPO + '/scripts/blender/carRefs.py').read())
     exec(open(REPO + '/scripts/blender/carDonors.py').read())
     import_asset(source='sketchfab', id=DONORS[cid]['uid'], target_size=DONORS[cid]['mm']['length'] / 1000)   # MCP tool
-    donor('protoWagon', 'Sketchfab_model.001')   # collect, classify, place, join -> donor:protoWagon.Full
-    reduce_donor('protoWagon', BUDGET)           # decimated copy -> donor:protoWagon.Low
+    donor('brandtKombi', 'Sketchfab_model.001')   # collect, classify, place, join -> donor:brandtKombi.Full
+    reduce_donor('brandtKombi', BUDGET)           # decimated copy -> donor:brandtKombi.Low
     donor_report(list(DONORS))                   # one table: size, scale check, triangles, materials, stations
     compare_donors(list(DONORS), OUT)            # side / front / rear sheets, same framing for every car
 
@@ -21,7 +21,8 @@ behind, Light between the axles: mirror repeaters); `drop` removes whole meshes 
 any parent's name matches (the imports name parts on the empties above the meshes); `recolor`
 fixes faces after the join (a glass roof to Paint, lamp covers cut from the window glass);
 `cull` deletes stray faces after the join; `bridges` (boxes) lofts the grille bars across the gap a badge
-left (`bridge_bars`), and every removed badge's recess is pressed flush into its panel (`press_recesses`). Every material must be classified: an
+left (`bridge_bars`), and every removed badge's recess is pressed flush into its panel (`press_recesses`); `debadge: False` skips
+the badge island passes for a donor whose badges are materials of their own. Every material must be classified: an
 unknown one raises, so nothing ships by accident. Blender space: meters, Z up, car facing -Y
 (all four imports already do); the import is scaled to the car's published length, and the
 measured wheelbase against the published one is the scale check.
@@ -37,7 +38,7 @@ INTERIOR_BUDGET = 2500   # triangles for the donor's own cabin (dash, seats, doo
 REDUCER = 'meshopt'   # _collapse: 'meshopt' (meshopt.py) or 'blender' (the Decimate modifier, mirror-symmetric)
 
 DONORS = {
-    'protoWagon': {
+    'brandtKombi': {
         'name': '1992 Audi S2 Avant',
         'uid': '939dc6336dfe4fbd99fdb3608d58de56',
         'author': 'tonielpro520',
@@ -60,7 +61,7 @@ DONORS = {
                     and max(b - a) < 0.25,
                     lambda k, a, b, mats: set(mats) == {'Black'} and abs((a.x + b.x) / 2) < 0.03 and b.z > 1.45 and (b - a).x < 0.05],
     },
-    'protoHatch': {
+    'wendtFairway': {
         'name': '2002 Volkswagen Golf R32 (Mk4)',
         'uid': '98e6828648084ae3b877ad69e8ad36dc',
         'author': 'tangwang920',
@@ -85,7 +86,7 @@ DONORS = {
         # file.
         'bridges': [((-0.058, -2.07, 0.60), (0.058, -2.03, 0.67))],
     },
-    'protoCoupe': {
+    'kazamaRotor': {
         'name': '1999 Mazda RX-7 (FD3S)',
         'uid': '06986b70c65b44c5a7315ed467b621a6',
         'author': 'niev',
@@ -107,6 +108,57 @@ DONORS = {
                  lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y < -1.89 and 0.55 < c.z < 0.63,
                  lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y > 2.11 and 0.68 < c.z < 0.77,
                  lambda c, n, m: m == 'Chrome' and 0.26 < abs(c.x) < 0.35 and c.y > 2.1 and 0.69 < c.z < 0.73],
+    },
+    'ridgewayFiend': {
+        'name': '2018 Dodge Challenger SRT Demon (widebody)',
+        'uid': '54d229c2c0ff4eac8bc872f50b25e36c',
+        'author': 'SDC PERFORMANCE (Lambo_SC04)',
+        'license': 'CC Attribution',
+        'mm': {'length': 5017, 'wheelbase': 2951},
+        # One mesh holds all four wheels: tires, rims, discs, calipers and lug parts in `GLASS`.
+        'drop': [r'^desirefx\.me_077_43$'],
+        # `CARS` is the paint; `material` (`material.005`; names match without the suffix) the
+        # windows. `GLASS` (metallic grey) and `clearglass` are lamp reflectors and lenses, `GLSS`
+        # and `Material` (`Material.115`) the tail bar's red, which AUTO would read as windows. `carpaint_second` is the black tail lamp housing. `Carbone` is the
+        # hood, roof, trunk lid, ducktail, mirror shells, front splitter and grille block: parked
+        # on Trim here and sorted by position below.
+        'materials': {r'^CARS$': 'Paint', r'^material$': 'Glass', r'^Carbone$': 'Trim', r'^carpaint_second$': 'Black',
+                      r'^(GLASS|GLSS|clearglass|lightglass|orangeglass|redglass|Material)$': 'Lamp'},
+        # Stock is plain: the carbon panels are paint, but the splitter and the grille block (below
+        # the hood's leading edge at z 0.85) stay black.
+        'recolor': [(lambda c, n, m: m == 'Trim' and c.y < -1.75 and c.z < 0.82, 'Black'),
+                    (lambda c, n, m: m == 'Trim', 'Paint')],
+        # The fuel cap on the left rear quarter: an 11,000 face black disc standing off the panel.
+        'patches': [((0.84, 1.52, 0.88), (0.95, 1.69, 1.01), ('Black', 'Paint'), True)],
+    },
+    'hinodeHorizon': {
+        'name': 'Nissan Skyline R33 GT-R',
+        'uid': '9107448c53f3452888f2ccf96acc3d3f',
+        'author': 'greddy295',
+        'license': 'CC Attribution',
+        'mm': {'length': 4675, 'wheelbase': 2720},
+        # Nose at -X; the import sits 1.12 m to one side, which donor_axles centers.
+        'turn': (0, 0, 90),
+        # `Profil` is the tread, a mesh of its own over `Tyre`; the wheels and the suspension (whose
+        # pieces share Metal, Black_Metal and Exhaust with the body) go whole.
+        'tires': r'^(Tyre|Profil)$',
+        'drop': [r'^(Suspension|Wheels)'],
+        # The badges are materials of their own (Red_R, Nissan, Silver_GT), dropped below; the
+        # grilles are meshes of thousands of small flat cells that the badge passes would take.
+        'debadge': False,
+        # German names: Rcklichter the tail lamps, Blinker the indicators and fog lamps, Lamellen
+        # the rear window's defroster lines, Schwarze_Fensterrahmen the black window frames.
+        'materials': {r'^(Carcolor|Front_Bumper)$': 'Paint', r'^Rcklichter$': 'TailLight', r'^Blinker$': 'Lamp',
+                      r'^(Windows|Lamellen)$': 'Glass', r'^(Exhaust|Metal|Mirror)$': 'Chrome',
+                      r'^(Schwarze_Fensterrahmen|Upper_Cooler_Grid|Lower_Cooler_Grid|Gaps|Edge|Black_Metal)$': 'Black',
+                      r'^(Red_R|Nissan|Silver_GT|GT_Detail_White|Ground|Rim_Color|Imbus|Spring|Breakmaterial|Break|Profil)$': None},
+        # The donor is unfinished at the headlamps: an empty paint recess inside a black outline.
+        # Its faces become the lens; the hood's leading edge above it (z over 0.68, facing up) stays.
+        'recolor': [(lambda c, n, m: m == 'Paint' and 0.30 < abs(c.x) < 0.86 and 0.60 < c.z < 0.75 and c.y < -1.85
+                     and not (c.z > 0.68 and n.z > 0.55), 'HeadLight')],
+        # The emblem's mounting plate in the upper grille: four small black islands at the center.
+        'islands': [lambda k, a, b, mats: set(mats) == {'Black'} and 40 < k < 400 and abs((a.x + b.x) / 2) < 0.05
+                    and (a.y + b.y) / 2 < -2.1 and 0.59 < (a.z + b.z) / 2 < 0.66],
     },
 }
 
@@ -248,7 +300,10 @@ def press_recesses(o, boxes, grow=0.02):
     on its grown box. A badge in a grille has no Paint under it and is left to `bridges`. Returns
     how many were pressed."""
     names = [m.name.split('.')[0] for m in o.data.materials]
-    paint = [p.center for p in o.data.polygons if names[p.material_index] == 'Paint']
+    # Copies, collected again after every press: `p.center` points into the mesh's polygon array,
+    # which patch_out's to_mesh reallocates, and reading the old ones crashed Blender (2026-10-27).
+    paint_centers = lambda: [p.center.copy() for p in o.data.polygons if names[p.material_index] == 'Paint']
+    paint = paint_centers()
     pressed = 0
     for a, b in boxes:
         lo, hi = a - Vector((grow,) * 3), b + Vector((grow,) * 3)
@@ -258,6 +313,7 @@ def press_recesses(o, boxes, grow=0.02):
             pressed += patch_out(o, lo, hi, ('Paint',), flush=True) > 0
         except (ValueError, np.linalg.LinAlgError) as err:
             print(f'badge recess at {fmt(lo)} not pressed ({err})')
+        paint = paint_centers()
     return pressed
 
 
@@ -479,9 +535,11 @@ def _smooth_new_loops(me, first):
 
 
 def donor_axles(objs, tire_pat, obj_pat=None):
-    """(front axle y, rear axle y, tire radius, ground z, track) from the faces of the tire material
-    (on meshes under a part matching obj_pat, when given): split front and rear at their mean; the
-    track is between the left and right tires' centers."""
+    """(front axle y, rear axle y, tire radius, ground z, track, center x) from the faces of the tire
+    material (on meshes under a part matching obj_pat, when given): split front and rear at their
+    mean; the track is between the left and right tires' centers. The center is the tires' own
+    middle when they sit more than 2 % of the wheelbase off x = 0 (the R33 import sat 1.12 m to one
+    side), else 0, so a centered import keeps its exact placement."""
     pts = []
     for o in objs:
         if obj_pat and not any(re.search(obj_pat, n) for n in _lineage(o)):
@@ -496,8 +554,11 @@ def donor_axles(objs, tire_pat, obj_pat=None):
     rear = [p for p in pts if p.y >= mid]
     ctr = lambda ps: (min(p.y for p in ps) + max(p.y for p in ps)) / 2
     r = max((max(p.z for p in ps) - min(p.z for p in ps)) / 2 for ps in (front, rear))
-    left = [p.x for p in front if p.x > 0]
-    return ctr(front), ctr(rear), r, min(p.z for p in pts), min(left) + max(left)
+    cx = (min(p.x for p in front) + max(p.x for p in front)) / 2
+    if abs(cx) < 0.02 * abs(ctr(rear) - ctr(front)):
+        cx = 0.0
+    left = [p.x - cx for p in front if p.x > cx]
+    return ctr(front), ctr(rear), r, min(p.z for p in pts), min(left) + max(left), cx
 
 
 def donor(cid, root):
@@ -523,7 +584,7 @@ def donor(cid, root):
             o.matrix_world = turn @ o.matrix_world
         bpy.context.view_layer.update()
     try:
-        fy, ry, r, ground, track = donor_axles(src, R.get('tires', TIRES), R.get('tireObjects'))
+        fy, ry, r, ground, track, cx = donor_axles(src, R.get('tires', TIRES), R.get('tireObjects'))
     finally:
         if turn != Matrix.Identity(4):
             back = turn.inverted()
@@ -533,7 +594,7 @@ def donor(cid, root):
     # Scaled from the published wheelbase: an import's own size can be anything (a ground dome or a
     # backdrop in the scene sets Sketchfab's normalized size). The length is the check.
     k = R['mm']['wheelbase'] / 1000 / (ry - fy)
-    move = Matrix.Scale(k, 4) @ Matrix.Translation((0, -(fy + ry) / 2, -ground)) @ turn
+    move = Matrix.Scale(k, 4) @ Matrix.Translation((-cx, -(fy + ry) / 2, -ground)) @ turn
     fy, ry, r, track = fy * k, ry * k, r * k, track * k
     bm = bmesh.new()
     kept = dropped = 0
@@ -615,12 +676,16 @@ def donor(cid, root):
                 gone.append((a.copy(), b.copy()))
             return hit
         return wrapped
-    badges = delete_islands(full, badge(lambda k, a, b, mats: set(mats) <= {'Black', 'Chrome'} and max((b - a).x, (b - a).z) < 0.3
-                                        and abs((a.y + b.y) / 2) > ends and (a.z + b.z) / 2 > 0.45 and k < 1500))
-    # Anywhere on the body: emblems, scripts and stickers are thin (under 12 mm) and small (under
-    # 0.35 m) loose islands of any paint-free material, lying on a panel. Lamps and glass are not.
-    badges += delete_islands(full, badge(lambda k, a, b, mats: k < 300 and not set(mats) & {'Glass', 'HeadLight', 'TailLight', 'Light', 'Paint'}
-                                         and sorted(b - a)[0] < 0.012 and sorted(b - a)[2] < 0.35 and (a.z + b.z) / 2 > 0.2))
+    # Recipe `debadge: False` skips both passes, for a donor whose badges are materials of their own
+    # (dropped above) and whose grilles are meshes of thousands of small flat cells (the R33's).
+    badges = 0
+    if R.get('debadge', True):
+        badges = delete_islands(full, badge(lambda k, a, b, mats: set(mats) <= {'Black', 'Chrome'} and max((b - a).x, (b - a).z) < 0.3
+                                            and abs((a.y + b.y) / 2) > ends and (a.z + b.z) / 2 > 0.45 and k < 1500))
+        # Anywhere on the body: emblems, scripts and stickers are thin (under 12 mm) and small (under
+        # 0.35 m) loose islands of any paint-free material, lying on a panel. Lamps and glass are not.
+        badges += delete_islands(full, badge(lambda k, a, b, mats: k < 300 and not set(mats) & {'Glass', 'HeadLight', 'TailLight', 'Light', 'Paint'}
+                                             and sorted(b - a)[0] < 0.012 and sorted(b - a)[2] < 0.35 and (a.z + b.z) / 2 > 0.2))
     pressed = press_recesses(full, gone)
     print(f'{cid}: pressed {pressed} badge recesses flush ({len(gone)} badge islands removed)')
     for lo, hi in R.get('bridges', ()):

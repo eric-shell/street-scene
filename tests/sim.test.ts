@@ -328,13 +328,13 @@ describe('driving parameters file', () => {
     }
     expect(CAR_IDS).not.toContain('cc96');
     expect(CAR_IDS).not.toContain('ar7');
-    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['protoCoupe', 'protoHatch', 'protoWagon']);
+    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['brandtKombi', 'hinodeHorizon', 'kazamaRotor', 'ridgewayFiend', 'wendtFairway']);
   });
 
   it('keeps each car\'s character: a front biased AWD hatch, a light high revving RWD coupe, an even AWD wagon', () => {
-    const hatch = getBaseTuning('protoHatch');
-    const coupe = getBaseTuning('protoCoupe');
-    const wagon = getBaseTuning('protoWagon');
+    const hatch = getBaseTuning('wendtFairway');
+    const coupe = getBaseTuning('kazamaRotor');
+    const wagon = getBaseTuning('brandtKombi');
     expect(hatch.drivetrain.layout).toBe('awd');
     expect(driveSplit(hatch).front).toBeGreaterThan(driveSplit(hatch).rear);
     expect(driveSplit(coupe)).toEqual({ front: 0, rear: 1 });
@@ -353,20 +353,20 @@ describe('driving parameters file', () => {
   });
 
   it('the panel imports its own export format exactly', () => {
-    const t = getBaseTuning('protoHatch');
-    applySavedTuning(t, importValues(exported, 'protoHatch'));
-    expect(t).toMatchObject({ ...exported.tuning, carId: 'protoHatch', geometry: getBaseTuning('protoHatch').geometry });
+    const t = getBaseTuning('wendtFairway');
+    applySavedTuning(t, importValues(exported, 'wendtFairway'));
+    expect(t).toMatchObject({ ...exported.tuning, carId: 'wendtFairway', geometry: getBaseTuning('wendtFairway').geometry });
     // drivingParams.json style nested blocks work too.
     const u = baseTuning();
-    expect(applySavedTuning(u, importValues({ tires: { gripRear: 1.1 }, drivetrain: { layout: 'awd' } }, 'protoHatch'))).toBe(2);
+    expect(applySavedTuning(u, importValues({ tires: { gripRear: 1.1 }, drivetrain: { layout: 'awd' } }, 'wendtFairway'))).toBe(2);
     expect(u.tires.gripRear).toBe(1.1);
     expect(u.drivetrain.layout).toBe('awd');
   });
 
   it('saved tuning panel values are fingerprinted per car', () => {
-    expect(tuningHash('protoCoupe')).toMatch(/^[0-9a-f]{8}$/);
-    expect(tuningHash('protoCoupe')).not.toBe(tuningHash('protoHatch'));
-    expect(tuningHash('protoCoupe')).toBe(tuningHash('protoCoupe'));
+    expect(tuningHash('kazamaRotor')).toMatch(/^[0-9a-f]{8}$/);
+    expect(tuningHash('kazamaRotor')).not.toBe(tuningHash('wendtFairway'));
+    expect(tuningHash('kazamaRotor')).toBe(tuningHash('kazamaRotor'));
   });
 });
 
@@ -570,7 +570,7 @@ describe('launch control and the pedal combos', () => {
   const withLaunch = (carId: string, launchRpm: number) => applyBuild(getBaseTuning(carId), { ...stockPerformance(), launchRpm });
 
   it('the two-step bounces the engine under the launch rpm on the grid; off, the grid revs as it always has', () => {
-    const t = withLaunch('protoHatch', 5000);
+    const t = withLaunch('wendtFairway', 5000);
     expect(t.launch.twoStepRpm).toBe(5000);
     const c = createCar(0, 0, 0, 0);
     let cuts = 0;
@@ -641,7 +641,7 @@ describe('launch control and the pedal combos', () => {
     }
     // A turbo car line locked on the button, then let go of the brakes while the button stays down (a
     // creep past the line lock speed): it drives on rather than coasting on antilag.
-    const t = applyBuild(getBaseTuning('protoCoupe'), stockPerformance('protoCoupe'));
+    const t = applyBuild(getBaseTuning('kazamaRotor'), stockPerformance('kazamaRotor'));
     const c = createCar(0, 0, 0, 0);
     for (let i = 0; i < 60; i++) stepCar(c, t, input({ throttle: 1, antilag: true }), { world });
     expect(c.lineLockHeld).toBe(true);
@@ -675,8 +675,8 @@ describe('launch control and the pedal combos', () => {
   });
 
   it('the antilag button and the gas rolling is antilag on a turbo car only: boost pinned at its own rpm, no drive, and full boost on release', () => {
-    expect(getBaseTuning('protoCoupe').engine.turbo).toBe(true);
-    expect(getBaseTuning('protoHatch').engine.turbo).toBe(false);
+    expect(getBaseTuning('kazamaRotor').engine.turbo).toBe(true);
+    expect(getBaseTuning('wendtFairway').engine.turbo).toBe(false);
     const roll = (carId: string, held: Partial<Parameters<typeof input>[0]> = { antilag: true }, perf = stockPerformance()) => {
       const t = applyBuild(getBaseTuning(carId), perf);
       const c = createCar(0, 0, 0, 0);
@@ -689,17 +689,17 @@ describe('launch control and the pedal combos', () => {
       }
       return { c, t, before, held: n };
     };
-    const turbo = roll('protoCoupe');
+    const turbo = roll('kazamaRotor');
     expect(turbo.held).toBe(30);
     expect(turbo.c.boost).toBe(1);
     expect(turbo.c.speed).toBeLessThan(turbo.before);
     expect(turbo.t.launch.antilagRpm).toBe(5500);
     expect(turbo.c.rpm).toBeGreaterThan(turbo.t.launch.antilagRpm - turbo.t.launch.twoStepDepth - 1);
     // Its own set point, not the launch rpm's; gas and brake rolling is not antilag; Off turns the button off.
-    const own = roll('protoCoupe', { antilag: true }, { ...stockPerformance(), launchRpm: 3000, antilagRpm: 6000 });
+    const own = roll('kazamaRotor', { antilag: true }, { ...stockPerformance(), launchRpm: 3000, antilagRpm: 6000 });
     expect(own.c.rpm).toBeGreaterThan(6000 - own.t.launch.twoStepDepth - 1);
-    expect(roll('protoCoupe', { brake: 1 }).held).toBe(0);
-    expect(roll('protoCoupe', { antilag: true }, { ...stockPerformance(), antilagRpm: 0 }).held).toBe(0);
+    expect(roll('kazamaRotor', { brake: 1 }).held).toBe(0);
+    expect(roll('kazamaRotor', { antilag: true }, { ...stockPerformance(), antilagRpm: 0 }).held).toBe(0);
     // Off the button: boost stays pinned for the hold, then the spool model takes over.
     stepCar(turbo.c, turbo.t, input({ throttle: 1 }), { world });
     expect(turbo.c.antilag).toBe(false);
@@ -710,13 +710,13 @@ describe('launch control and the pedal combos', () => {
     expect(turbo.c.antilag).toBe(false);
     expect(turbo.c.lineLock).toBe(true);
     expect(turbo.c.spinRear).toBeGreaterThan(0.5);
-    const na = roll('protoHatch');
+    const na = roll('wendtFairway');
     expect(na.held).toBe(0);
     expect(na.c.boost).toBe(0);
   });
 
   it('a turbo spools: boost builds under load and bleeds off the throttle', () => {
-    const t = applyBuild(getBaseTuning('protoCoupe'), stockPerformance());
+    const t = applyBuild(getBaseTuning('kazamaRotor'), stockPerformance());
     const c = createCar(0, 0, 0, 0);
     for (let i = 0; i < 90; i++) stepCar(c, t, input({ throttle: 1 }), { world });
     expect(c.boost).toBeGreaterThan(0.5);
@@ -726,7 +726,7 @@ describe('launch control and the pedal combos', () => {
 
   it('a two-step launch with a burnout replays bit for bit', () => {
     const run = () => {
-      const t = withLaunch('protoCoupe', 5500);
+      const t = withLaunch('kazamaRotor', 5500);
       const c = createCar(0, 0, 0, 0);
       for (let i = 0; i < 60; i++) gridRev(c, t, input({ throttle: 1, brake: i < 30 ? 1 : 0 }), DT);
       for (let i = 0; i < 180; i++) stepCar(c, t, input({ throttle: 1, brake: i > 120 ? 1 : 0 }), { world });

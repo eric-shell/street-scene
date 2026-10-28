@@ -5,11 +5,11 @@ compares numbers before it looks (docs/carDesign.md).
 
     exec(open(REPO + '/scripts/blender/carKit.py').read())
     exec(open(REPO + '/scripts/blender/carRefs.py').read())
-    load_refs('protoHatch')                   # photos from assets/refs/protoHatch/refs.json as planes
-    m = measure('protoHatch')                 # stations: belt line, cabin, lamps, pillars, mirrors, ...
-    spec_check('protoHatch')                  # model vs the blended donors (carSpecs.json)
-    ortho_sheet('protoHatch', OUT_DIR)        # side / front / rear / top PNGs to Read
-    spec_from_refs('protoHatch')              # real overhangs, height, belt from a calibrated side photo
+    load_refs('wendtFairway')                   # photos from assets/refs/wendtFairway/refs.json as planes
+    m = measure('wendtFairway')                 # stations: belt line, cabin, lamps, pillars, mirrors, ...
+    spec_check('wendtFairway')                  # model vs the blended donors (carSpecs.json)
+    ortho_sheet('wendtFairway', OUT_DIR)        # side / front / rear / top PNGs to Read
+    spec_from_refs('wendtFairway')              # real overhangs, height, belt from a calibrated side photo
 
 Blender space (meters, Z up, car facing -Y, +X the car's left). Stations are reported as
 car space forward distances (fwd = -y) and heights (z) so they match the audit's table.

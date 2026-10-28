@@ -11,7 +11,8 @@ How a Street Scene car is made from one real car model: download a model with a 
 - **Downloadable** on Sketchfab, with the licence shown on the model page.
 - **One whole car**, not a scene: a ground plane or backdrop is fine (it is dropped), but several cars in one file are not.
 - A source between 20k and 300k triangles reduces best. Under 10k leaves no detail to keep; over 1M is slow.
-- **Trademarks** are separate from the model's licence. A CC licence covers the 3D model, not the carmaker's name, badges or logo. The pipeline removes badges; cars ship under Proto names.
+- **Provenance.** A CC licence is only as good as the uploader's right to grant it. Pass over a model that is evidently someone else's: a game asset (part names in a game's own scheme, such as `Bcnr33…`; lamps and grilles only in a 128 to 512 px texture; a face count on the model page far above what downloads), the same mesh under several uploaders (identical face counts), a game mod (BeamNG's `etkc_` parts), or a description naming the game it came from. Flag weaker signs (a redistribution site in the object names, as on the Ridgeway Fiend) and let the user decide.
+- **Trademarks** are separate from the model's licence. A CC licence covers the 3D model, not the carmaker's name, badges or logo. The pipeline removes badges; cars ship under fictional maker and model names (Wendt Fairway, Kazama Rotor, Brandt Kombi, Ridgeway Fiend: no maker or model trademark, no sound-alike spelling, no chassis code), with ids to match (`<fictional maker><Model>`, e.g. `wendtFairway`).
 
 Record each donor in `DONORS` in `carDonors.py` with its name, Sketchfab uid, author, licence and published length and wheelbase in mm, and add the author to the README credits.
 
@@ -59,6 +60,7 @@ A recipe adds only what that donor needs:
 | `patches` | boxes to remove (`flush=False`: a roof plate) or press flush into the panel (sunroof, fuel door) |
 | `recolor`, `cull` | face fixes after the join (a glass roof to `Paint`) |
 | `islands` | loose islands to delete after the join, `pred(faces, lo, hi, materials)`: what `cull`'s face boxes would cut too wide (wiper arms over a black cowl, an antenna) |
+| `debadge` | `False` skips the badge island passes: for a donor whose badges are materials of their own (drop them in `materials`) and whose grilles are meshes of thousands of small flat cells, which the passes take for badges and press flat (the R33's: 2,423 islands) |
 | `bridges` | boxes `(lo, hi)` across a gap in the grille's bars: a `cull` or a badge mount cut them where it sat. The faces centered in the box go, then each bar end on the box's left face is lofted to its match on the right (same material, nearest z), so the bar runs across in one piece (the Golf's two bars, in front of the black panel behind them) |
 
 An unclassified material stops the run with its name, so nothing ships by accident. Look at the import's materials first: one listing with face counts and bounds per material says which is which.
@@ -77,7 +79,7 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 
 `donor()` does all of this; nothing needs to be done by hand:
 - classifies and drops by the recipe and `AUTO`;
-- turns the car to face -Y;
+- turns the car to face -Y, and centers it on its tires when they sit off x = 0 (the R33 import sat 1.12 m to one side);
 - scales it to the published wheelbase, then checks its length against the published one;
 - keeps the authored normals as an attribute; flat-shaded sources are smoothed at 30 degrees first;
 - assigns lamps by position: ahead of the axles `HeadLight`, behind them `TailLight`, between them `Light`, and well inboard between the axles (a dome or dash lamp) `Interior`;
@@ -142,12 +144,26 @@ Findings that drove the pipeline, now automatic:
 - **Cowl gaps** where a wiper mesh carried the cowl trim (the WRX).
 - **No cabin:** interiors are dropped and nothing fills them yet.
 
+## 9. Ridgeway Fiend (2026-10-27, then called the Proto Muscle)
+
+A fourth garage car from a 627,000 face widebody Challenger SRT Demon (SDC PERFORMANCE, CC BY 4.0; every object in the file is named `desirefx.me_0xx`, a model redistribution site, so the uploader may not be its first author: shipped on the Sketchfab licence at the user's call). The recipe needed six overrides: the paint (`CARS`), the windows (`material`), the lamp reflectors and the tail bar's red (`GLASS`, `GLSS`, `Material`, all read as windows by `AUTO`), the black tail lamp housing, the one mesh that holds all four wheels, and the carbon (`Carbone`: hood, roof, trunk lid, ducktail, mirror shells, splitter, grille block), parked on `Trim` and sorted by position into Paint (stock is plain) and Black (splitter, grille block). The fuel cap is an 11,000 face disc standing off the left quarter, pressed flush with a patch. Length -0.1 % of published, 18,143 triangles (cabin 2,180), drift p95 1.3 mm; `lift_liners` cleared the wheel well liners that sat on the drag radials (arch gaps 0.008 / 0.013).
+
+`press_recesses` crashed Blender on this donor: it kept `p.center` vectors across `patch_out` calls, and those point into the mesh's polygon array, which each `to_mesh` reallocates. With three badge recesses to press, the third read freed memory. It now copies the centers and collects them again after every press.
+
+## 10. Hinode Horizon GT (2026-10-28)
+
+A fifth garage car, after a 1997 Skyline GT-R R33. The user's link downloaded as a 9,536 triangle game asset (`Bcnr33…` parts, 128 to 512 px textures holding the lamps, grille and badges; Sketchfab lists it at 254,184 faces), and the other CC BY R33s were no better: three uploads of one *Driver: San Francisco* mesh (284,9xx faces each, one says where it came from) and a BeamNG mod (`etkc_` parts, Russian material names). The donor is greddy295's own R33 GT-R (2014, Blender, 69,371 faces), which its author calls unfinished.
+
+Recipe: German material names, nose at -X off center (`turn`, then the automatic centering), the wheels and suspension dropped whole (their meshes share Metal, Black_Metal and Exhaust with the body), `debadge: False` (the badges are their own materials; the grille meshes are 2,400 flat cells the badge passes pressed into crumpled panels), the emblem's mounting plate as four `islands`. The unfinished part is the headlamps: an empty paint recess inside a black outline, recoloured to `HeadLight` (the hood's leading edge above it excluded by height and normal). Length -1.0 % of published, 16,000 triangles, drift p95 0.5 mm, lost max 11 mm. The donor has no cabin, so `interior()` (carFeatures.py) adds the house block (18 triangles). Arch gaps read 0.09 / 0.12 m against the liner; the stance looks right with wheels on.
+
 ## Donor credits
 
 | Car | Model | Author | Licence |
 |---|---|---|---|
-| Proto Hatch | 2002_volkswagen_golf_r32_mk4 (VW Golf R32 Mk4) | tangwang920 | CC BY 4.0 |
-| Proto Coupe | Mazda RX7 FD 1999 | niev | CC BY 4.0 |
-| Proto Wagon | 1992 Audi S2 Avant | tonielpro520 | CC BY 4.0 |
+| Wendt Fairway R6 (was Proto Hatch) | 2002_volkswagen_golf_r32_mk4 (VW Golf R32 Mk4) | tangwang920 | CC BY 4.0 |
+| Kazama Rotor (was Proto Coupe) | Mazda RX7 FD 1999 | niev | CC BY 4.0 |
+| Brandt Kombi S (was Proto Wagon) | 1992 Audi S2 Avant | tonielpro520 | CC BY 4.0 |
+| Ridgeway Fiend (was Proto Muscle) | Dodge Challenger SRT DEMON SDC (2018 Challenger SRT Demon, widebody) | SDC PERFORMANCE (Lambo_SC04) | CC BY 4.0 |
+| Hinode Horizon GT | Nissan Skyline R33 GT-R (1995 to 1998 R33 GT-R) | greddy295 | CC BY 4.0 |
 
 The first set (2026-10-21: an RS6 C8, a WRX STI hatch, an RSX Type-S and a Supra MK4) was replaced on 2026-10-22: three of its four licences were NonCommercial. The Proto Compact went with them.

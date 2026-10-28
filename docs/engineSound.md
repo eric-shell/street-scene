@@ -52,21 +52,21 @@ Defaults by layout are `LAYOUT_VOICE`; turbo engines default to the quiet silenc
 
 ## The garage engines
 
-### Proto Hatch: VW VR6, naturally aspirated (Golf R32 Mk4)
+### Wendt Fairway: VW VR6, naturally aspirated (Golf R32 Mk4)
 
 - Reference: 3.2 l VR6 (BFH/BDB), 15° narrow V sharing one head, firing order 1-5-3-6-2-4, 84.0 x 95.9 mm, 24 valves with variable cam timing, 10.9 to 11.3:1, Bosch Motronic ME 7.1.1. One manifold per three cylinders but runners of two lengths, as the narrow V staggers them.
 - The sound: even 120° firing, but odd cylinders sit on one side of the narrow V, so 1-5-3-6-2-4 fires three from one side and then three from the other. The far side's runners reach round the V and run longer, so its three pulses arrive late and weaker: a beat once a cycle under the six's even note, the hollow, gravelly growl the VR6 is known for (the "Chewbacca" sound). The runners are also staggered within a side (`stagger`). No turbines, so the pulses stay sharp.
 - Spec: `VR6`, `na`, `voice: { headers: 'unequal', headerSpread: 0.35, pipes: 1, muffler: 'sport' }` (the R32's twin centre tips come from one system). The far side's pulses arrive 1.0 ms late at about 0.7 of the gain.
 - Still to add: tune `headerSpread` and `stagger` against a recording of the R32, and the intake honk of its large plenum from 4000 up.
 
-### Proto Coupe: Mazda 13B-REW twin rotor, sequential twin turbo (RX-7 FD)
+### Kazama Rotor: Mazda 13B-REW twin rotor, sequential twin turbo (RX-7 FD)
 
 - Reference: 1308 cc two rotor Wankel, sequential twin turbos (the secondary joins near 4,500 rpm), 9.0:1, redline 8,000. Each rotor fires once per eccentric shaft turn, so two rotors fire as often as a four cylinder at the same rpm, but evenly and with no valvetrain.
 - The sound: a smooth, high buzz from even firing and short exhaust ports, rounded by the turbines; the brap at idle comes from port overlap.
 - Spec: `R2`, `turbo`, `voice: { pipes: 1, muffler: 'sport' }`.
 - Still to add: the idle brap (port overlap as a rough, slow lope at low rpm), the secondary turbo's step near 4,500 rpm, and the rotary's metallic ring at high rpm.
 
-### Proto Wagon: Audi 2.7 V6 biturbo (S2 Avant donor)
+### Brandt Kombi: Audi 2.7 V6 biturbo (S2 Avant donor)
 
 - Reference: 2,671 cc 90° V6, 30 valves (three intake, two exhaust per cylinder) with variable inlet timing, 81.0 x 86.4 mm, 9.3:1, firing order 1-4-3-6-2-5, one turbo per bank and an exhaust per bank: the S4 and RS4 B5 engine, as specified for the wagon (the S2 Avant itself had a 2.2 turbo five).
 - The sound: banks alternate on an even fire, each bank an even three into its own turbine and pipe, so each tailpipe carries half the pulses: a smooth growl, smeared by the turbines.
@@ -91,7 +91,7 @@ Each layout already has a schedule and a `LAYOUT_VOICE` entry so every car sound
 | V12 / W12 | Ferrari F140 (812), BMW S70 (McLaren F1), Bentley W12 | Two inline sixes 60° apart; silky, 6th order whine | Lower `rough`, `pipes: 2`; W12 adds the VR stagger per bank |
 | W16 | Bugatti Veyron / Chiron | Four banks, quad turbo | Four pipes merged two and two; four `smear`ed turbines |
 | R2 / R3 | Mazda 13B-REW (RX-7), 20B (Cosmo) | One combustion per rotor per shaft turn, long port opening: the "brap" | Pulse shape is wider already; add the apex seal rasp (noise burst per face), the famous bridge port idle lope, and the exhaust pop on overrun |
-| Supercharged | Shelby GT500, Hellcat, Lotus Exige | Roots / twin screw whine at a fixed ratio of crank speed (×2.5 to ×3.4) with lobe harmonics | A whine partial set like the turbo whistle but rpm locked; `aspiration: 'supercharged'` is in the vocabulary already |
+| Supercharged | Shelby GT500, Hellcat, Demon | Roots / twin screw whine at a fixed ratio of crank speed (x2.5 to x3.4) with lobe harmonics | Done (`BLOWER` in `engineAudio.ts`): rpm-locked partials at rpm / 60 x `blowerRatio` x `blowerLobes` plus an air rush band, loud with `boost` and the pedal, faint with the bypass open; no lag. The Ridgeway Fiend is the first (4 lobes, 2.5, 21.3 psi) |
 
 Features that apply to every engine, roughly in order of what the ear notices:
 

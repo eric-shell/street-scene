@@ -2,7 +2,7 @@
   "_readme": "Reference specs for the authored cars (docs/carDesign.md). Each car blends two real donors: their dimensions in mm (sourced; `estimates` lists the keys read off side profiles rather than spec sheets), blend weights, what to take from each, and the lamp signatures. Nothing here is a game dimension: targets are derived as blend(donor value / donor wheelbase) x the car's manifest wheelbase x the `house` multiplier, so the proportions come from the donors and the stylization lives in one place. Readers: scripts/auditCar.ts (npm run audit, headless on the shipped GLB) and scripts/blender/carRefs.py (spec_check in Blender); scripts/blender/carFeatures.py builds the shared features from `house.features`. A calibrated side photo in assets/refs/<carId>/refs.json overrides the estimated keys.",
   "house": {
     "wheelRadius": 0.28,
-    "_scale": "Street Scene proportions on top of the blended donors: one 0.28 m wheel for every car, wider (flares) and lower (chopped roof) than real. Measured off the Proto Hatch as shipped. Change here, re-audit every car, and say so: the manifest geometry feeds the sim.",
+    "_scale": "Street Scene proportions on top of the blended donors: one 0.28 m wheel for every car, wider (flares) and lower (chopped roof) than real. Measured off the Wendt Fairway as shipped. Change here, re-audit every car, and say so: the manifest geometry feeds the sim.",
     "scale": {
       "length": 1,
       "width": 1.06,
@@ -108,8 +108,8 @@
     }
   },
   "cars": {
-    "protoHatch": {
-      "displayName": "Proto Hatch",
+    "wendtFairway": {
+      "displayName": "Wendt Fairway R6",
       "brief": "Three door hot hatch: the Golf R32 Mk4 donor reduced whole at true size on its own tires, its own lamps (the lens covers recolored from glass), badges, antenna and wipers removed. Front naturally aspirated VR6, all wheel drive biased to the front.",
       "donors": [
         {
@@ -186,8 +186,8 @@
         }
       }
     },
-    "protoCoupe": {
-      "displayName": "Proto Coupe",
+    "kazamaRotor": {
+      "displayName": "Kazama Rotor",
       "brief": "Two door sports coupe: the RX-7 FD donor reduced whole at true size on its own tires, pop-up headlights modelled raised, its own lamps, badges and lettering removed. Front sequential twin turbo twin rotor, rear wheel drive.",
       "donors": [
         {
@@ -263,8 +263,8 @@
         }
       }
     },
-    "protoWagon": {
-      "displayName": "Proto Wagon",
+    "brandtKombi": {
+      "displayName": "Brandt Kombi S",
       "brief": "Five door sports wagon: the S2 Avant donor reduced whole at true size on its own tires, its own lamps, roof rails kept, badges, antenna and wipers removed. Front twin turbo V6, all wheel drive split evenly.",
       "donors": [
         {
@@ -339,6 +339,161 @@
           "centerBar": true,
           "source": "donor",
           "notes": "the S2's full width tail bar, kept from the donor model"
+        }
+      }
+    },
+    "ridgewayFiend": {
+      "displayName": "Ridgeway Fiend",
+      "brief": "Two door widebody muscle coupe: the Challenger SRT Demon donor reduced whole at true size on its own drag radials, its own lamps, the carbon hood, roof, trunk lid and mirrors painted body colour, splitter black, badges and fuel cap removed. Front supercharged V8, rear wheel drive.",
+      "donors": [
+        {
+          "name": "2018 Dodge Challenger SRT Demon (widebody)",
+          "weight": 1.0,
+          "model": {
+            "source": "sketchfab",
+            "uid": "54d229c2c0ff4eac8bc872f50b25e36c",
+            "author": "SDC PERFORMANCE (Lambo_SC04)",
+            "license": "CC Attribution",
+            "url": "https://sketchfab.com/3d-models/54d229c2c0ff4eac8bc872f50b25e36c"
+          },
+          "mm": {
+            "length": 5017,
+            "width": 2002,
+            "height": 1458,
+            "wheelbase": 2951,
+            "trackFront": 1641,
+            "trackRear": 1641,
+            "overhangFront": 949,
+            "overhangRear": 1114,
+            "beltLine": 953,
+            "tireRadius": 359,
+            "windshieldDeg": 25.7,
+            "rearGlassDeg": 27.1
+          },
+          "estimates": [],
+          "measured": [
+            "trackFront",
+            "trackRear",
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "tireRadius",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://www.guideautoweb.com/en/new-cars/compare/3232",
+            "https://www.motormatchup.com/catalog/Dodge/Challenger/2018/SRT-Demon-(100-Octane)"
+          ],
+          "take": [
+            "the whole body: reduced to the budget at true size on its own tires",
+            "its own lamps: quad round headlights in the grille and the full width tail bar"
+          ]
+        }
+      ],
+      "body": {
+        "doors": 2,
+        "pillars": [
+          "A",
+          "B",
+          "C"
+        ],
+        "roofline": "long hood, short fastback roof to a high flat trunk with a ducktail",
+        "exhaust": "twin tips, one each side"
+      },
+      "lights": {
+        "front": {
+          "cover": "slab",
+          "elements": "none",
+          "indicator": "outerBlock",
+          "source": "donor",
+          "notes": "the Challenger's quad round headlights set in the grille, kept from the donor model"
+        },
+        "rear": {
+          "cover": "panel",
+          "elements": "none",
+          "indicator": "none",
+          "wrap": false,
+          "centerBar": true,
+          "source": "donor",
+          "notes": "the Challenger's full width tail bar, kept from the donor model"
+        }
+      }
+    },
+    "hinodeHorizon": {
+      "displayName": "Hinode Horizon GT",
+      "brief": "Two door AWD grand touring coupe: the R33 Skyline GT-R donor reduced whole at true size on its own tires, its own grilles, fog lamps, round tail lamps and rear wing; the empty headlamp recesses (the donor is unfinished there) recoloured as lenses inside its own black outline; badges dropped by material. Front twin turbo inline six, all wheel drive.",
+      "donors": [
+        {
+          "name": "Nissan Skyline R33 GT-R",
+          "weight": 1.0,
+          "model": {
+            "source": "sketchfab",
+            "uid": "9107448c53f3452888f2ccf96acc3d3f",
+            "author": "greddy295",
+            "license": "CC Attribution",
+            "url": "https://sketchfab.com/3d-models/9107448c53f3452888f2ccf96acc3d3f"
+          },
+          "mm": {
+            "length": 4675,
+            "width": 1780,
+            "height": 1360,
+            "wheelbase": 2720,
+            "trackFront": 1526,
+            "trackRear": 1526,
+            "overhangFront": 941,
+            "overhangRear": 967,
+            "beltLine": 923,
+            "tireRadius": 324,
+            "windshieldDeg": 25.4,
+            "rearGlassDeg": 19.6
+          },
+          "estimates": [],
+          "measured": [
+            "trackFront",
+            "trackRear",
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "tireRadius",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://en.wikipedia.org/wiki/Nissan_Skyline_GT-R"
+          ],
+          "take": [
+            "the whole body: reduced to the budget at true size on its own tires",
+            "its own lamps: round twin tail lamps over a red bar, fog lamps in the bumper; the headlamp recesses filled as lenses"
+          ]
+        }
+      ],
+      "body": {
+        "doors": 2,
+        "pillars": [
+          "A",
+          "B",
+          "C"
+        ],
+        "roofline": "long hood, upright cabin, short notchback trunk with a tall rear wing",
+        "exhaust": "twin tips, one each side"
+      },
+      "lights": {
+        "front": {
+          "cover": "slab",
+          "elements": "none",
+          "indicator": "outerBlock",
+          "source": "donor",
+          "notes": "the R33's wide slim headlamps under the hood line, the recess kept from the donor and lit as one lens"
+        },
+        "rear": {
+          "cover": "panel",
+          "elements": "none",
+          "indicator": "none",
+          "wrap": false,
+          "centerBar": false,
+          "source": "donor",
+          "notes": "the GT-R's round twin tail lamps, kept from the donor model"
         }
       }
     }

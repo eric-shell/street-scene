@@ -25,7 +25,7 @@ Name files by donor and view: `wrx_side.jpg`, `golfr_front.jpg`, `wrx_q34_rear.j
 
 ```json
 {
-  "car": "protoHatch",
+  "car": "wendtFairway",
   "images": [
     { "file": "wrx_side.jpg", "donor": 0, "view": "side", "nose": "left",
       "wheels_px": [[412, 610], [1310, 612]], "extent_px": [60, 1680], "roof_px": 95, "ground_px": 780, "belt_px": 430,

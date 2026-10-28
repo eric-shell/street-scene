@@ -3,11 +3,11 @@
   "notes": "Car space: meters, Y up, origin on the ground midway between the axles, car faces +Z, +X is the car's left. Wheel positions are wheel centers. Cars marked provisional have estimated geometry until `npm run assets` measures the converted GLB. `engine` is the car's spec (layout, aspiration, position; vocabulary in src/shared/carSpec.ts); which wheels are driven comes from drivingParams.json.",
   "cars": [
     {
-      "id": "protoHatch",
-      "displayName": "Proto Hatch",
+      "id": "wendtFairway",
+      "displayName": "Wendt Fairway R6",
       "source": "eshell",
       "provisional": false,
-      "file": "cars/protoHatch.glb",
+      "file": "cars/wendtFairway.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
       "wheelRadius": 0.309,
@@ -71,11 +71,11 @@
       ]
     },
     {
-      "id": "protoCoupe",
-      "displayName": "Proto Coupe",
+      "id": "kazamaRotor",
+      "displayName": "Kazama Rotor",
       "source": "eshell",
       "provisional": false,
-      "file": "cars/protoCoupe.glb",
+      "file": "cars/kazamaRotor.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
       "wheelRadius": 0.327,
@@ -137,11 +137,11 @@
       ]
     },
     {
-      "id": "protoWagon",
-      "displayName": "Proto Wagon",
+      "id": "brandtKombi",
+      "displayName": "Brandt Kombi S",
       "source": "eshell",
       "provisional": false,
-      "file": "cars/protoWagon.glb",
+      "file": "cars/brandtKombi.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
       "wheelRadius": 0.302,
@@ -199,6 +199,142 @@
           0.386,
           0.202,
           -2.19
+        ]
+      ]
+    },
+    {
+      "id": "ridgewayFiend",
+      "displayName": "Ridgeway Fiend",
+      "source": "eshell",
+      "provisional": false,
+      "file": "cars/ridgewayFiend.glb",
+      "baseBodyNode": "Body",
+      "wheelNodes": [],
+      "wheelRadius": 0.359,
+      "wheelWidth": 0.24,
+      "wheels": {
+        "FL": [
+          0.8206,
+          0.3585,
+          1.4755
+        ],
+        "FR": [
+          -0.8206,
+          0.3585,
+          1.4755
+        ],
+        "RL": [
+          0.8206,
+          0.3585,
+          -1.4755
+        ],
+        "RR": [
+          -0.8206,
+          0.3585,
+          -1.4755
+        ]
+      },
+      "wheelbase": 2.951,
+      "trackFront": 1.641,
+      "trackRear": 1.641,
+      "dimensions": {
+        "length": 5.01,
+        "width": 2.17,
+        "height": 1.28
+      },
+      "materialMap": {},
+      "defaultWheel": "wheel_tora",
+      "defaultPaint": "#b3121b",
+      "selectable": true,
+      "engine": {
+        "layout": "V8",
+        "aspiration": "supercharged",
+        "position": "front",
+        "voice": {
+          "crank": "cross",
+          "pipes": 2,
+          "muffler": "sport",
+          "blowerLobes": 4,
+          "blowerRatio": 2.5,
+          "boost": 21.3
+        }
+      },
+      "exhaustTips": [
+        [
+          0.53,
+          0.232,
+          -2.47
+        ],
+        [
+          -0.53,
+          0.232,
+          -2.47
+        ]
+      ]
+    },
+    {
+      "id": "hinodeHorizon",
+      "displayName": "Hinode Horizon GT",
+      "source": "eshell",
+      "provisional": false,
+      "file": "cars/hinodeHorizon.glb",
+      "baseBodyNode": "Body",
+      "wheelNodes": [],
+      "wheelRadius": 0.324,
+      "wheelWidth": 0.24,
+      "wheels": {
+        "FL": [
+          0.7629,
+          0.3238,
+          1.36
+        ],
+        "FR": [
+          -0.7629,
+          0.3238,
+          1.36
+        ],
+        "RL": [
+          0.7629,
+          0.3238,
+          -1.36
+        ],
+        "RR": [
+          -0.7629,
+          0.3238,
+          -1.36
+        ]
+      },
+      "wheelbase": 2.72,
+      "trackFront": 1.526,
+      "trackRear": 1.526,
+      "dimensions": {
+        "length": 4.63,
+        "width": 1.97,
+        "height": 1.22
+      },
+      "materialMap": {},
+      "defaultWheel": "wheel_kiseki",
+      "defaultPaint": "#3b2d5e",
+      "selectable": true,
+      "engine": {
+        "layout": "I6",
+        "aspiration": "turbo",
+        "position": "front",
+        "voice": {
+          "pipes": 2,
+          "muffler": "sport"
+        }
+      },
+      "exhaustTips": [
+        [
+          0.4,
+          0.33,
+          -2.29
+        ],
+        [
+          -0.4,
+          0.33,
+          -2.29
         ]
       ]
     }

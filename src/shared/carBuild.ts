@@ -147,11 +147,22 @@ export function defaultBuild(carId = DEFAULT_CAR_ID): CarBuild {
 const PART_ID = /^[A-Za-z0-9_\-.]{1,64}$/;
 
 /**
- * Cars renamed when they moved from IceMaan FBX imports to authored models,
- * so saved builds and share codes made before the move still load. The Proto
- * Compact has since been retired: its builds move to the default car.
+ * Cars under their old ids, so saved builds, share codes, replays, ghosts and bests made before a rename still
+ * load. The gc14 and s64 were IceMaan FBX imports that became authored models (the s64's Proto Compact has since
+ * been retired: its builds move to the default car); the proto* ids were renamed to fictional maker + model
+ * ids (2026-10-28), and the gc14 chains on to its new id. Add a line here whenever a car id changes.
  */
-const RENAMED_CARS: Record<string, string> = { gc14: 'protoHatch', s64: 'protoCompact' };
+export const RENAMED_CARS: Record<string, string> = {
+  gc14: 'wendtFairway', s64: 'protoCompact',
+  protoHatch: 'wendtFairway', protoCoupe: 'kazamaRotor', protoWagon: 'brandtKombi', protoMuscle: 'ridgewayFiend',
+};
+
+/** A car id under its current name; an id that was never renamed (or is unknown) comes back as it is. */
+export function canonicalCarId(id: string): string {
+  return RENAMED_CARS[id] ?? id;
+}
+
+const RENAMED_CAR_PREFIX = new RegExp(`^(wheel_)?(${Object.keys(RENAMED_CARS).join('|')})_(.+)$`);
 
 /**
  * Wheels retired for the shared wheel set (docs/carWheels.md): the per car wheels of the IceMaan
@@ -161,6 +172,7 @@ const RENAMED_CARS: Record<string, string> = { gc14: 'protoHatch', s64: 'protoCo
 const RENAMED_WHEELS: Record<string, string> = {
   wheel_protoCompact_0: 'wheel_kumo', wheel_protoCompact_1: 'wheel_tsurugi', wheel_protoCompact_2: 'wheel_yari', wheel_protoCompact_3: 'wheel_hagane',
   wheel_protoHatch_1: 'wheel_kaze', wheel_protoHatch_2: 'wheel_hari', wheel_protoHatch_3: 'wheel_kagero', wheel_protoHatch_4: 'wheel_shinobi',
+  wheel_wendtFairway_1: 'wheel_kaze', wheel_wendtFairway_2: 'wheel_hari', wheel_wendtFairway_3: 'wheel_kagero', wheel_wendtFairway_4: 'wheel_shinobi',
   wheel_proto_5spoke: 'wheel_shinobi', wheel_proto_deepdish: 'wheel_yari',
   wheel_kiba: 'wheel_kumo', wheel_hoshi: 'wheel_tsurugi', wheel_rensa: 'wheel_yari', wheel_tsuki: 'wheel_hagane',
   wheel_ginga: 'wheel_kaze', wheel_hibana: 'wheel_hari', wheel_senko: 'wheel_kagero', wheel_arashi: 'wheel_shinobi',
@@ -169,10 +181,10 @@ const RENAMED_WHEELS: Record<string, string> = {
 /** A part id under its current name; null for whole-body kits that were split into bumpers and skirts. */
 function renamedPart(raw: string): string | null {
   const id = RENAMED_WHEELS[raw] ?? raw;
-  const m = /^(wheel_)?(gc14|s64)_(.+)$/.exec(id);
+  const m = RENAMED_CAR_PREFIX.exec(id);
   if (!m) return id;
   if (m[3].startsWith('body_')) return null;
-  const renamed = `${m[1] ?? ''}${RENAMED_CARS[m[2]]}_${m[3]}`;
+  const renamed = `${m[1] ?? ''}${canonicalCarId(m[2])}_${m[3]}`;
   return RENAMED_WHEELS[renamed] ?? renamed;
 }
 
@@ -275,7 +287,7 @@ export function validateVisual(v: unknown): VisualBuild {
 
 export function validateBuild(v: unknown): CarBuild {
   const o = obj(v);
-  const savedId = typeof o.carId === 'string' ? (RENAMED_CARS[o.carId] ?? o.carId) : undefined;
+  const savedId = typeof o.carId === 'string' ? canonicalCarId(o.carId) : undefined;
   const carId = savedId && SELECTABLE_CAR_IDS.includes(savedId) ? savedId : DEFAULT_CAR_ID;
   const name = typeof o.name === 'string' ? o.name.replace(/[<>]/g, '').slice(0, BUILD_NAME_MAX) || DEFAULT_BUILD_NAME : DEFAULT_BUILD_NAME;
   const visual = validateVisual(o.visual);

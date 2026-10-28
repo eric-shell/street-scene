@@ -130,6 +130,21 @@
       "generated": true
     },
     {
+      "id": "wheel_hien",
+      "displayName": "Hien",
+      "group": "Suzaku",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_hien.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Tire"
+      ],
+      "tris": 8716,
+      "generated": true
+    },
+    {
       "id": "wheel_hikari",
       "displayName": "Hikari",
       "group": "Seiryu",
@@ -320,6 +335,22 @@
         "Tire"
       ],
       "tris": 9944,
+      "generated": true
+    },
+    {
+      "id": "wheel_kiseki",
+      "displayName": "Kiseki",
+      "group": "Kohaku",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_kiseki.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9158,
       "generated": true
     },
     {

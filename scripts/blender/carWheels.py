@@ -60,14 +60,15 @@ JUNK = r'(?i)(?<![a-z])(stand|ground|plane|shadow|floor|backdrop|logo|badge|embl
 # The garage groups wheels by the real maker of their donor, under a fictional maker name (real
 # wheel makers' names never ship): the maker as the donor's title leads with it -> the group.
 GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'Byakko', 'Fifteen52': 'Hotaru',
-          'SSR': 'Hiryu', 'BBS': 'Suzaku', 'Volk': 'Genbu'}
+          'SSR': 'Hiryu', 'BBS': 'Suzaku', 'Volk': 'Genbu', 'Enkei': 'Kohaku'}
 
-# Every donor is jonver87's (CC BY 4.0): clean showpiece models without tires, each piece its own
+# Most donors are jonver87's (CC BY 4.0): clean showpiece models without tires, each piece its own
 # mesh. Recipe fields: `maker` the donor's real maker (a key of GROUPS), `face` 1 / -1 forces the
 # face direction when the normal vote gets it wrong, `lip` 'chrome' / 'rim' overrides the ring's
 # finish (chrome on a multi-piece wheel, the wheel colour on a one-piece), `drop` a regex of
 # material or object names to drop, `bolts` 0 to keep no bolt circle, `normals` 'geometry' to
-# shade the face from its own shape when the donor's normals are wrong.
+# shade the face from its own shape when the donor's normals are wrong, `dark` a luminance (0-1):
+# faces whose base colour texture is darker go (a tire welded to the wheel in one textured mesh).
 _J = {'author': 'jonver87', 'license': 'CC Attribution'}
 WHEELS = {
     'kumo': {'name': 'Work VS-TX', 'uid': '31c76095a0754cb1b08591d63973a2c2', 'maker': 'Work', **_J},
@@ -119,11 +120,40 @@ WHEELS = {
     'hane': {'name': 'BBS E52', 'uid': '8168cc3dce114b19b617c17fea0ab364', 'maker': 'BBS', **_J,
              'normals': 'geometry'},   # its mesh's authored normals lean sideways: the face shaded dark
     'iwa': {'name': 'Volk Rays 21C', 'uid': 'd053af8f24bc4a5dbaf9d21f31ae25da', 'maker': 'Volk', **_J},
+    'kiseki': {'name': 'Enkei Nt03+m Wheels', 'uid': '6d31c56557b945a5abd4015884461dc4', 'maker': 'Enkei',
+               'author': 'flathat3d', 'license': 'CC Attribution',
+               'drop': r'CenterCaps|Nt03m_02',   # three stacked logo caps (the house cap fills the hub) and the lip lettering
+               'normals': 'geometry'},   # authored normals lean off the spokes: front normal 0.14
+    'hien': {'name': 'BBS CH-R + Goodyear Eagle F1 Supercar 3', 'uid': '2acc32fc79684a2c8b7df9faaa5a5c35', 'maker': 'BBS',
+                'author': 'MozzarellaARC', 'license': 'CC Attribution',
+                'dark': 0.25},   # its tire is welded to the wheel in one textured mesh: tire 0.10, wheel 0.45
 }
 
 
 def _rad(co):
     return math.hypot(co.y, co.z)
+
+
+_PIXELS = {}
+
+
+def _texture_luminance(me, bm, f):
+    """The luminance of a face's base colour texture at its UV centroid; 1 when it has none. The
+    BBS CH-R's tire is the same mesh and material as the wheel, told apart only by its black."""
+    mat = me.materials[f.material_index] if me.materials else None
+    bsdf = mat and mat.node_tree and next((n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+    links = bsdf.inputs['Base Color'].links if bsdf else ()
+    img = links[0].from_node.image if links and getattr(links[0].from_node, 'image', None) else None
+    uv = bm.loops.layers.uv.active
+    if img is None or uv is None:
+        return 1.0
+    if img.name not in _PIXELS:
+        _PIXELS[img.name] = (img.size[0], img.size[1], img.pixels[:])
+    w, h, px = _PIXELS[img.name]
+    u = sum(l[uv].uv[0] for l in f.loops) / len(f.loops)
+    v = sum(l[uv].uv[1] for l in f.loops) / len(f.loops)
+    i = (min(h - 1, int((v % 1) * h)) * w + min(w - 1, int((u % 1) * w))) * 4
+    return 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]
 
 
 def _gather(root, R):
@@ -150,6 +180,9 @@ def _gather(root, R):
         t = bmesh.new()
         t.from_mesh(me)
         junk = [f for f in t.faces if re.search(JUNK, mats[f.material_index]) or (R.get('drop') and re.search(R['drop'], mats[f.material_index]))]
+        if R.get('dark'):
+            gone = set(junk)
+            junk += [f for f in t.faces if f not in gone and _texture_luminance(me, t, f) < R['dark']]
         bmesh.ops.delete(t, geom=junk, context='FACES')
         for f in t.faces:
             f.material_index = len(names) + f.material_index

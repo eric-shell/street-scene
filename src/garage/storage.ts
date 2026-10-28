@@ -37,15 +37,15 @@ export function freshBuild(carId = DEFAULT_CAR_ID, name = DEFAULT_BUILD_NAME): C
  * wheel style is free and only the stance is per car.
  */
 const STREET_FITS: Record<string, Record<(typeof AXLES)[number], AxleStance>> = {
-  protoHatch: {
+  wendtFairway: {
     front: { rideHeight: -0.08, camber: -3, offset: 0.035, wheelSize: 1.118 },
     rear: { rideHeight: -0.08, camber: -5, offset: 0.035, wheelSize: 1.118 },
   },
-  protoCoupe: {
+  kazamaRotor: {
     front: { rideHeight: -0.085, camber: -2.5, offset: 0.065, wheelSize: 1.063 },
     rear: { rideHeight: -0.08, camber: -4.5, offset: 0.05, wheelSize: 1.063 },
   },
-  protoWagon: {
+  brandtKombi: {
     front: { rideHeight: -0.065, camber: -3.5, offset: 0.05, wheelSize: 1.09 },
     rear: { rideHeight: -0.03, camber: -4, offset: 0.065, wheelSize: 1.09 },
   },

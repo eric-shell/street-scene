@@ -44,9 +44,15 @@ export function modeLabel(mode: string): string {
 
 const CAR_NAMES = new Map(manifest.cars.map((c) => [c.id, c.displayName]));
 
-/** `protoHatch` → `Proto Hatch`; an unknown id stays as sent. */
+/**
+ * Car ids that rows already recorded carry from before the 2026-10-28 rename, each with its current id so the
+ * old rows read under the new name. Restated from shared/carBuild.ts RENAMED_CARS (that module is not a leaf).
+ */
+const OLD_CAR_IDS: Record<string, string> = { gc14: 'wendtFairway', protoHatch: 'wendtFairway', protoCoupe: 'kazamaRotor', protoWagon: 'brandtKombi', protoMuscle: 'ridgewayFiend' };
+
+/** `wendtFairway` (or its old id `protoHatch`) → `Wendt Fairway R6`; an unknown id stays as sent. */
 export function carName(id: string): string {
-  return CAR_NAMES.get(id) ?? id;
+  return CAR_NAMES.get(OLD_CAR_IDS[id] ?? id) ?? id;
 }
 
 /** What broke, as the timeline and the Errors card name it (shared/analytics.ts ErrorMeta). */

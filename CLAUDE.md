@@ -17,8 +17,8 @@ Street Scene is a browser street racer (TypeScript, three.js, Vite, Vitest, SCSS
 | Headless scene stats per group (tris, calls, materials; `--tier`; no `--camera` is an upper bound, `--camera route[:s]` counts what a route camera draws after the frame's culling hooks, which is the number to compare; `--baseline scripts/perf/baseline.json --check` follows the camera the baseline was recorded with) | `npm run perf:scene -- --seed 20261019 --tier medium --camera route` |
 | Validate the parts catalog against `public/` | `npm run validate` |
 | Screenshot the analytics dashboard against stubbed data at five widths (overflow, gutter, pager; writes nothing) | `npm run check:dashboard -- http://localhost:5175 <outDir>` |
-| Inspect a GLB (nodes, materials, triangles) | `npm run inspect -- public/cars/protoHatch.glb` |
-| Audit a shipped car against its reference spec (proportions, pillars, mirrors, handles, lamps) | `npm run audit -- protoHatch` |
+| Inspect a GLB (nodes, materials, triangles) | `npm run inspect -- public/cars/wendtFairway.glb` |
+| Audit a shipped car against its reference spec (proportions, pillars, mirrors, handles, lamps) | `npm run audit -- wendtFairway` |
 | Rebuild car assets from the authored .blend cars and FBX imports (needs Blender, rewrites generated files) | `npm run assets` |
 | Import music / rebuild the music catalog (needs ffmpeg) | `npm run music` |
 | Rebuild the traffic vehicles from the Comrade1280 packs (needs Blender, rewrites generated files) | `npm run traffic` |

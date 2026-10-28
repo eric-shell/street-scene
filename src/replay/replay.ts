@@ -4,7 +4,7 @@
  * data is what a future leaderboard would upload for server verification.
  */
 import type { RaceConfig, RaceMode } from '../sim/race';
-import type { VisualBuild } from '../shared/carBuild';
+import { canonicalCarId, type VisualBuild } from '../shared/carBuild';
 
 export interface ReplayData {
   v: 1;
@@ -29,6 +29,18 @@ export function decodeLog(b64: string): number[] {
   const bytes = new Uint8Array(s.length);
   for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
   return Array.from(new Uint32Array(bytes.buffer, 0, Math.floor(bytes.length / 4)));
+}
+
+/**
+ * A stored replay or ghost with its cars under their current ids (shared/carBuild.ts RENAMED_CARS). The sim
+ * would take an id it does not know for the first car, so a replay recorded before a car was renamed would
+ * rebuild with the wrong car and drift apart; the log itself is independent of the id.
+ */
+function withCurrentCarIds(r: ReplayData): ReplayData {
+  const c = r.config;
+  if (!c?.player) return r;
+  const fix = <T extends { carId: string }>(e: T): T => (canonicalCarId(e.carId) === e.carId ? e : { ...e, carId: canonicalCarId(e.carId) });
+  return { ...r, config: { ...c, player: fix(c.player), opponents: Array.isArray(c.opponents) ? c.opponents.map(fix) : c.opponents } };
 }
 
 const PREFIX = 'nightrun.';
@@ -64,7 +76,8 @@ export function loadBest(seed: number, mode: RaceMode): BestRecord | null {
   const raw = safeGet(bestKey(seed, mode));
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as BestRecord;
+    const rec = JSON.parse(raw) as BestRecord;
+    return typeof rec?.carId === 'string' ? { ...rec, carId: canonicalCarId(rec.carId) } : rec;
   } catch {
     return null;
   }
@@ -98,7 +111,7 @@ export function loadGhost(seed: number, mode: RaceMode): ReplayData | null {
   if (!raw) return null;
   try {
     const r = JSON.parse(raw) as ReplayData;
-    return r.v === 1 ? r : null;
+    return r.v === 1 ? withCurrentCarIds(r) : null;
   } catch {
     return null;
   }
@@ -119,7 +132,7 @@ export function saveLastReplay(replay: ReplayData): void {
 export function loadLastReplay(): ReplayData | null {
   try {
     const raw = sessionStorage.getItem(PREFIX + 'lastReplay');
-    return raw ? (JSON.parse(raw) as ReplayData) : null;
+    return raw ? withCurrentCarIds(JSON.parse(raw) as ReplayData) : null;
   } catch {
     return null;
   }

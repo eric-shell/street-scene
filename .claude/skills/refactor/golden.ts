@@ -48,8 +48,8 @@ const { stockPerformance } = await load('src/sim/build.ts');
 for (const seed of seeds) {
   console.log(`city ${seed} ${h(stable(cityModule.createCity(seed)))}`);
   for (const mode of ['circuit', 'sprint', 'drift', 'drag', 'waypoint']) {
-    const rivals = mode === 'drift' ? [] : [{ name: 'A', carId: 'protoCoupe', performance: stockPerformance() }, { name: 'B', carId: 'protoHatch', performance: stockPerformance() }];
-    const r = createRace({ seed, mode, laps: 1, traffic: true, player: { name: 'P', carId: 'protoHatch', performance: stockPerformance() }, opponents: rivals, difficulty: 'medium', manualGearbox: false });
+    const rivals = mode === 'drift' ? [] : [{ name: 'A', carId: 'kazamaRotor', performance: stockPerformance() }, { name: 'B', carId: 'wendtFairway', performance: stockPerformance() }];
+    const r = createRace({ seed, mode, laps: 1, traffic: true, player: { name: 'P', carId: 'wendtFairway', performance: stockPerformance() }, opponents: rivals, difficulty: 'medium', manualGearbox: false });
     const pilot = createAi(0.97);
     for (let t = 0; t < 60 * 45 && r.phase !== 'finished'; t++) stepRace(r, autopilotInput(r, r.cars[0], pilot));
     console.log(`race ${seed} ${mode} tick ${r.tick} ${h(stable({ cars: r.cars, events: r.events, traffic: r.traffic }))} world ${h(stable({ ...r.world, city: undefined }))}`);

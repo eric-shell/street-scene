@@ -4,10 +4,11 @@
  * its exhaust path delays, engine-sim's jitter / derivative / turbulence
  * chain) whose exhaust output is convolved with a synthesized silencer
  * impulse response; beside it the intake through its trumpet resonance, the
- * valvetrain tick, and for turbo cars a spool whistle and a blow-off chuff
- * when you lift at boost. What the voice is told comes from the car's
+ * valvetrain tick, for turbo cars a spool whistle and a blow-off chuff
+ * when you lift at boost, and for supercharged cars the blower's rpm locked
+ * whine (BLOWER). What the voice is told comes from the car's
  * EngineSpec (layout, aspiration and the optional `voice` block), so the
- * Proto Hatch burbles like a boxer on unequal headers, the Compact honks
+ * Wendt Fairway burbles like a boxer on unequal headers, the Compact honks
  * through its throttle bodies and the Coupe whooshes through its turbo.
  *
  * Most of an engine's energy sits below 300 Hz, which laptop and phone
@@ -74,6 +75,45 @@ const OVERRUN = {
    */
   bang: [0.6, 0.8],
   crackle: [0.25, 0.4],
+} as const;
+
+/**
+ * Supercharger whine (aspiration 'supercharged'). The blower is belt driven, so
+ * its rotors turn at a fixed ratio of the crank and the whine is locked to rpm,
+ * with no lag: lobe passes per second = rpm / 60 x ratio x lobes, heard as that
+ * fundamental and its lobe harmonics with a band of air rush around the second.
+ * A positive displacement blower's boost builds with rpm under load; off the
+ * pedal its bypass valve opens and the rotors spin unloaded, a faint whine.
+ * Peak boost sets how loud the loaded whine gets against REF_PSI. It goes
+ * straight to the output, as the turbo whistle does: it comes from the front of
+ * the engine, not out of the silencer.
+ */
+const BLOWER = {
+  /** Defaults when the voice block leaves them out: a twin screw's four lobe male rotor at 2.4 rotor turns per crank turn, 12 psi. */
+  lobes: 4,
+  ratio: 2.4,
+  boost: 12,
+  /**
+   * Amplitude of the fundamental at full load and the redline with REF_PSI of boost, on the voice's output. Measured
+   * in Chromium on the Ridgeway Fiend (21.3 psi) at full throttle: the whine sits 7 dB under the engine at 3,500 rpm
+   * and 3 dB under at 6,000 (where it lifts the voice's RMS by 2.7 dB); idle leaves it 23 dB under, a lift 13.
+   */
+  level: 0.063,
+  refPsi: 20,
+  /** Harmonics of the lobe pass rate, relative to the fundamental; rivals (lite) keep the first two. */
+  partials: [1, 0.5, 0.28, 0.14],
+  /** The air rush: band passed noise at twice the lobe rate, relative to the fundamental's level. */
+  rush: 0.6,
+  rushQ: 3,
+  /** Share of the loaded whine left with the bypass open (off the pedal, or at idle). */
+  unloaded: 0.14,
+  /** Share of peak boost made at the bottom of the rev range under load: a positive displacement blower pumps from idle, with no spool. */
+  lowBoost: 0.6,
+  /** Share of the whine's level at the bottom of the rev range for the same work: slower rotors are a little quieter. */
+  lowSpeed: 0.75,
+  /** Time constants (s) of the bypass closing and opening: the whine snaps in on the pedal and drops on a lift. */
+  rise: 0.04,
+  fall: 0.12,
 } as const;
 
 /** A random value in [min, max]. */
@@ -238,6 +278,9 @@ export class EngineVoice {
   private gTurbo: GainNode | null = null;
   private bov: GainNode | null = null;
   private boost = 0;
+  /** Supercharger whine: one oscillator per lobe harmonic, the air rush filter, the shared level, and every source to stop (null when not supercharged). */
+  private blower: { partials: OscillatorNode[]; rush: BiquadFilterNode; gain: GainNode; sources: AudioScheduledSourceNode[]; hzPerRpm: number; level: number } | null = null;
+  private blowerLoad = 0;
   private lastThrottle = 0;
   private last: EngineInput | null = null;
   private stopped = false;
@@ -317,7 +360,45 @@ export class EngineVoice {
       bovSrc.connect(hp).connect(this.bov).connect(this.out);
       bovSrc.start();
     }
+    if (spec.aspiration === 'supercharged') this.blower = this.buildBlower(spec, h.noise, opts.lite === true);
     void h.worklet.then((ok) => this.attach(ok));
+  }
+
+  /** The blower's whine partials and air rush (BLOWER), into one gain on the output. */
+  private buildBlower(spec: EngineSpec, noise: AudioBuffer, lite: boolean): NonNullable<EngineVoice['blower']> {
+    const ctx = this.ctx;
+    const v = spec.voice ?? {};
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.connect(this.out);
+    const partials = BLOWER.partials.slice(0, lite ? 2 : undefined).map((amp) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      const g = ctx.createGain();
+      g.gain.value = amp;
+      osc.connect(g).connect(gain);
+      osc.start();
+      return osc;
+    });
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    src.loop = true;
+    const rush = ctx.createBiquadFilter();
+    rush.type = 'bandpass';
+    rush.Q.value = BLOWER.rushQ;
+    const rushGain = ctx.createGain();
+    // A band of noise carries about Q^-1/2 of its input's power; lift it back to the share BLOWER.rush asks for.
+    rushGain.gain.value = BLOWER.rush * Math.sqrt(BLOWER.rushQ);
+    src.connect(rush).connect(rushGain).connect(gain);
+    src.start();
+    return {
+      partials,
+      rush,
+      gain,
+      sources: [...partials, src],
+      hzPerRpm: ((v.blowerRatio ?? BLOWER.ratio) * (v.blowerLobes ?? BLOWER.lobes)) / 60,
+      level: (BLOWER.level * (v.boost ?? BLOWER.boost)) / BLOWER.refPsi,
+    };
   }
 
   private attach(ok: boolean): void {
@@ -383,6 +464,20 @@ export class EngineVoice {
         g.exponentialRampToValueAtTime(0.0001, t + 0.38);
         this.boost *= 0.3;
       }
+    }
+    if (this.blower) {
+      // No lag: the bypass closes as the pedal goes down, and boost then follows rpm.
+      const b = this.blower;
+      const target = load * (BLOWER.lowBoost + (1 - BLOWER.lowBoost) * Math.min(1, r));
+      const dt = Math.min(0.1, e.dt ?? 1 / 60);
+      this.blowerLoad += (target - this.blowerLoad) * (1 - Math.exp(-dt / (target > this.blowerLoad ? BLOWER.rise : BLOWER.fall)));
+      const hz = rpm * b.hzPerRpm;
+      const nyquist = this.ctx.sampleRate / 2;
+      b.partials.forEach((osc, i) => osc.frequency.setTargetAtTime(Math.min(nyquist - 100, hz * (i + 1)), t, tc));
+      b.rush.frequency.setTargetAtTime(Math.min(nyquist - 100, hz * 2), t, tc);
+      // The rotors always spin, so the whine never stops; it grows with rotor speed and with the work the blower does.
+      const work = BLOWER.unloaded + (1 - BLOWER.unloaded) * this.blowerLoad;
+      b.gain.gain.setTargetAtTime(b.level * work * (BLOWER.lowSpeed + (1 - BLOWER.lowSpeed) * Math.min(1, r)) * e.proximity, t, 0.03);
     }
     this.lastThrottle = load;
   }
@@ -460,6 +555,7 @@ export class EngineVoice {
     const t = this.ctx.currentTime;
     this.out.gain.setTargetAtTime(0, t, 0.03);
     this.turbo?.stop(t + 0.2);
+    for (const src of this.blower?.sources ?? []) src.stop(t + 0.2);
     const node = this.node;
     setTimeout(() => {
       node?.port.postMessage('stop' satisfies EngineMessage);
@@ -474,7 +570,7 @@ export class EngineVoice {
  * flywheel that chases the throttle, falls back to idle and bounces off the
  * rev limiter. Owns its EngineVoice (null when Web Audio is unavailable).
  *
- *   const eng = new FreeRevEngine(manifestCar('protoHatch').engine, { idle: 900, redline: 6800 });
+ *   const eng = new FreeRevEngine(manifestCar('wendtFairway').engine, { idle: 900, redline: 6800 });
  *   // every frame: eng.update(throttle01, dt);   eng.rpm for a tach
  *   eng.dispose();
  */

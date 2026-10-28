@@ -181,8 +181,8 @@
     }
   },
   "cars": {
-    "protoHatch": {
-      "_name": "Proto Hatch (Golf R32 Mk4 donor): front naturally aspirated VR6, all wheel drive biased to the front (a Haldex coupling sends the rear its share). No boost: torque builds to a broad plateau around 3,000 rpm and fades gently to a 6,800 rpm redline.",
+    "wendtFairway": {
+      "_name": "Wendt Fairway (Golf R32 Mk4 donor): front naturally aspirated VR6, all wheel drive biased to the front (a Haldex coupling sends the rear its share). No boost: torque builds to a broad plateau around 3,000 rpm and fades gently to a 6,800 rpm redline.",
       "mass": 1480,
       "drivetrain": { "layout": "awd", "awdFrontShare": 0.6 },
       "engine": {
@@ -209,8 +209,8 @@
         "defaultRpm": 3500
       }
     },
-    "protoCoupe": {
-      "_name": "Proto Coupe (RX-7 FD donor): front sequential twin turbo twin rotor, rear wheel drive. The lightest car: the primary turbo fills the low range, the secondary takes over near 4,500 rpm and it pulls to an 8,000 rpm redline; five speeds.",
+    "kazamaRotor": {
+      "_name": "Kazama Rotor (RX-7 FD donor): front sequential twin turbo twin rotor, rear wheel drive. The lightest car: the primary turbo fills the low range, the secondary takes over near 4,500 rpm and it pulls to an 8,000 rpm redline; five speeds.",
       "mass": 1280,
       "drivetrain": { "layout": "rwd" },
       "engine": {
@@ -241,8 +241,8 @@
         "antilagRpm": 5500
       }
     },
-    "protoWagon": {
-      "_name": "Proto Wagon (S2 Avant donor): front twin turbo 90 degree V6, all wheel drive split evenly (a Torsen centre differential). A flat biturbo torque plateau from 1,800 rpm and an AWD launch; the longest car, a little more yaw inertia.",
+    "brandtKombi": {
+      "_name": "Brandt Kombi (S2 Avant donor): front twin turbo 90 degree V6, all wheel drive split evenly (a Torsen centre differential). A flat biturbo torque plateau from 1,800 rpm and an AWD launch; the longest car, a little more yaw inertia.",
       "mass": 1550,
       "yawInertiaScale": 0.95,
       "drivetrain": { "layout": "awd", "awdFrontShare": 0.5 },
@@ -272,6 +272,75 @@
         "_": "B5 S4 and RS4 2.7T owners launch at 3,000 to 4,000 rpm (bogs under 3,000, spins over 3,500 to 4,000 on a clutch dump); a two-step at 4,000 holds the twins on boost and the even AWD split takes the torque.",
         "defaultRpm": 4000,
         "_antilag": "Rolling antilag at 4,500: the K03 twins are on full boost from about 3,000, and the 2.7T still makes 95% of its peak torque there, with room in the gear for the pull.",
+        "antilagRpm": 4500
+      }
+    },
+    "ridgewayFiend": {
+      "_name": "Ridgeway Fiend (2018 Dodge Challenger SRT Demon widebody donor): front supercharged 6.2 L cross-plane Hemi V8, rear wheel drive. 808 hp and 717 lb-ft on pump fuel (840 hp and 770 lb-ft on race fuel), a wall of low-rpm torque from the 2.7 L blower and a 6,500 rpm redline. The heaviest, longest, loosest car: the strongest straight line of the four, paid for in corners.",
+      "mass": 1940,
+      "yawInertiaScale": 1.1,
+      "drivetrain": { "layout": "rwd" },
+      "engine": {
+        "redline": 6500,
+        "torqueCurve": [
+          [800, 330],
+          [2000, 800],
+          [3000, 960],
+          [4000, 972],
+          [5000, 940],
+          [5600, 800],
+          [6000, 520],
+          [6500, 300]
+        ],
+        "torqueMul": 0.8
+      },
+      "gearbox": {
+        "_": "ZF 8HP90 first gear 4.71 on the Demon's 3.09 final drive, then a closer spread than the real 3.14 / 2.10 / 1.67 / 1.29 / 1.00 / 0.84 / 0.67 (that box reaches 300 km/h and more, far past this city's drag top speed, so its real overdrives would put the limiter near 420). Second and third (3.4 / 2.2 / 1.7) are a little taller than the donor's so the shift into third falls well short of the 60 mph mark at every Gear Ratio position; with the real 3.14 it fell on the mark and the Short box clocked a slower 0-60 than the next one. Eighth's limiter (261 km/h) sits 9% over the drag top speed (242), which comes at 92% of the redline. Drag is the real figure on the same scale as the other cars (aero.drag is 0.5 x air density x Cd x frontal area in N per (m/s)^2: a widebody Challenger's Cd of about 0.39 and 2.45 m2 give 0.57, against the Golf's and S4's 0.40 to 0.42). torqueMul 0.8 on the real 970 N·m is still far more thrust than the other cars have, so the torque curve falls away steeply above 5,000 rpm: the pull is in the low and mid range that decides the 0-100, and the little left at the top meets the drag. brakes.force is raised for the mass, and the rear tires are kept weak enough that rear brake bias still lengthens the stop. nitrous.force (the base 5,500 N) is scaled by the mass over the Wagon's 1,550 kg to about 7,600 N (a little over the mass ratio, so the Short box clears 1.25 times the dry top speed on nitrous), a bigger shot for the heavy car, so nitrous gives it the push the others get (the Short box still runs well past its limiter).",
+        "ratios": [4.71, 3.4, 2.2, 1.7, 1.45, 1.29, 1.17, 1.09],
+        "finalDrive": 3.09
+      },
+      "brakes": { "force": 21500 },
+      "nitrous": { "force": 7600 },
+      "aero": { "drag": 0.57 },
+      "tires": { "gripFront": 1.76, "gripRear": 1.6 },
+      "launch": {
+        "_": "The Demon's TransBrake holds the car at about 2,350 rpm on its 315/40R18 drag radials; the Tune tab's launch picks come in 250 rpm steps from 2,500, so the stock pick is the first step, where the supercharged V8 is already past 900 N·m and the 1,940 kg hold the rear tires down.",
+        "defaultRpm": 2500,
+        "_antilag": "Off: a supercharger has no lag to bridge (the blower is at full boost off idle), and the Tune tab offers rolling antilag to turbo cars only.",
+        "antilagRpm": 0
+      }
+    },
+    "hinodeHorizon": {
+      "_name": "Hinode Horizon GT (1997 Nissan Skyline GT-R R33 V-Spec donor): front twin turbo 2.6 L inline six (RB26DETT), ATTESA E-TS all wheel drive. 280 PS and 368 N\u00b7m at 4,400 rpm to an 8,000 rpm redline, a five speed manual, front heavy (57/43) and 1,540 kg. Drives like a rear wheel drive car until the rears slip, then the front axle takes its share.",
+      "mass": 1540,
+      "drivetrain": { "layout": "awd", "awdFrontShare": 0.25 },
+      "engine": {
+        "redline": 8000,
+        "torqueCurve": [
+          [800, 140],
+          [1800, 200],
+          [2800, 300],
+          [3600, 350],
+          [4400, 368],
+          [5500, 360],
+          [6800, 289],
+          [7500, 255],
+          [8000, 230]
+        ],
+        "torqueMul": 0.88,
+        "launchRpm": 4000
+      },
+      "gearbox": {
+        "_": "The R33 V-Spec's Getrag 233 five speed, 3.214 / 1.925 / 1.302 / 1.000 / 0.752, on the real 4.111 final drive, with fifth at 0.893 instead of the real 0.752 overdrive: the R33 is governed at 180 km/h and reaches about 250, so its 316 km/h redline in fifth is far past this city's drag top speed (242). Fifth's limiter (266 km/h) sits 10% over it, as on the other cars, and the drag top speed comes at 91% of the redline.",
+        "ratios": [3.214, 1.925, 1.302, 1.0, 0.893],
+        "finalDrive": 4.111
+      },
+      "aero": { "drag": 0.4 },
+      "tires": { "gripFront": 1.8, "gripRear": 1.58 },
+      "launch": {
+        "_": "RB26 owners launch at 3,500 to 4,500 rpm: the twins are near full boost by 3,000 and the ATTESA front axle shares the torque once the rears slip.",
+        "defaultRpm": 4000,
+        "_antilag": "Rolling antilag at 4,500: past the twins' full boost (about 4,000 rpm), near the torque peak.",
         "antilagRpm": 4500
       }
     }

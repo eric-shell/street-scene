@@ -1,5 +1,5 @@
 {
-  "car": "protoCoupe",
+  "car": "wendtFairway",
   "_readme": "Drop photos beside this file and list them here; the format is assets/refs/README.md. donor 0 and 1 are the two donors of this car in scripts/blender/carSpecs.json.",
   "images": []
 }

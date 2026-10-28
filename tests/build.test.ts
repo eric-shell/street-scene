@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyBuild, isStockSetup, stockPerformance, tuningForBuild, validatePerformance, PerformanceBuild } from '../src/sim/build';
-import { defaultBuild, validateBuild } from '../src/shared/carBuild';
+import { loadBest, loadGhost, type ReplayData } from '../src/replay/replay';
+import { canonicalCarId, defaultBuild, validateBuild } from '../src/shared/carBuild';
 import { CAR_IDS, CarTuning, DEFAULT_CAR_ID, SETUP, SETUP_POSITIONS, SETUP_SLIDERS, STOCK_POSITION, getBaseTuning, validateSetup, type SetupPosition, type SetupSlider } from '../src/sim/tuning';
 import { measureStats } from '../src/sim/stats';
 import { createCar, stepCar } from '../src/sim/car';
@@ -19,7 +20,7 @@ const tuned = (car: string | CarTuning, slider: SetupSlider, p: SetupPosition) =
 /** The sliders are checked on the plain base tuning (RWD) and on the default car (AWD). */
 const SLIDER_CARS: [string, CarTuning][] = [
   ['base', baseTuning()],
-  ['protoHatch', getBaseTuning('protoHatch')],
+  ['wendtFairway', getBaseTuning('wendtFairway')],
 ];
 /** A build saved with the retired component upgrades (every tier at 2). */
 const LEGACY_TIERS = { engine: 2, turbo: 2, exhaust: 2, transmission: 2, tires: 2, suspension: 2, brakes: 2, weight: 2, nitrous: 2 };
@@ -38,7 +39,7 @@ describe('build validation', () => {
       },
       performance: { suspension: 9, gearing: -4, differential: 2.4, brakeBalance: 'x' },
     });
-    expect(b.carId).toBe('protoHatch');
+    expect(b.carId).toBe('wendtFairway');
     expect(b.name.length).toBeLessThanOrEqual(24);
     expect(b.name).not.toContain('<');
     expect(b.visual.paint.color).toMatch(/^#[0-9a-f]{6}$/);
@@ -61,10 +62,10 @@ describe('build validation', () => {
   });
 
   it('share codes round trip to the same build', async () => {
-    const b = defaultBuild('protoHatch');
+    const b = defaultBuild('wendtFairway');
     b.name = 'Midnight Club';
     b.visual.paint = { color: '#19e6ff', finish: 'pearl' };
-    b.visual.parts = { spoiler: 'protoHatch_spoiler_1', frontBumper: 'protoHatch_frontBumper_kurogane', wheels: 'wheel_yari' };
+    b.visual.parts = { spoiler: 'wendtFairway_spoiler_1', frontBumper: 'wendtFairway_frontBumper_kurogane', wheels: 'wheel_yari' };
     b.visual.decals.push({ shape: 'number', color: '#ff3df2', pos: [0.9, 0.6, 0.2], normal: [1, 0, 0], rotation: 12, scale: 0.7, mirror: true, text: '42' });
     b.visual.wheels = { paint: { color: '#ffcc00', finish: 'candy', match: false }, rearPaint: { color: '#1a1b1f', finish: 'matte', match: true }, rearPart: 'wheel_kumo', tire: 'standard', rearTire: 'stretched' };
     b.visual.calipers = { color: '#ffcc1f', finish: 'pearl', match: true };
@@ -86,11 +87,39 @@ describe('build validation', () => {
     expect(b.carId).toBe(DEFAULT_CAR_ID);
     expect(b.visual.parts).toEqual({ wheels: 'wheel_kagero' });
     expect(validateBuild({ carId: 'protoCompact', visual: { parts: { wheels: 'wheel_kiba' } } })).toMatchObject({ carId: DEFAULT_CAR_ID, visual: { parts: { wheels: 'wheel_kumo' } } });
-    expect(validateBuild({ carId: 'gc14' }).carId).toBe('protoHatch');
+    expect(validateBuild({ carId: 'gc14' }).carId).toBe('wendtFairway');
+  });
+
+  it('maps the proto* car ids and their parts to the fictional maker ids', () => {
+    for (const [old, now] of [['protoHatch', 'wendtFairway'], ['protoCoupe', 'kazamaRotor'], ['protoWagon', 'brandtKombi'], ['protoMuscle', 'ridgewayFiend']]) {
+      expect(canonicalCarId(old)).toBe(now);
+      expect(canonicalCarId(now)).toBe(now);
+      expect(validateBuild({ carId: old }).carId).toBe(now);
+      expect(validateBuild({ carId: old, visual: { parts: { spoiler: `${old}_spoiler_1` } } }).visual.parts.spoiler).toBe(`${now}_spoiler_1`);
+    }
+    expect(canonicalCarId('gc14')).toBe('wendtFairway');
+    expect(validateBuild({ carId: 'gc14', visual: { parts: { wheels: 'wheel_gc14_3' } } }).visual.parts.wheels).toBe('wheel_kagero');
+  });
+
+  it('reads stored ghosts and bests recorded under the old car ids as the renamed cars', () => {
+    const store = new Map<string, string>();
+    const prev = (globalThis as { localStorage?: unknown }).localStorage;
+    (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+    try {
+      const entrant = (carId: string) => ({ name: 'A', carId, performance: stockPerformance() });
+      const ghost = { v: 1, config: { player: entrant('protoCoupe'), opponents: [entrant('protoMuscle'), entrant('wendtFairway')] }, log: '', visuals: [], result: { time: 1, position: 1 }, date: '' };
+      store.set('nightrun.ghost.7.circuit', JSON.stringify(ghost));
+      store.set('nightrun.best.7.circuit', JSON.stringify({ time: 90, carId: 'protoWagon', date: '' }));
+      const g = loadGhost(7, 'circuit') as ReplayData;
+      expect([g.config.player.carId, ...g.config.opponents.map((e) => e.carId)]).toEqual(['kazamaRotor', 'ridgewayFiend', 'wendtFairway']);
+      expect(loadBest(7, 'circuit')?.carId).toBe('brandtKombi');
+    } finally {
+      (globalThis as { localStorage?: unknown }).localStorage = prev;
+    }
   });
 
   it('migrates legacy stance from old saves', () => {
-    const b = validateBuild({ carId: 'protoHatch', visual: { wheels: { size: 1.1, color: '#ffffff' }, stance: { rideHeight: -0.02, camberFront: -4, camberRear: -6, offset: 0.02 } } });
+    const b = validateBuild({ carId: 'wendtFairway', visual: { wheels: { size: 1.1, color: '#ffffff' }, stance: { rideHeight: -0.02, camberFront: -4, camberRear: -6, offset: 0.02 } } });
     // One legacy ride height lowers both axles.
     expect(b.visual.stance.front).toEqual({ rideHeight: -0.02, camber: -4, offset: 0.02, wheelSize: 1.1 });
     expect(b.visual.stance.rear).toEqual({ rideHeight: -0.02, camber: -6, offset: 0.02, wheelSize: 1.1 });
@@ -133,9 +162,9 @@ describe('build validation', () => {
   });
 
   it('visual choices never change the tuning the sim uses', () => {
-    const a = defaultBuild('protoHatch');
-    const b = defaultBuild('protoHatch');
-    b.visual.parts = { spoiler: 'protoHatch_spoiler_1', rearBumper: 'protoHatch_rearBumper_hayate', sideSkirts: 'protoHatch_sideSkirts_kurogane' };
+    const a = defaultBuild('wendtFairway');
+    const b = defaultBuild('wendtFairway');
+    b.visual.parts = { spoiler: 'wendtFairway_spoiler_1', rearBumper: 'wendtFairway_rearBumper_hayate', sideSkirts: 'wendtFairway_sideSkirts_kurogane' };
     b.visual.stance.front.rideHeight = -0.08;
     expect(applyBuild(getBaseTuning(a.carId), a.performance)).toEqual(applyBuild(getBaseTuning(b.carId), b.performance));
   });
@@ -200,11 +229,11 @@ describe('setup sliders', () => {
     expect(validatePerformance({})).toEqual(stockPerformance());
     // Old saves, share codes and replay configs: every tier key, the old suspension tier (0..3) among them.
     expect(validatePerformance({ ...LEGACY_TIERS, suspension: 1, launchRpm: 4000 })).toEqual({ ...stockPerformance(), launchRpm: 4000 });
-    expect(validatePerformance({ engine: 0, turbo: 0, exhaust: 0, transmission: 0, tires: 0, suspension: 0, brakes: 0, weight: 0, nitrous: 0 }, 'protoCoupe')).toEqual(stockPerformance('protoCoupe'));
+    expect(validatePerformance({ engine: 0, turbo: 0, exhaust: 0, transmission: 0, tires: 0, suspension: 0, brakes: 0, weight: 0, nitrous: 0 }, 'kazamaRotor')).toEqual(stockPerformance('kazamaRotor'));
     // An old garage slot in localStorage loads with the stock setup and keeps the rest of the build.
-    const slot = validateBuild({ carId: 'protoWagon', name: 'Old Slot', performance: LEGACY_TIERS });
+    const slot = validateBuild({ carId: 'brandtKombi', name: 'Old Slot', performance: LEGACY_TIERS });
     expect(slot.name).toBe('Old Slot');
-    expect(slot.performance).toEqual(stockPerformance('protoWagon'));
+    expect(slot.performance).toEqual(stockPerformance('brandtKombi'));
   });
 
   it('a stock race, and an old replay config with upgrade tiers, drive exactly as before', () => {
@@ -248,7 +277,7 @@ describe('setup sliders', () => {
       }
       return { top, pull: (at280 - at200) / 60 };
     };
-    for (const id of ['protoHatch', 'protoCoupe', 'protoWagon']) {
+    for (const id of ['wendtFairway', 'kazamaRotor', 'brandtKombi', 'ridgewayFiend', 'hinodeHorizon']) {
       const st = SETUP_POSITIONS.map((p) => measureStats(tuned(id, 'gearing', p)));
       // The garage's 0-60 slows one step at a time to the right (the torque bonus, with first gear where it was).
       for (let i = 1; i < st.length; i++) expect(st[i].zeroTo60, `${id} ${i + 1}`).toBeGreaterThan(st[i - 1].zeroTo60);
@@ -269,7 +298,7 @@ describe('setup sliders', () => {
   });
 
   it('the gearing torque bonus works out of corners and is gone by top speed', () => {
-    const t = getBaseTuning('protoHatch');
+    const t = getBaseTuning('wendtFairway');
     const bonus = { ...t, gearbox: { ...t.gearbox, torqueBonus: 0.06 } };
     /** One tick on full throttle from a car rolling at `kmh` in its gear: the speed gained (m/s). */
     const gain = (tt: CarTuning, kmh: number) => {
@@ -310,7 +339,7 @@ describe('setup sliders', () => {
       for (let i = 0; i < 90; i++) stepCar(c, t, input({ steer: 0.55, throttle: 1 }), { world });
       return c.speed - v0;
     };
-    expect(exit(tuned('protoHatch', 'differential', 1))).toBeLessThan(exit(tuned('protoHatch', 'differential', 3)) * 0.85);
+    expect(exit(tuned('wendtFairway', 'differential', 1))).toBeLessThan(exit(tuned('wendtFairway', 'differential', 3)) * 0.85);
     // A handbrake flick into a powered slide (RWD), held flat out with counter steer: the open axle cannot
     // keep the rear spinning.
     const drift = (t: CarTuning) => {

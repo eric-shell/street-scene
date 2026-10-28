@@ -20,7 +20,7 @@ Nothing in the spec is a game dimension. Every target is `blend(donor value / do
 ## 1. Scale and proportions
 
 - **One wheel.** Every car rides on `standardWheel` (0.28 m radius). Real tires on the donors are 0.31 to 0.33 m, so at a car's wheelbase the donors would have a 0.30 to 0.32 m wheel: the cars read 7 to 13 % bigger than their wheels. That is the house look (tuner stance), not an error; the audit prints it so nobody "fixes" it by accident.
-- **House style** (`house.scale`, measured off the Proto Hatch as shipped): width x1.06 (flares), height x0.92 (chopped roof), belt line x0.92, length and overhangs x1.0. Change these once, then re-audit every car.
+- **House style** (`house.scale`, measured off the Wendt Fairway as shipped): width x1.06 (flares), height x0.92 (chopped roof), belt line x0.92, length and overhangs x1.0. Change these once, then re-audit every car.
 - **Blend.** Each car has two donors with weights (0.5 / 0.5 unless a car leans one way). Dimensions blend as ratios to wheelbase; angles blend directly. `take` lists what each donor contributes beyond numbers.
 - **Estimates.** Overhangs, belt lines, tracks on some donors and glass rakes are read off side profiles (`estimates` in the spec). A calibrated side photo in `assets/refs/<carId>/refs.json` replaces them (`spec_from_refs` in `carRefs.py` prints the numbers to paste in). Do not move a car's nose by 10 cm on an estimate; calibrate first.
 - **Tolerance.** 5 % on dimensions, 4 degrees on rakes (`house.tolerance`). The audit marks the rest **off** and lists it at the end; the goal of a session is a shorter list, not a zero (the kitbashed bodies will never match to the centimeter and need not).
@@ -80,9 +80,9 @@ Every number lives in `house.features` (carSpecs.json) and every builder in `scr
 
 | Car | Donors | Composition | Front | Rear |
 |---|---|---|---|---|
-| Proto Hatch | 2002 VW Golf R32 Mk4 (one donor, kept whole) | the donor's body at true size: three doors, pillars A B C, flat roof to a steep tailgate | the Golf's oval covers, kept | the Golf's corner units, kept |
-| Proto Coupe | 1999 Mazda RX-7 FD (one donor, kept whole) | the donor's body at true size: two doors, bubble cabin, glass hatch, wing | slim bumper lamps, pop-ups modelled raised | full width tail bar |
-| Proto Wagon | 1992 Audi S2 Avant (one donor, kept whole) | the donor's body at true size: four doors, pillars A B C D, roof rails | square headlights, kept | full width tail bar |
+| Wendt Fairway | 2002 VW Golf R32 Mk4 (one donor, kept whole) | the donor's body at true size: three doors, pillars A B C, flat roof to a steep tailgate | the Golf's oval covers, kept | the Golf's corner units, kept |
+| Kazama Rotor | 1999 Mazda RX-7 FD (one donor, kept whole) | the donor's body at true size: two doors, bubble cabin, glass hatch, wing | slim bumper lamps, pop-ups modelled raised | full width tail bar |
+| Brandt Kombi | 1992 Audi S2 Avant (one donor, kept whole) | the donor's body at true size: four doors, pillars A B C D, roof rails | square headlights, kept | full width tail bar |
 
 Full briefs, dimensions with sources and `take` lists: `scripts/blender/carSpecs.json`; `npm run audit -- <carId>` prints them with the numbers.
 
