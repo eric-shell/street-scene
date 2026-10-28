@@ -57,6 +57,7 @@ Most wheels need none. The fields:
 | `bolts` | `0` to keep no bolt circle |
 | `normals` | `'geometry'` to shade the face from its own shape (split at 35°) when the donor's authored normals lean off its faces (the face reads dark) |
 | `dark` | a luminance (0 to 1): faces whose base colour texture is darker go, for a tire welded to the wheel in one textured mesh (the CH-R: tire 0.10, wheel 0.45, cut at 0.25) |
+| `pick` | `(axis, lo, hi)`: keep only the faces whose centre lies in that window of the import's own frame, for a scene holding several wheels (HRE 522M: two side by side; the SSR Collection: three in a row) |
 
 ## 5. Check
 
@@ -169,8 +170,189 @@ Learnings:
 - **Split a monoblock by shape, not by radius.** What is round is the lip; spokes are not round at any radius.
 - **The winding check cannot catch a backwards wheel.** The cull winds every face toward whichever side is seen, so `front` reads 0.8 to 1.0 either way; depth past 0.7 and a look decide.
 
+### Fifty-six more (2026-10-28)
+
+56 donor models from jonver87 (37), dermaks (17), portfoliorodrigues (the Fifteen52 Turbomac) and alexanderlyreo (a Work Meister S1 3P) became **54 wheels**, 100 in the set, 5,418 to 11,381 triangles each (under the 12,000 budget; the smallest is `sagi`, a four spoke whose face is 2,258 of them, the largest `tsubaki`). Names are new pseudo-Japanese words (retired and taken names skipped: `tsubasa` belongs to another file); 13 makers got fictional groups (Advan Kitsune, Avant Garde Tengu, Brixton Forged Oni, Kyusha Shoes Tanuki, Velare Yamabiko, VIP Modular Raijin, Weds Fujin, 326 Power Kirin, Brabus Nue, Budnik Orochi, Devil Japan Shuten, Kansei Nekomata, MAE Kamaitachi); Rays goes under Volk's Genbu and Vossen-x-Work under Seiryu (`GROUPS` maps the real maker, so a collaboration or a sister brand needs only a key).
+
+**Byakko** (HRE)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Akatsuki | HRE TUSK | jonver87 | no overrides |
+| Hasu | HRE FF04 | jonver87 | no overrides |
+| Kanade | HRE 522M | jonver87 | `pick`: the scene holds two wheels side by side; the one on +X (906k faces for both) |
+
+**Fujin** (Weds; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Uguisu | Weds Kranze Bazreia | dermaks | no overrides |
+
+**Genbu** (Rays, Volk)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Suzume | VOLK TE37SL 3spoke | jonver87 | `face: 1` (0.59 down the barrel, 0.15 turned); 1.25M faces, 40 s a build |
+| Tamashii | RAYS TE037 | dermaks | the TE037 pair: this one kept (see below) |
+| Tomoe | Volk Rays 21A | jonver87 | no overrides |
+| Zan | RAYS nismo LMGT1 | dermaks | no overrides |
+
+**Hiryu** (SSR)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Hanabi | SSR Starshark | dermaks | no overrides |
+| Hotaka | SSR Longchamp XR4 | dermaks | deep dish (0.66 down the barrel); the 8-bolt flange rebuilt |
+| Koyomi | SSR Collection Mk3 | dermaks | `pick` on y: Mk3 spokes on the shared lip |
+| Nadeshiko | SSR Collection Mk1 | dermaks | `pick` on y: one of three wheels in a row along the axle, on one shared lip |
+| Tsukushi | SSR Collection Mk2 | dermaks | `pick` on y: Mk2 spokes on the shared lip |
+| Yuzu | SSR Minerva | dermaks | no overrides |
+
+**Hotaru** (Fifteen52)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Wakaba | fifteen52 Turbomac | portfoliorodrigues | 986k faces by portfoliorodrigues; the 5x108 render model reduces to 10,344 triangles |
+
+**Kaito** (Work)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Inazuma | WORK EMOTION T5R 2P | dermaks | no overrides |
+| Kasane | WORK Equip 05 | dermaks | no overrides |
+| Yamabuki | Work Meister S1 3P | alexanderlyreo | by alexanderlyreo; one welded mesh |
+| Yoake | WORK MEISTER CR01 | dermaks | Work badge sticker and black spoke faces stay `Black` |
+
+**Kamaitachi** (MAE; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Mikazuki | O.Z MAE | dermaks | no overrides |
+| Minamo | MAE CROWN JEWEL | dermaks | `face: 1` (0.76 down the barrel, 0.39 turned; the same template as the MAE above reads 0.44 on the vote) |
+
+**Kirin** (326 Power; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Kozue | 326 yabaking spoke | dermaks | 140k faces; 30 lip bolts |
+
+**Kitsune** (Advan; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Ayame | Advan A3A | jonver87 | no overrides |
+
+**Kohaku** (Enkei)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Tsutsuji | Enkei Riverge | jonver87 | `face: -1` (0.56 down the barrel, 0.39 turned); FBX upload |
+
+**Mizuchi** (Rotiform)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Chidori | Rotiform WRG | jonver87 | no overrides |
+| Daichi | Rotiform IHR | jonver87 | no overrides |
+| Natsu | Rotiform HVN | jonver87 | `face: 1`: the vote put the drilled plate 0.6 down the barrel |
+| Nokaze | Rotiform SEA | jonver87 | no overrides |
+| Ogi | Rotiform RSC | jonver87 | `face: -1` (0.73 down the barrel, 0.05 turned) |
+| Sakura | Rotiform EMA | jonver87 | `face: -1` (0.85 down the barrel, 0.09 turned) |
+
+**Nekomata** (Kansei; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Sazanka | KANSEI TANDEM | dermaks | no overrides |
+
+**Nue** (Brabus; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Yuhi | BRABUS MONOBLOCK M | dermaks | no overrides |
+
+**Oni** (Brixton Forged; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Fuyu | Brixton Forged TR06 | jonver87 | no overrides |
+| Ibuki | Brixton Forged VL7 | jonver87 | `face: -1`: the vote put the lattice 0.7 down the barrel (0.15 turned) |
+| Kaen | Brixton Forged PF6 | jonver87 | no overrides |
+| Shirube | Brixton Forged CM16 | jonver87 | `face: 1` (0.73 down the barrel, 0.17 turned) |
+
+**Orochi** (Budnik; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Sagi | Budnik Tusk | dermaks | no overrides |
+
+**Raijin** (VIP Modular; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Sango | VIP MODULAR VXS410 | jonver87 | no overrides |
+| Sazanami | VIP MODULAR VX510 | jonver87 | no overrides |
+| Tsubaki | VIP Modular VXS610 | jonver87 | FBX upload; the normal vote kept (0.58 down the barrel, 0.49 the other way: a deep dished plate) |
+
+**Seiryu** (Vossen, Vossen-x-Work)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Karasu | Vossen VFS4 | jonver87 | no overrides |
+| Madoka | Vossen LC106 | jonver87 | no overrides |
+| Mizore | Vossen LC108T | jonver87 | no overrides |
+| Momiji | Vossen-x-Work VWS3 | jonver87 | `face: 1`: the vote put the spokes at the far end of a barrel |
+| Nagi | Vossen VPS 310T | jonver87 | no overrides |
+| Rin | Vossen CG207 | jonver87 | no overrides |
+| Sumire | Vossen VFS2 | jonver87 | `face: -1` (0.77 down the barrel, 0.12 turned); FBX upload (see below) |
+| Ukigumo | VOSSEN VFS1 | jonver87 | no overrides |
+| Usagi | Vossen HC-1 | jonver87 | no overrides |
+
+**Shuten** (Devil Japan; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Asagi | Devil Japan IF | dermaks | deep dish (0.64); same lip and bolt flange as the Longchamp XR4 |
+
+**Tanuki** (Kyusha Shoes; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Enishi | Kyusha Shoes Meteor FF | jonver87 | no overrides |
+
+**Tengu** (Avant Garde; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Genki | Avant Garde F450 | jonver87 | no overrides |
+| Haruka | Avant Garde F142 | jonver87 | no overrides |
+
+**Yamabiko** (Velare; new group)
+
+| Wheel | Donor | Author | Recipe and notes |
+|---|---|---|---|
+| Botan | Velare VLR F1 | jonver87 | no overrides |
+
+**Skipped (3 models) and why**
+- *Weds Kranze Chrishna* and *Weds Kranze Ratzinger* (jonver87): both import as the same FBX scene, a **VIA CM10 PLUS FlowForged 20x9** (`VIA_CM10PLUS_FlowForged_20x9_000`), not a Kranze. A model that is not what its title says is not a donor we can name, so neither shipped.
+- *Enkei Apache 2* (jonver87): built twice and never right. The face is a full-diameter plate at the closed end of a 30 cm barrel; with the vote's side the plate stands 24 cm proud of the lip, with the other the face sits 0.89 down the barrel and its outer annulus is wound backwards (`checkWheelFacing`: front 0.48, WOUND). The `kamome` recipe was removed rather than patched on the mesh.
+
+**The TE037 pair**: jonver87's *Volk Rays TE037* and dermaks' *RAYS TE037* are the same wheel; both were built (6 spokes, 10.7k triangles each) and dermaks' kept as `tamashii`, since its spokes keep the TE37's raised edge ribs and a separate lip ring at the tips where jonver87's reads as a flat six-spoke. jonver87's was dropped.
+
+**SSR COLLECTION** (dermaks) is three wheels in one scene along the axle, Mk1, Mk2 and Mk3, each its own spokes on the **same** lip mesh (6,748 + 6,720 faces, bolt for bolt), so it is split by a new recipe field, `pick` (an `(axis, lo, hi)` window on the import's own frame, applied to each face's centre in `_gather`), into `nadeshiko` (Mk1), `tsukushi` (Mk2) and `koyomi` (Mk3). None repeats an SSR model elsewhere in the set: the lip is the Starshark's, the spokes are not. The Starshark (`hanabi`), Minerva (`yuzu`), Longchamp XR4 (`hotaka`) and Devil Japan IF (`asagi`) share the template's bolt flange and bbox, which is the same SSR lip family.
+
+Learnings:
+- **Depth decides the face on a jonver87 import.** The area weighted normal vote was wrong again on 9 of the 33 (`ibuki`, `momiji`, `natsu`, `ogi`, `sakura`, `sumire`, `shirube`, `suzume`, `tsutsuji`) and on jonver87's TE037. The tell was the same each time: build both ways and compare the mean depth of the first visible surface over r 0.15 to 0.75 (`mean_depth` over `BVHTree` rays down -X, 0 flush with the lip edge, 1 at the barrel's back): the right side read 0.04 to 0.39, the wrong one 0.55 to 0.85 (ogi 0.04 against 0.73, sakura 0.11 against 0.85, shirube 0.21 against 0.73). Where the two were close (tsubaki 0.58 against 0.49, asagi, inazuma and hanabi about 0.6 either way) a look decided or the vote stayed.
+- **dermaks' wheels share one template** (`lip`, `spokes`, `lugs`, `bolts` meshes, the same axis, a +X vote on every one): all but four vote +X (326, MAE Crown Jewel, the Turbomac and Work Meister S1 are other uploaders' templates) and read 0.01 to 0.66 deep, so the deep ones (SSR Minerva, Longchamp, Starshark, Work Emotion T5R, the Collection's three: 0.5 to 0.78) are genuine deep dishes (3 piece, long barrel), checked by eye from the front and 60 degrees; the MAE Crown Jewel voted -X (0.76 deep) and needed `face: 1`. `checkWheelFacing` prints no new wheel `deep` (the deepest, `tsukushi`, reads 0.78) and none wound.
+- **A donor that is a shop scene needs a selector.** The HRE 522M was two wheels side by side and the SSR Collection three in a row; `pick` keeps the faces whose centre lies in a window, before the weld, so the rest of the pipeline never sees them.
+- **Check what the model is, not what it is called.** Two FBX uploads contained a VIA wheel under a Weds title; the object names (`VIA_CM10PLUS_FlowForged_20x9_000`) were in the import's own report. jonver87's FBX uploads (`sumire` Vossen VFS2, `tsubaki` VIP Modular VXS610, `tsutsuji` Enkei Riverge, `ukigumo` Vossen VFS1, `usagi` Vossen HC-1) carry no such contradiction in their names, but they came through a different pipeline than his OBJ models and their provenance is unverified beyond the licence the uploader set.
+- **Imports can 502.** Two downloads failed once (Sketchfab status 502) and went through on a retry; import in a batch and check which roots arrived before building.
+- **A 1.25M face donor takes 40 s a build** (`suzume`; the Turbomac took 26 s); a call over about a minute drops the MCP connection although Blender goes on, so build such wheels one or two to a call.
+
 ## Credits
 
 All by **jonver87** on Sketchfab, CC BY 4.0: WORK VS-TX, Work Equip 03, Work Equip 40, WORK EMITZ, WORK VS-KF, Work VS XV, WORK VS-XX, WORK ZISTANCE W5S, WORK Schwert SC2, Work Equip 02, Work Euroline DH, WORK IMPORT LABEL AL4, WORK LS CHIAREZZA SUV, Rotiform ZMO, Aerodisc, VCE, SIX, AVS, KB1, USF, MLW, OZR, BM1, WRO, CCV, LHR, LSR, KLU, SNA, KPS and PNT, 3D Vossen LC104T, Vossen LC109T, VPS302, VPS301, ERA3, GNS-1, VPS 315T and CG203, HRE P200, Fifteen52 Rally Sport, SSR Koenig, BBS E52, Volk Rays 21C. Each is kept as its face, lip and barrel, reduced, with its bolts, badges and tire replaced by the house's.
 
 Enkei Nt03+m Wheels by **flathat3d** and BBS CH-R + Goodyear Eagle F1 Supercar 3 by **MozzarellaARC** on Sketchfab, CC BY 4.0, each kept the same way (the CH-R's own tire cut away).
+
+The Fifty-six more set (2026-10-28), CC BY 4.0, kept the same way: 33 more by **jonver87** (HRE TUSK, Advan A3A, Velare VLR F1, Rotiform WRG, IHR, HVN, SEA, RSC and EMA, Kyusha Shoes Meteor FF, Brixton Forged TR06, VL7, PF6 and CM16, Avant Garde F450 and F142, HRE FF04 and 522M, Vossen VFS4, LC106, LC108T, VPS 310T, CG207, VFS2, VFS1 and HC-1, Vossen-x-Work VWS3, VIP Modular VXS410, VX510 and VXS610, Volk TE37SL 3spoke, Volk Rays 21A, Enkei Riverge), "fifteen52 Turbomac" by **portfoliorodrigues**, "Work Meister S1 3P" by **alexanderlyreo** and 19 wheels from 17 models by **dermaks** (WORK MEISTER CR01, SSR Minerva, RAYS nismo LMGT1, SSR COLLECTION (three wheels), SSR Longchamp XR4, Budnik Tusk, Weds Kranze Bazreia, BRABUS MONOBLOCK M, Devil Japan IF, WORK Equip 05, KANSEI TANDEM, O.Z MAE, WORK EMOTION T5R 2P, RAYS TE037, SSR Starshark, 326 yabaking spoke, MAE CROWN JEWEL). The settings' credits list each one (`DONOR_CREDITS`).

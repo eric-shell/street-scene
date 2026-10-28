@@ -48,6 +48,7 @@ X_LIP = TIRE_W * 0.45      # m, where the lip edge sits: just proud of the tire'
 X_BACK = -TIRE_W * 0.5     # m, where the barrel ends: the tire's back bead
 BUDGETS = {'face': 6000, 'ring': 2400, 'cap': 700}   # triangles per kind after the collapse (the ring's is for the pre-cull collapse; it is turned afterwards)
 RING_SEG = 56        # segments around the turned lip and barrel (a 40-gon shows on a chrome lip up close)
+CAP_SEG = 40         # segments around the turned center cap
 RING_BANDS = 26      # profile points sampled along the lip's visible surface
 BOLT_SEG = 6         # hex heads
 BOLT_MAX = 48        # more peaks than this on a bolt circle is a knurl, not bolts
@@ -60,7 +61,12 @@ JUNK = r'(?i)(?<![a-z])(stand|ground|plane|shadow|floor|backdrop|logo|badge|embl
 # The garage groups wheels by the real maker of their donor, under a fictional maker name (real
 # wheel makers' names never ship): the maker as the donor's title leads with it -> the group.
 GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'Byakko', 'Fifteen52': 'Hotaru',
-          'SSR': 'Hiryu', 'BBS': 'Suzaku', 'Volk': 'Genbu', 'Enkei': 'Kohaku'}
+          'SSR': 'Hiryu', 'BBS': 'Suzaku', 'Volk': 'Genbu', 'Enkei': 'Kohaku',
+          'Advan': 'Kitsune', 'Avant Garde': 'Tengu', 'Brixton Forged': 'Oni', 'Kyusha Shoes': 'Tanuki', 'Velare': 'Yamabiko',
+          'VIP Modular': 'Raijin', 'Weds': 'Fujin', '326 Power': 'Kirin', 'Brabus': 'Nue', 'Budnik': 'Orochi',
+          'Devil Japan': 'Shuten', 'Kansei': 'Nekomata', 'MAE': 'Kamaitachi',
+          'Rays': 'Genbu',   # Volk is a Rays brand: one group
+          'Vossen-x-Work': 'Seiryu'}   # a Vossen collaboration, listed with Vossen
 
 # Most donors are jonver87's (CC BY 4.0): clean showpiece models without tires, each piece its own
 # mesh. Recipe fields: `maker` the donor's real maker (a key of GROUPS), `face` 1 / -1 forces the
@@ -69,6 +75,7 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
 # material or object names to drop, `bolts` 0 to keep no bolt circle, `normals` 'geometry' to
 # shade the face from its own shape when the donor's normals are wrong, `dark` a luminance (0-1):
 # faces whose base colour texture is darker go (a tire welded to the wheel in one textured mesh).
+# `pick` (axis, lo, hi): keep only the faces whose centre lies between lo and hi on that axis of the import's frame (a scene holding several wheels).
 _J = {'author': 'jonver87', 'license': 'CC Attribution'}
 WHEELS = {
     'kumo': {'name': 'Work VS-TX', 'uid': '31c76095a0754cb1b08591d63973a2c2', 'maker': 'Work', **_J},
@@ -137,6 +144,75 @@ WHEELS = {
                 'author': 'MozzarellaARC', 'license': 'CC Attribution',
                 'dark': 0.25,   # its tire is welded to the wheel in one textured mesh: tire 0.10, wheel 0.45
                 'face': -1},   # the normal vote showed the hub's back
+    # 2026-10-28, fifty-six more: jonver87's again, plus portfoliorodrigues, alexanderlyreo and dermaks
+    'akatsuki': {'name': 'HRE TUSK', 'uid': '31734356b1b14312ad5c11f24c78fd57', 'maker': 'HRE', **_J},
+    'ayame': {'name': 'Advan A3A', 'uid': '502e2341d5c74cb9a312af876697523e', 'maker': 'Advan', **_J},
+    'botan': {'name': 'Velare VLR F1', 'uid': 'db3568387f4b43d1988f73874f43e90f', 'maker': 'Velare', **_J},
+    'chidori': {'name': 'Rotiform WRG', 'uid': '4bb6ed6ac0e246569b18e5c8929ffd7e', 'maker': 'Rotiform', **_J},
+    'daichi': {'name': 'Rotiform IHR', 'uid': '03027fcac92a476aba1a55c1cb148595', 'maker': 'Rotiform', **_J},
+    'enishi': {'name': 'Kyusha Shoes Meteor FF', 'uid': '79d3c95516dc4e3693ce0e1fcdaf7909', 'maker': 'Kyusha Shoes', **_J},
+    'fuyu': {'name': 'Brixton Forged TR06', 'uid': 'fb3ed2107cf949cba4922a8af22635fb', 'maker': 'Brixton Forged', **_J},
+    'genki': {'name': 'Avant Garde F450', 'uid': 'aaf0fb4891cd474e86df0eb2dc322e48', 'maker': 'Avant Garde', **_J},
+    'haruka': {'name': 'Avant Garde F142', 'uid': '0c5a53690d0d40adadf3ddaf0828c8b6', 'maker': 'Avant Garde', **_J},
+    'hasu': {'name': 'HRE FF04', 'uid': 'b0d7579597a542978a00cf19ec3c9d29', 'maker': 'HRE', **_J},
+    'ibuki': {'name': 'Brixton Forged VL7', 'uid': '051fba725036489288a0ed6ded9a4abe', 'maker': 'Brixton Forged', **_J,
+             'face': -1},   # the normal vote put the lattice face 0.7 of the way down the barrel
+    'kaen': {'name': 'Brixton Forged PF6', 'uid': '60d3005ced7f42fa9100b0aa03979269', 'maker': 'Brixton Forged', **_J},
+    'kanade': {'name': 'HRE 522M', 'uid': '17dfb9313e3346d59021dbcca0142762', 'maker': 'HRE', **_J,
+              'pick': ('x', 0, 1)},   # the scene holds two wheels side by side: the one on +X
+    'karasu': {'name': 'Vossen VFS4', 'uid': '2a078ce1d2b3463cab9bc3179432bf1c', 'maker': 'Vossen', **_J},
+    'madoka': {'name': 'Vossen LC106', 'uid': 'bb90d9eb6f9c4bdc8fdc8340cfa693b6', 'maker': 'Vossen', **_J},
+    'mizore': {'name': 'Vossen LC108T', 'uid': '124076f7e61f43109c78f329bbb4ee8b', 'maker': 'Vossen', **_J},
+    'momiji': {'name': 'Vossen-x-Work VWS3', 'uid': 'bff5b9a09f0f42febac5fba5c2f2860c', 'maker': 'Vossen-x-Work', **_J,
+              'face': 1},   # the normal vote put the spokes at the far end of the barrel
+    'nagi': {'name': 'Vossen VPS 310T', 'uid': '2128c0d05b98416c9de4f3eccf2605aa', 'maker': 'Vossen', **_J},
+    'natsu': {'name': 'Rotiform HVN', 'uid': 'c89560b091cf49e9b2cc4f0f38074d40', 'maker': 'Rotiform', **_J,
+             'face': 1},   # the normal vote put the plate 0.6 of the way down the barrel
+    'nokaze': {'name': 'Rotiform SEA', 'uid': '6dd27000a1cf433490be246b67868022', 'maker': 'Rotiform', **_J},
+    'ogi': {'name': 'Rotiform RSC', 'uid': '3be8e6543dc34551b71666f4c0d262a5', 'maker': 'Rotiform', **_J,
+           'face': -1},   # the normal vote put the plate 0.73 of the way down the barrel
+    'rin': {'name': 'Vossen CG207', 'uid': '91a910d8ccb944e78b036ca01a2c4eba', 'maker': 'Vossen', **_J},
+    'sakura': {'name': 'Rotiform EMA', 'uid': '403b46a5f85a4ddfbff2de8eb1f7742e', 'maker': 'Rotiform', **_J,
+              'face': -1},   # the normal vote put the plate 0.85 of the way down the barrel
+    'sango': {'name': 'VIP MODULAR VXS410', 'uid': 'b97b8008fd614027864e59b6921d7919', 'maker': 'VIP Modular', **_J},
+    'sazanami': {'name': 'VIP MODULAR VX510', 'uid': '0079270fb2ed4635a276a945258d0cf1', 'maker': 'VIP Modular', **_J},
+    'shirube': {'name': 'Brixton Forged CM16', 'uid': 'c47c0b869f5f48f9bb5d629c8fbf3bcb', 'maker': 'Brixton Forged', **_J,
+               'face': 1},   # the normal vote put the face 0.73 of the way down the barrel
+    'sumire': {'name': 'Vossen VFS2', 'uid': '671ea5f9079e4826a484e797f0b267b6', 'maker': 'Vossen', **_J,
+              'face': -1},   # the normal vote put the face 0.77 of the way down the barrel
+    'suzume': {'name': 'VOLK TE37SL 3spoke', 'uid': '1b03d5aa04bf404baa482de0f0ecec32', 'maker': 'Volk', **_J,
+              'face': 1},   # the normal vote put the face 0.59 of the way down the barrel
+    'tamashii': {'name': 'RAYS TE037', 'uid': 'e4ca99c55cec42b5940107b5c5ead0f6', 'maker': 'Rays', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'tomoe': {'name': 'Volk Rays 21A', 'uid': 'd7c193d9873d4ab0b4df611fdb76a481', 'maker': 'Volk', **_J},
+    'tsubaki': {'name': 'VIP Modular VXS610', 'uid': '9960a18aee194a1680f9d72455115a17', 'maker': 'VIP Modular', **_J},
+    'tsutsuji': {'name': 'Enkei Riverge', 'uid': 'e6a0a56973f54bcbad02188ae6fe70f9', 'maker': 'Enkei', **_J,
+                'face': -1},   # the normal vote put the spokes 0.56 down the barrel, 0.39 turned
+    'ukigumo': {'name': 'VOSSEN VFS1', 'uid': 'b5ecbbe9ce254c20941d9db6dc3be57b', 'maker': 'Vossen', **_J},
+    'usagi': {'name': 'Vossen HC-1', 'uid': 'a09cf8de7a8940fa9733c46198a46fd1', 'maker': 'Vossen', **_J},
+    'wakaba': {'name': 'fifteen52 Turbomac', 'uid': '0dbadec625c249eea309d95eb015c9f4', 'maker': 'Fifteen52', 'author': 'portfoliorodrigues', 'license': 'CC Attribution'},
+    'yamabuki': {'name': 'Work Meister S1 3P', 'uid': '7205c04f3cb24a7dbdaf6a304fb31f21', 'maker': 'Work', 'author': 'alexanderlyreo', 'license': 'CC Attribution'},
+    'yoake': {'name': 'WORK MEISTER CR01', 'uid': '9b2bb4a769de4c6098efe95001072841', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'yuzu': {'name': 'SSR Minerva', 'uid': '704b405602b74a788a0678fd39ac4e51', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'zan': {'name': 'RAYS nismo LMGT1', 'uid': '6ed19c4728744e0b95246b5e125ea286', 'maker': 'Rays', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'hotaka': {'name': 'SSR Longchamp XR4', 'uid': '6b3cc8dc828b4e319d625ef3318a26ff', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'sagi': {'name': 'Budnik Tusk', 'uid': 'ab0c4c881d2d41f8a479273e81491978', 'maker': 'Budnik', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'uguisu': {'name': 'Weds Kranze Bazreia', 'uid': '9f55befda4a64aeea5d6fc3586e055ae', 'maker': 'Weds', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'yuhi': {'name': 'BRABUS MONOBLOCK M', 'uid': 'a27f7cb1c38240869275ed5319573826', 'maker': 'Brabus', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'asagi': {'name': 'Devil Japan IF', 'uid': '38821fe2a6b4417ab96e2f3948b65537', 'maker': 'Devil Japan', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'kasane': {'name': 'WORK Equip 05', 'uid': 'ea0c0c37faa0465ca38d1a3365fb9dfe', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'sazanka': {'name': 'KANSEI TANDEM', 'uid': '4d467ea742e94f6aa9ffa8f7f1a0a913', 'maker': 'Kansei', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'mikazuki': {'name': 'O.Z MAE', 'uid': '75f3ef08221849e2ac3a17dd2ecf2386', 'maker': 'MAE', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'inazuma': {'name': 'WORK EMOTION T5R 2P', 'uid': '38c31e5755494f7fa5e53fdbc95fa313', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'hanabi': {'name': 'SSR Starshark', 'uid': '58970916a3be46a48d61de853149a22a', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'kozue': {'name': '326 yabaking spoke', 'uid': '3ca841c675a24173b99f70adcc885b8e', 'maker': '326 Power', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'minamo': {'name': 'MAE CROWN JEWEL', 'uid': '2c77da7f41df431aa1db7b7c2afa92ca', 'maker': 'MAE', 'author': 'dermaks', 'license': 'CC Attribution',
+              'face': 1},   # the normal vote put the spokes 0.76 down the barrel; the same template as the MAE above reads 0.39 turned
+    'nadeshiko': {'name': 'SSR Collection Mk1', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
+                 'pick': ('y', -1, -0.1085)},   # one scene of three wheels in a row along the axle (mk1, mk2, mk3 on one lip): the Mk1 spokes
+    'tsukushi': {'name': 'SSR Collection Mk2', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
+                'pick': ('y', -0.1085, 0.1085)},   # one scene of three wheels in a row along the axle (mk1, mk2, mk3 on one lip): the Mk2 spokes
+    'koyomi': {'name': 'SSR Collection Mk3', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
+              'pick': ('y', 0.1085, 1)},   # one scene of three wheels in a row along the axle (mk1, mk2, mk3 on one lip): the Mk3 spokes
 }
 
 
@@ -193,6 +269,10 @@ def _gather(root, R):
         if R.get('dark'):
             gone = set(junk)
             junk += [f for f in t.faces if f not in gone and _texture_luminance(me, t, f) < R['dark']]
+        if R.get('pick'):   # a scene of several wheels: keep the faces whose centre lies in (axis, lo, hi) of the import's own frame
+            ax, lo, hi = R['pick']
+            gone = set(junk)
+            junk += [f for f in t.faces if f not in gone and not lo <= f.calc_center_median()['xyz'.index(ax)] <= hi]
         bmesh.ops.delete(t, geom=junk, context='FACES')
         for f in t.faces:
             f.material_index = len(names) + f.material_index
@@ -481,6 +561,107 @@ def _house_cap(bm, mat, r, x):
                 f.normal_flip()
 
 
+def _cap_profile(faces, L, planes=24, stations=48):
+    """A center cap's (x, r) profile from the axle out to its edge and down its skirt: rays down -X
+    at `stations` radii, each station the median of its hits over `planes` angles round the axle,
+    so a maker's logo or lettering, raised or engraved, on a fraction of the angles at any radius
+    does not count and the cap's own shape (dome, step, flat face) does. None when the cap is not
+    round (fewer than half the rays hit at the axle)."""
+    vs = list({v for f in faces for v in f.verts})
+    idx = {v: k for k, v in enumerate(vs)}
+    tree = BVHTree.FromPolygons([v.co for v in vs], [[idx[v] for v in f.verts] for f in faces])
+    top = max(v.co.x for v in vs) + 0.02
+    rmax = max(_rad(v.co) for v in vs)
+    pts = []
+    for k in range(stations + 1):
+        r = rmax * 0.995 * k / stations
+        hits = []
+        for j in range(planes):
+            ph = 2 * math.pi * (j + 0.5) / planes
+            hit = tree.ray_cast(Vector((top, r * math.cos(ph), r * math.sin(ph))), Vector((-1, 0, 0)))[0]
+            if hit is not None:
+                hits.append(hit.x)
+        if len(hits) * 2 > planes:
+            pts.append(Vector((sorted(hits)[len(hits) // 2], r)))
+        elif not pts:
+            return None
+    edge = pts[-1].y
+    skirt = min((v.co.x for v in vs if _rad(v.co) > 0.85 * edge), default=pts[-1].x)
+    if skirt < pts[-1].x - 0.001:
+        pts.append(Vector((skirt, edge)))
+    return _thin(pts, 12, 2e-4)
+
+
+def clean_cap(o, pick=None, seg=CAP_SEG):
+    """Turn the wheel's center cap from its own profile: the faces `pick(face, L)` chooses (by
+    default those already `RimCap`) go and a lathe of their median profile takes their place, in
+    `RimCap`, so the cap keeps its shape and loses the donor maker's logo. The rest of the mesh
+    keeps its custom normals. Faces not round at the axle are lug nuts and go back to Chrome.
+    Returns the profile's point count, 0 when there was no cap."""
+    L = TIRE_R * BEAD
+    me = o.data
+    for n in ('RimCap',):
+        if n not in [m.name for m in me.materials]:
+            me.materials.append(shared_mat(n))
+    cap_i = [m.name for m in me.materials].index('RimCap')
+    pick = pick or (lambda f, L: f.material_index == cap_i)
+    _carry_normals(o)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    faces = [f for f in bm.faces if pick(f, L)]
+    prof = _cap_profile(faces, L) if faces else None
+    if prof:
+        bmesh.ops.delete(bm, geom=faces, context='FACES')
+        made = _lathe(bm, prof, cap_i, seg, eye=Vector((0.25, 0.3)))
+        # The lathe's first ring sits on the axle: one vertex, its quads triangles.
+        bmesh.ops.remove_doubles(bm, verts=list({v for f in made for v in f.verts if _rad(v.co) < 1e-5}), dist=1e-5)
+    elif faces:
+        # Not round at the axle: a ring of lug nuts round the hub (inside 0.35 of the lip, so
+        # classified as cap), hardware that stays Chrome.
+        if 'Chrome' not in [m.name for m in me.materials]:
+            me.materials.append(shared_mat('Chrome'))
+        for f in faces:
+            f.material_index = [m.name for m in me.materials].index('Chrome')
+    sn = bm.loops.layers.float_vector['src_normal']
+    for f in bm.faces:
+        f.smooth = True
+    out = [l[sn].copy() if l[sn].length > 0.5 else f.normal.copy() for f in bm.faces for l in f.loops]
+    bm.to_mesh(me)
+    bm.free()
+    me.normals_split_custom_set(out)
+    me.attributes.remove(me.attributes['src_normal'])
+    remap_materials(o)
+    return len(prof) if prof else 0
+
+
+def _is_lathe(cos, L, seg=RING_SEG):
+    """A face of the turned lip and barrel, by its corners: a quad on the lathe's segment angles, out past the dish."""
+    c = sum(cos, Vector()) / len(cos)
+    return len(cos) == 4 and _rad(c) > 0.5 * L and all(abs(a - round(a)) < 1e-3 for a in (math.atan2(v.z, v.y) / (2 * math.pi) * seg for v in cos))
+
+
+def retrofit_hub(name):
+    """Bring a wheel built before 2026-10-28's `RimLip` / `RimCap` up to date without its donor:
+    the turned lip and barrel go to `RimLip` (the object's `lip` records how it shipped, chrome or
+    rim) and the Chrome center cap (Chrome within 0.45 of the lip radius: the bolts sit outside
+    0.55) is turned clean by `clean_cap`. Returns (lip, lathe faces, cap profile points)."""
+    o = bpy.data.objects[f'wheels.wheel_{name}']
+    me = o.data
+    if 'RimLip' not in [m.name for m in me.materials]:
+        me.materials.append(shared_mat('RimLip'))
+    names = [m.name for m in me.materials]
+    L = TIRE_R * BEAD
+    lathe = [p for p in me.polygons if names[p.material_index] in ('Rim', 'Chrome') and _is_lathe([me.vertices[i].co for i in p.vertices], L)]
+    chrome = sum(names[p.material_index] == 'Chrome' for p in lathe)
+    lip = 'chrome' if chrome * 2 > len(lathe) else 'rim'
+    for p in lathe:
+        p.material_index = names.index('RimLip')
+    o['lip'] = lip
+    ci = names.index('Chrome') if 'Chrome' in names else -1
+    pts = clean_cap(o, lambda f, L: f.material_index == ci and _rad(f.calc_center_median()) < 0.45 * L)
+    return lip, len(lathe), pts
+
+
 def _ring_profile(o, L, planes=12, rays=480):
     """The lip and barrel's visible surface as (x, r) points from the lip edge inward and back:
     rays from a viewpoint in front of the wheel, swept in the plane through the axle from the lip
@@ -533,12 +714,24 @@ def _ring_profile(o, L, planes=12, rays=480):
         if len(hits) * 2 > planes:
             pts.append(Vector((x, sorted(hits)[len(hits) // 2])))
         x -= 0.002
-    # Thin to RING_BANDS points: add the point farthest off the polyline so far, until the
-    # profile is within 0.3 mm everywhere or the budget is spent.
+    prof = _thin(pts, RING_BANDS)
+    edge = max(prof, key=lambda q: q.y)
+    prof.insert(0, Vector((edge.x - 0.015, L)))
+    # The cull leaves little of the barrel behind a dense face, so it is carried on at its last
+    # radius to the back, then out to the tire's bead: the wheel is as wide as its tire.
+    if prof[-1].x > X_BACK + 0.005:
+        prof.append(Vector((X_BACK, prof[-1].y)))
+    prof.append(Vector((X_BACK, max(prof[-1].y, L - 0.004))))
+    return prof
+
+
+def _thin(pts, most, tol=3e-4):
+    """The profile thinned to `most` points: the point farthest off the polyline so far is added
+    until the profile is within `tol` everywhere or the budget is spent; the ends always stay."""
     keep = {0, len(pts) - 1}
-    while len(keep) < RING_BANDS:
+    while len(keep) < most:
         ks = sorted(keep)
-        far, at = 3e-4, None
+        far, at = tol, None
         for a, b in zip(ks, ks[1:]):
             A, B = pts[a], pts[b]
             AB = B - A
@@ -551,18 +744,10 @@ def _ring_profile(o, L, planes=12, rays=480):
         if at is None:
             break
         keep.add(at)
-    prof = [pts[i] for i in sorted(keep)]
-    edge = max(prof, key=lambda q: q.y)
-    prof.insert(0, Vector((edge.x - 0.015, L)))
-    # The cull leaves little of the barrel behind a dense face, so it is carried on at its last
-    # radius to the back, then out to the tire's bead: the wheel is as wide as its tire.
-    if prof[-1].x > X_BACK + 0.005:
-        prof.append(Vector((X_BACK, prof[-1].y)))
-    prof.append(Vector((X_BACK, max(prof[-1].y, L - 0.004))))
-    return prof
+    return [pts[i] for i in sorted(keep)]
 
 
-def _lathe(bm, prof, mat, seg=RING_SEG):
+def _lathe(bm, prof, mat, seg=RING_SEG, eye=None):
     """A surface of revolution through the (x, r) profile about the axle, smooth, its normals in
     `src_normal` (toward the viewpoint side of the profile). Returns the faces made.
 
@@ -570,10 +755,11 @@ def _lathe(bm, prof, mat, seg=RING_SEG):
     points across that segment (a step in the profile) takes the segment's: the profile is in the
     order the viewpoint sees it, so that side is the seen one all along. Winding faces by the
     smoothed corner normal turned the faces at a sharp step away from the front, and the game
-    draws `Rim` single sided (2026-10-28)."""
+    draws `Rim` single sided (2026-10-28). `eye` is that viewpoint as (x, r); a center cap is seen
+    from in front and outside it, so its skirt faces out."""
     sn = bm.loops.layers.float_vector.get('src_normal') or bm.loops.layers.float_vector.new('src_normal')
     P = len(prof)
-    eye = Vector((0.25, 0.3 * prof[0].y))
+    eye = eye or Vector((0.25, 0.3 * prof[0].y))
     n2 = []
     for k in range(P):
         a, b = prof[max(0, k - 1)], prof[min(P - 1, k + 1)]
@@ -795,7 +981,7 @@ def wheel(name, root):
             # A one-piece wheel's lip, dish and barrel are its face's own round faces: turned like a ring.
             if kind == 'face' and f in turned:
                 kind = 'ring'
-            f.material_index = IDX['Black'] if re.search(r'(?i)black', src) and kind == 'face' else IDX['Chrome'] if kind == 'cap' or (kind == 'ring' and lip == 'chrome') else IDX['Rim']
+            f.material_index = IDX['Black'] if re.search(r'(?i)black', src) and kind == 'face' else IDX['RimCap'] if kind == 'cap' else IDX['RimLip'] if kind == 'ring' else IDX['Rim']
             f[kl] = KIND.get(kind, -1)
     src_tris = sum(i.tris for i in isl)
     gone = {kd: sum(i.tris for i in isl if i.kind == kd) for kd in ('bolt', 'decal')}
@@ -853,11 +1039,11 @@ def wheel(name, root):
         obm.from_mesh(o.data)
         bpy.data.objects.remove(o)
     if ring_prof:
-        _lathe(obm, ring_prof, IDX['Chrome'] if lip == 'chrome' else IDX['Rim'])
+        _lathe(obm, ring_prof, IDX['RimLip'])
     if circle:
         _hex_heads(obm, IDX['Chrome'], circle)
     if cap_r:
-        _house_cap(obm, IDX['Chrome'], cap_r, cap_x)
+        _house_cap(obm, IDX['RimCap'], cap_r, cap_x)
     house_tire(obm, IDX['Tire'])
     loose, n = 0, 1
     while n:   # a sliver may only have touched another loose one
@@ -875,11 +1061,13 @@ def wheel(name, root):
         if out.attributes.get(a):
             out.attributes.remove(out.attributes[a])
     remap_materials(o)
+    cap_pts = clean_cap(o)
+    o['lip'] = lip
     o['displayName'] = name.capitalize()
     o['group'] = GROUPS[R0['maker']]
     print(f'wheel_{name}: {R0["name"]} ({R0["author"]}); islands {kinds}; face {"+" if sign > 0 else "-"}X, scaled x{k:.3f}, '
           f'barrel squeezed x{squeeze:.2f}, lip {lip}' + (f' turned from {len(ring_prof)} points' if ring_prof else '') + ', ' + (f'{len(circle[0])} house bolts at r {circle[1]:.3f}' if circle else 'no bolt circle') +
-          (f', house cap r {cap_r:.3f}' if cap_r else '') + f'; {src_tris} -> {tris(o)} tris ({culled} hidden culled, {loose} loose, {gone["bolt"]} of bolts and {gone["decal"]} of decals replaced)')
+          (f', house cap r {cap_r:.3f}' if cap_r else '') + (f', cap turned from {cap_pts} points' if cap_pts else '') + f'; {src_tris} -> {tris(o)} tris ({culled} hidden culled, {loose} loose, {gone["bolt"]} of bolts and {gone["decal"]} of decals replaced)')
     return o
 
 
