@@ -831,6 +831,9 @@ describe('waterfront (beach)', () => {
         const z = u * p.uz + v * p.vz;
         const s = w.slopeAt(x, z);
         const e = 0.002;
+        // The water's tilt stops at wu0 and wu1 (waterLevel: level beyond, by design), a crease where the gradient is
+        // one sided: a central difference straddling it measures neither side, so samples that close are skipped.
+        if (Math.min(Math.abs(u - p.wu0), Math.abs(u - p.wu1)) < 2 * e) continue;
         const gx = (w.heightAt(x + e, z) - w.heightAt(x - e, z)) / (2 * e);
         const gz = (w.heightAt(x, z + e) - w.heightAt(x, z - e)) / (2 * e);
         expect(Math.abs(s.gx - gx)).toBeLessThan(2e-3 * Math.max(1, Math.abs(gx)));
