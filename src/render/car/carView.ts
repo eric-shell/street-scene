@@ -19,6 +19,7 @@ import { PLATE, buildPlateGeometry, createPlateMaterial, drawPlate, plateTexture
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 import { Disposer } from '../disposer';
 import { WheelClip } from './wheelClip';
+import type { LampFlares } from './lampFlares';
 
 export interface CarPose {
   x: number;
@@ -970,6 +971,66 @@ export class CarView {
     this.groundFx.rotation.set(-Math.atan(slopeZ), 0, Math.atan(slopeX));
     const air = Math.max(0, -(pose.comp[0] + pose.comp[1] + pose.comp[2] + pose.comp[3]) / 4) / GROUND_FX.airHalf;
     this.airFade = 1 / (1 + air * air);
+  }
+
+  /** The head and tail lamps in car space (x, y, z triples; m), read off the HeadLight and TailLight meshes once the model is in, else off the body's dimensions. */
+  private lamps: { head: number[]; tail: number[] } | null = null;
+
+  private findLamps(): { head: number[]; tail: number[] } {
+    const out = { head: [] as number[], tail: [] as number[] };
+    const { length: L, width: W, height: H } = this.car.dimensions;
+    if (this.baseModel) {
+      this.root.updateWorldMatrix(true, true);
+      const inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert();
+      const box = new THREE.Box3();
+      const c = new THREE.Vector3();
+      this.baseModel.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+        const list = mat === this.materials.HeadLight ? out.head : mat === this.materials.TailLight ? out.tail : null;
+        if (!list) return;
+        mesh.geometry.computeBoundingBox();
+        box.copy(mesh.geometry.boundingBox!).applyMatrix4(mesh.matrixWorld).applyMatrix4(inv).getCenter(c);
+        // One mesh for both sides (centred): split it at a third of the car's width either side.
+        if (Math.abs(c.x) < W * 0.05) list.push(-W * 0.32, c.y, c.z, W * 0.32, c.y, c.z);
+        else list.push(c.x, c.y, c.z);
+      });
+    }
+    if (out.head.length < 6) out.head = [-W * 0.32, H * 0.38, L * 0.5, W * 0.32, H * 0.38, L * 0.5];
+    if (out.tail.length < 6) out.tail = [-W * 0.3, H * 0.4, -L * 0.5, W * 0.3, H * 0.4, -L * 0.5];
+    return out;
+  }
+
+  /**
+   * Offer this car's lamps to the frame's flares (lampFlares.ts): a flare per headlight along the car's forward and
+   * per tail lamp backwards, at the root's current pose. Reads the lamp spots once; nothing is allocated after.
+   */
+  feedFlares(flares: LampFlares): void {
+    const lamps = (this.lamps ??= this.findLamps());
+    this.root.updateWorldMatrix(true, false);
+    const e = this.root.matrixWorld.elements;
+    let fx = e[8];
+    let fy = e[9];
+    let fz = e[10];
+    const n = 1 / Math.max(1e-6, Math.hypot(fx, fy, fz));
+    fx *= n;
+    fy *= n;
+    fz *= n;
+    // A horn flash passes the lens at full: the flare follows it.
+    const head = 1 + 1.5 * this.flash;
+    for (let i = 0; i < lamps.head.length; i += 3) {
+      const x = lamps.head[i];
+      const y = lamps.head[i + 1];
+      const z = lamps.head[i + 2];
+      flares.head(e[0] * x + e[4] * y + e[8] * z + e[12], e[1] * x + e[5] * y + e[9] * z + e[13], e[2] * x + e[6] * y + e[10] * z + e[14], fx, fy, fz, head);
+    }
+    for (let i = 0; i < lamps.tail.length; i += 3) {
+      const x = lamps.tail[i];
+      const y = lamps.tail[i + 1];
+      const z = lamps.tail[i + 2];
+      flares.tail(e[0] * x + e[4] * y + e[8] * z + e[12], e[1] * x + e[5] * y + e[9] * z + e[13], e[2] * x + e[6] * y + e[10] * z + e[14], -fx, -fy, -fz, 1);
+    }
   }
 
   setHeadlightsEnabled(on: boolean): void {

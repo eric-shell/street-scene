@@ -62,6 +62,7 @@ import { ROAD_Y } from '../street/cityMeshes';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 import { CAR_IMPOSTORS, CAR_SWITCH_MARGIN, CarImpostors, fadeOutBeyond, getCarSheet } from './carImpostors';
 import type { CarImpostorSpec } from './carImpostors';
+import type { LampFlares } from '../car/lampFlares';
 
 /**
  * Per tier: most moving cars drawn, their draw distance (m), headlight pools on the road; most parked
@@ -214,6 +215,8 @@ const WHITE = new THREE.Color(1, 1, 1);
 const HEAD = new THREE.Color(kelvin(5200)).multiplyScalar(2.4);
 const TAIL = new THREE.Color(0xff1a24).multiplyScalar(1.1);
 const BRAKE = new THREE.Color(0xff1a24).multiplyScalar(2.8);
+/** A braking car's tail flares this much stronger than a plain tail's (BRAKE over TAIL). */
+const BRAKE_FLARE = 2.5;
 const HAZARD = new THREE.Color(0xffa030).multiplyScalar(2.2);
 const SIGN = new THREE.Color(0xfff2c0).multiplyScalar(1.8);
 const BEACON: Record<NonNullable<TrafficLamp['color']>, THREE.Color> = {
@@ -400,6 +403,8 @@ export class TrafficView {
   private slotN = 0;
   private shown = 0;
   private lampN = 0;
+  /** The frame's lamp flares (lampFlares.ts), fed each moving car's head and tail lamps; null without. */
+  private flares: LampFlares | null = null;
   private beamN = 0;
 
   constructor(
@@ -505,11 +510,12 @@ export class TrafficView {
   /**
    * Place the cars between two snapshots. `tick` is the sim tick of `curr`
    * (spawn fades), `time` the scene clock (s, hazard blink), `tier` the
-   * quality tier for count, distance and pools.
+   * quality tier for count, distance and pools, `flares` the lamp flares to feed (the caller begins and ends the frame).
    */
-  update(prev: Float32Array, curr: Float32Array, alpha: number, camera: THREE.Camera, time: number, tier: Quality, tick: number): void {
+  update(prev: Float32Array, curr: Float32Array, alpha: number, camera: THREE.Camera, time: number, tier: Quality, tick: number, flares: LampFlares | null = null): void {
     const bodies = this.bodies;
     if (!bodies) return;
+    this.flares = flares;
     const set = this.cardSet;
     const spec = set?.spec ?? null;
     const q = TRAFFIC_QUALITY[tier] ?? TRAFFIC_QUALITY.medium;
@@ -665,6 +671,15 @@ export class TrafficView {
       }
     }
     this.hadBody[i] = body ? 1 : 0;
+    const flares = this.flares;
+    if (flares && !parked && !struck) {
+      // Each head and tail lamp offers a flare: the headlight along the car's forward, the tail lamp backwards (half strength inside).
+      const brake = flags & 1 ? BRAKE_FLARE : 1;
+      for (const lamp of model.lamps) {
+        if (lamp.role === 'head') flares.head(x + lamp.p[0] * fz + lamp.p[2] * fx, gy + lamp.p[1], z - lamp.p[0] * fx + lamp.p[2] * fz, fx, 0, fz, fade);
+        else if (lamp.role === 'tail') flares.tail(x + lamp.p[0] * fz + lamp.p[2] * fx, gy + lamp.p[1], z - lamp.p[0] * fx + lamp.p[2] * fz, -fx, 0, -fz, fade * brake);
+      }
+    }
     if (body) this.placeBody(kind, parked, struck, flags, lit, fade, blink);
     if (near && this.beamsOn && !struck && !parked && this.beamN < this.slots) {
       this.lm.makeRotationY(yaw).setPosition(x + fx * (model.halfLength + 8.2), gh + 0.07, z + fz * (model.halfLength + 8.2));
