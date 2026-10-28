@@ -20,7 +20,7 @@ from mathutils.bvhtree import BVHTree
 from mathutils.geometry import intersect_point_line
 
 REPO = globals().get('REPO') or os.getcwd()
-SHARED = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille']
+SHARED = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap']
 
 
 # ----- scene ---------------------------------------------------------------

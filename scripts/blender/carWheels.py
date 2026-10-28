@@ -31,8 +31,10 @@ shows between the spokes and from behind, and a wheel cut off at its face looks 
 Reduce: faces hidden from every direction forward of the car's centerline go (nobody sees a wheel
 from inside the car), then each kind is collapsed to its budget (BUDGETS: the face takes most)
 and shaded from the donor's authored normals. Materials: face and hub `Rim` (the player's wheel
-colour), the ring `Chrome` on a bolted (multi-piece) wheel and `Rim` on a one-piece, bolts and
-caps `Chrome`, the tire `Tire`; a source material named black stays `Black`.
+colour), the ring `RimLip` (its stock finish in the object's `lip`: chrome on a bolted multi-piece
+wheel, rim on a one-piece), the center cap `RimCap` (turned clean from its median profile, so the
+donor maker's logo goes), bolts and lug nuts `Chrome`, the tire `Tire`; a source material named
+black stays `Black`. The garage paints the lip and the cap apart from the face.
 
 Wheel space (exportCar.py): center at the origin, axle along X, the face toward +X. The game
 scales a wheel so the tire's outer radius meets the car's wheel radius and remaps the wheel for
@@ -76,6 +78,7 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
 # shade the face from its own shape when the donor's normals are wrong, `dark` a luminance (0-1):
 # faces whose base colour texture is darker go (a tire welded to the wheel in one textured mesh).
 # `pick` (axis, lo, hi): keep only the faces whose centre lies between lo and hi on that axis of the import's frame (a scene holding several wheels).
+# `cap` the turned hub cap's radius (share of the lip) where the round test stops short of an opening a dropped logo cap covered.
 _J = {'author': 'jonver87', 'license': 'CC Attribution'}
 WHEELS = {
     'kumo': {'name': 'Work VS-TX', 'uid': '31c76095a0754cb1b08591d63973a2c2', 'maker': 'Work', **_J},
@@ -164,10 +167,11 @@ WHEELS = {
     'madoka': {'name': 'Vossen LC106', 'uid': 'bb90d9eb6f9c4bdc8fdc8340cfa693b6', 'maker': 'Vossen', **_J},
     'mizore': {'name': 'Vossen LC108T', 'uid': '124076f7e61f43109c78f329bbb4ee8b', 'maker': 'Vossen', **_J},
     'momiji': {'name': 'Vossen-x-Work VWS3', 'uid': 'bff5b9a09f0f42febac5fba5c2f2860c', 'maker': 'Vossen-x-Work', **_J,
-              'face': 1},   # the normal vote put the spokes at the far end of the barrel
+              'face': -1,   # the spokes' concave fronts; face 1 showed the hub's mounting pad and stud holes (2026-10-28)
+              'cap': 0.235},   # its logo cap went as a decal over a star shaped opening wider than the round hub
     'nagi': {'name': 'Vossen VPS 310T', 'uid': '2128c0d05b98416c9de4f3eccf2605aa', 'maker': 'Vossen', **_J},
     'natsu': {'name': 'Rotiform HVN', 'uid': 'c89560b091cf49e9b2cc4f0f38074d40', 'maker': 'Rotiform', **_J,
-             'face': 1},   # the normal vote put the plate 0.6 of the way down the barrel
+             'face': -1},   # face 1 showed the plate's plain back and the hub's mounting face (2026-10-28)
     'nokaze': {'name': 'Rotiform SEA', 'uid': '6dd27000a1cf433490be246b67868022', 'maker': 'Rotiform', **_J},
     'ogi': {'name': 'Rotiform RSC', 'uid': '3be8e6543dc34551b71666f4c0d262a5', 'maker': 'Rotiform', **_J,
            'face': -1},   # the normal vote put the plate 0.73 of the way down the barrel
@@ -565,8 +569,8 @@ def _cap_profile(faces, L, planes=24, stations=48):
     """A center cap's (x, r) profile from the axle out to its edge and down its skirt: rays down -X
     at `stations` radii, each station the median of its hits over `planes` angles round the axle,
     so a maker's logo or lettering, raised or engraved, on a fraction of the angles at any radius
-    does not count and the cap's own shape (dome, step, flat face) does. None when the cap is not
-    round (fewer than half the rays hit at the axle)."""
+    does not count and the cap's own shape (dome, step, flat face) does. A cap ring round an open
+    bore starts where the rays first hit. None when too few stations hit."""
     vs = list({v for f in faces for v in f.verts})
     idx = {v: k for k, v in enumerate(vs)}
     tree = BVHTree.FromPolygons([v.co for v in vs], [[idx[v] for v in f.verts] for f in faces])
@@ -583,10 +587,14 @@ def _cap_profile(faces, L, planes=24, stations=48):
                 hits.append(hit.x)
         if len(hits) * 2 > planes:
             pts.append(Vector((sorted(hits)[len(hits) // 2], r)))
-        elif not pts:
-            return None
+    if len(pts) < 2:
+        return None
+    # Out to the edge of the faces it replaces, where the rays stopped short (an opening under them).
+    if pts[-1].y < 0.98 * rmax:
+        pts.append(Vector((pts[-1].x, rmax)))
     edge = pts[-1].y
-    skirt = min((v.co.x for v in vs if _rad(v.co) > 0.85 * edge), default=pts[-1].x)
+    # Down the skirt to the hub, at most 12 mm (a moulded hub's faces run on to its back).
+    skirt = max(min((v.co.x for v in vs if _rad(v.co) > 0.85 * edge), default=pts[-1].x), pts[-1].x - 0.012)
     if skirt < pts[-1].x - 0.001:
         pts.append(Vector((skirt, edge)))
     return _thin(pts, 12, 2e-4)
@@ -596,7 +604,7 @@ def clean_cap(o, pick=None, seg=CAP_SEG):
     """Turn the wheel's center cap from its own profile: the faces `pick(face, L)` chooses (by
     default those already `RimCap`) go and a lathe of their median profile takes their place, in
     `RimCap`, so the cap keeps its shape and loses the donor maker's logo. The rest of the mesh
-    keeps its custom normals. Faces not round at the axle are lug nuts and go back to Chrome.
+    keeps its custom normals. Faces that start outside 0.15 of the lip are lug nuts and go back to Chrome.
     Returns the profile's point count, 0 when there was no cap."""
     L = TIRE_R * BEAD
     me = o.data
@@ -609,15 +617,17 @@ def clean_cap(o, pick=None, seg=CAP_SEG):
     bm = bmesh.new()
     bm.from_mesh(me)
     faces = [f for f in bm.faces if pick(f, L)]
-    prof = _cap_profile(faces, L) if faces else None
+    # A cap reaches in to the bore; a ring of lug nuts round the hub (inside 0.35 of the lip, so
+    # classified as cap) starts outside 0.15.
+    lugs = bool(faces) and min(_rad(v.co) for f in faces for v in f.verts) > 0.15 * L
+    prof = _cap_profile(faces, L) if faces and not lugs else None
     if prof:
         bmesh.ops.delete(bm, geom=faces, context='FACES')
         made = _lathe(bm, prof, cap_i, seg, eye=Vector((0.25, 0.3)))
         # The lathe's first ring sits on the axle: one vertex, its quads triangles.
         bmesh.ops.remove_doubles(bm, verts=list({v for f in made for v in f.verts if _rad(v.co) < 1e-5}), dist=1e-5)
     elif faces:
-        # Not round at the axle: a ring of lug nuts round the hub (inside 0.35 of the lip, so
-        # classified as cap), hardware that stays Chrome.
+        # Lug nuts: hardware, which stays Chrome.
         if 'Chrome' not in [m.name for m in me.materials]:
             me.materials.append(shared_mat('Chrome'))
         for f in faces:
@@ -632,6 +642,42 @@ def clean_cap(o, pick=None, seg=CAP_SEG):
     me.attributes.remove(me.attributes['src_normal'])
     remap_materials(o)
     return len(prof) if prof else 0
+
+
+def hub_cap(o, cut=None, planes=24, step=0.005, most=0.4):
+    """For a wheel whose cap is moulded into its face (no `RimCap` piece): the hub's round center,
+    from the axle out to where lug holes, nuts or spokes begin, becomes a turned `RimCap` like any
+    other cap, so it takes the cap's paint and loses the logo cast into it (the Brabus "B", the
+    XR4's badge). Rays down -X at stations `step` of the lip radius apart over `planes` angles: the
+    center stays round while 90 % of them hit and their spread is under 3 mm; a logo, cast in or
+    engraved, breaks both only near the axle, so inside 0.12 half the rays hitting will do. Returns the cap's radius over the lip
+    radius, 0 when the hub is open or not round (the bore shows, or spokes reach the axle). `cut`
+    (over the lip radius) sets the cap's radius instead: the recipe's `cap`, for a hub whose
+    opening under a dropped logo cap is wider than the round test reaches."""
+    L = TIRE_R * BEAD
+    me = o.data
+    names = [m.name for m in me.materials]
+    if 'RimCap' in names:
+        return 0
+    keep = {names.index(n) for n in ('Rim', 'Black') if n in names}
+    cand = [p for p in me.polygons if p.material_index in keep and max(math.hypot(me.vertices[i].co.y, me.vertices[i].co.z) for i in p.vertices) < most * L]
+    if not cand:
+        return 0
+    tree = BVHTree.FromPolygons([v.co for v in me.vertices], [p.vertices[:] for p in cand])
+    top = max(me.vertices[i].co.x for p in cand for i in p.vertices) + 0.02
+    if cut:
+        cut *= L
+    for k in range(0 if cut else int(most / step)):
+        r = k * step * L
+        hits = sorted(h.x for h in (tree.ray_cast(Vector((top, r * math.cos(2 * math.pi * (j + 0.5) / planes), r * math.sin(2 * math.pi * (j + 0.5) / planes))), Vector((-1, 0, 0)))[0] for j in range(planes)) if h is not None)
+        if len(hits) * 2 <= planes or r > 0.12 * L and (len(hits) < 0.9 * planes or hits[int(0.9 * len(hits))] - hits[int(0.1 * len(hits))] > 0.003):
+            break
+        cut = r
+    if not cut or cut < 0.12 * L:
+        return 0
+    rim = cut * 0.97
+    clean_cap(o, lambda f, L: f.material_index in keep and all(_rad(v.co) < rim for v in f.verts))
+    return cut / L
 
 
 def _is_lathe(cos, L, seg=RING_SEG):
@@ -1062,12 +1108,13 @@ def wheel(name, root):
             out.attributes.remove(out.attributes[a])
     remap_materials(o)
     cap_pts = clean_cap(o)
+    hub_r = 0 if cap_pts else hub_cap(o, R0.get('cap'))
     o['lip'] = lip
     o['displayName'] = name.capitalize()
     o['group'] = GROUPS[R0['maker']]
     print(f'wheel_{name}: {R0["name"]} ({R0["author"]}); islands {kinds}; face {"+" if sign > 0 else "-"}X, scaled x{k:.3f}, '
           f'barrel squeezed x{squeeze:.2f}, lip {lip}' + (f' turned from {len(ring_prof)} points' if ring_prof else '') + ', ' + (f'{len(circle[0])} house bolts at r {circle[1]:.3f}' if circle else 'no bolt circle') +
-          (f', house cap r {cap_r:.3f}' if cap_r else '') + (f', cap turned from {cap_pts} points' if cap_pts else '') + f'; {src_tris} -> {tris(o)} tris ({culled} hidden culled, {loose} loose, {gone["bolt"]} of bolts and {gone["decal"]} of decals replaced)')
+          (f', house cap r {cap_r:.3f}' if cap_r else '') + (f', cap turned from {cap_pts} points' if cap_pts else f', hub turned as a cap to r {hub_r:.2f}' if hub_r else '') + f'; {src_tris} -> {tris(o)} tris ({culled} hidden culled, {loose} loose, {gone["bolt"]} of bolts and {gone["decal"]} of decals replaced)')
     return o
 
 

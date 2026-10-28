@@ -70,6 +70,8 @@ export function randomBuild(name = DEFAULT_BUILD_NAME): CarBuild {
   v.paint = { color: pick(PRESETS.body), finish: pick<PaintFinish>(['gloss', 'metallic', 'metallic', 'pearl', 'candy', 'matte']) };
   v.wheels.paint = { color: pick(PRESETS.wheels), finish: pick<PaintFinish>(['metallic', 'gloss', 'matte']), match: false };
   v.wheels.rearPaint = { ...v.wheels.paint };
+  v.wheels.lip = { mode: 'stock', color: '#c9ced8', finish: 'metallic' };
+  v.wheels.cap = { mode: 'face', color: '#c9ced8', finish: 'metallic' };
   v.calipers = Math.random() < 0.25 ? { ...v.paint, match: true } : { color: pick(PRESETS.calipers), finish: pick<PaintFinish>(['gloss', 'candy', 'metallic']), match: false };
   v.tint.darkness = between(0.45, 0.85);
   const glow = pick(PRESETS.glow);
@@ -179,6 +181,9 @@ const SHORT: Record<string, string> = {
   tire: 'ty',
   rearTire: 'rt',
   lettering: 'lt',
+  lip: 'lp',
+  cap: 'cp',
+  mode: 'md',
   size: 'sz',
   decals: 'dc',
   shape: 'sh',

@@ -66,7 +66,7 @@ async function wheelTriangles(file: string): Promise<{ tris: Tri[]; r: number }>
         r = Math.max(r, Math.hypot(y, z));
         return [m[0] * v[0] + m[4] * v[1] + m[8] * v[2] + m[12], y, z];
       };
-      for (let t = 0; t + 2 < count; t += 3) tris.push({ o: Float64Array.from([...at(t), ...at(t + 1), ...at(t + 2)]), rim: name === 'Rim' });
+      for (let t = 0; t + 2 < count; t += 3) tris.push({ o: Float64Array.from([...at(t), ...at(t + 1), ...at(t + 2)]), rim: name === 'Rim' || name === 'RimLip' || name === 'RimCap' });
     }
   }
   return { tris, r };

@@ -9,7 +9,7 @@
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { AXLES, Axle, AxleStance, CarBuild, GLOW_PATTERNS, STANCE_LIMITS, TireShape, VinylShape } from '../shared/carBuild';
+import { AXLES, Axle, AxleStance, CarBuild, GLOW_PATTERNS, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
@@ -324,6 +324,9 @@ export function renderTabContent(host: TabHost): void {
               { body: v.paint },
             ),
           ),
+          // The lip and the center cap are per build, both axles: the paint picker shows only while the mode is 'paint'.
+          trimSection(host, 'Lip', w.lip, [{ value: 'stock', label: 'Stock' }, { value: 'face', label: 'Face' }, { value: 'chrome', label: 'Chrome' }, { value: 'paint', label: 'Paint' }]),
+          trimSection(host, 'Center cap', w.cap, [{ value: 'face', label: 'Face' }, { value: 'chrome', label: 'Chrome' }, { value: 'paint', label: 'Paint' }]),
           // One caliper paint for all four corners, whatever the axle switch says.
           section('Calipers', paintPicker(v.calipers, PRESETS.calipers, () => host.changed(), { body: v.paint })),
         );
@@ -523,4 +526,18 @@ function renderPerformance(host: TabHost): void {
     ),
   );
   host.body.append(h('div', { class: 'muted garage-note' }, 'Position 3 on every slider is the stock car. Visual parts never change performance.'));
+}
+
+/** A wheel trim section (lip or center cap): the mode, and its own paint while the mode is 'paint'. Both axles. */
+function trimSection(host: TabHost, name: string, trim: WheelTrim, modes: { value: WheelTrimMode; label: string }[]): HTMLElement {
+  return section(
+    name,
+    segmented(modes, trim.mode, (m) => {
+      trim.mode = m;
+      host.changed();
+      host.renderTab();
+    }),
+    ...(trim.mode === 'paint' ? [paintPicker(trim, PRESETS.wheels, () => host.changed())] : []),
+    h('div', { class: 'muted garage-note' }, 'Both axles.'),
+  );
 }

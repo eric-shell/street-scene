@@ -28,7 +28,7 @@ export const SLOT_LABELS: Record<PartSlot, string> = {
  * Shared material names. Source assets are renamed to these during import and
  * new parts must use them, so paint, trim and tint apply automatically.
  */
-export const MATERIAL_NAMES = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille'] as const;
+export const MATERIAL_NAMES = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap'] as const;
 export type MaterialName = (typeof MATERIAL_NAMES)[number];
 
 /** Triangle budgets per slot used by validation. */
@@ -48,6 +48,8 @@ export interface PartEntry {
   displayName: string;
   /** The garage section a wheel is listed under: a fictional maker name standing for its donor's real maker. */
   group?: string;
+  /** Wheels: how the lip ships, polished ('chrome') or in the face's paint ('rim'); missing reads 'rim'. */
+  lip?: 'chrome' | 'rim';
   /** Car id, or "universal" (wheels). */
   carId: string;
   slot: PartSlot;

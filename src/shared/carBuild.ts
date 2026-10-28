@@ -27,6 +27,17 @@ export interface AccentPaint extends Paint {
   match: boolean;
 }
 
+/** How a lip or center cap is finished: 'stock' as the wheel ships (the catalog's `lip`: polished, or the face's paint), 'face' the axle's wheel paint, 'chrome' polished metal, 'paint' its own color and finish. */
+export const WHEEL_TRIM_MODES = ['stock', 'face', 'chrome', 'paint'] as const;
+export type WheelTrimMode = (typeof WHEEL_TRIM_MODES)[number];
+
+/** A wheel's lip or center cap finish; color and finish apply in 'paint' mode. */
+export interface WheelTrim {
+  mode: WheelTrimMode;
+  color: string;
+  finish: PaintFinish;
+}
+
 export const VINYL_SHAPES = ['stripe', 'twinStripe', 'flame', 'tribal', 'sponsorA', 'sponsorB', 'sponsorC', 'number', 'star', 'chevron'] as const;
 export type VinylShape = (typeof VINYL_SHAPES)[number];
 
@@ -99,6 +110,10 @@ export interface VisualBuild {
     rearTire: TireShape;
     /** Raised brand lettering on the tires' outer sidewalls (both axles; render/car/tireTread.ts). Off by default; a missing value reads off. */
     lettering: boolean;
+    /** The wheels' lips (the turned lip and barrel), both axles. */
+    lip: WheelTrim;
+    /** The wheels' center caps, both axles. */
+    cap: WheelTrim;
   };
   /** Brake caliper paint, all four corners. */
   calipers: AccentPaint;
@@ -133,7 +148,7 @@ export function defaultVisual(): VisualBuild {
     paint: { color: '#d11f3f', finish: 'metallic' },
     trimColor: '#15161a',
     parts: {},
-    wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false },
+    wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'stock', color: '#c9ced8', finish: 'metallic' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' } },
     calipers: { color: '#c41e3a', finish: 'gloss', match: false },
     decals: [],
     stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 } },
@@ -161,6 +176,13 @@ function validPaint(v: unknown, fallback: Paint): Paint {
 function validAccent(v: unknown, fallback: AccentPaint): AccentPaint {
   const o = obj(v);
   return { ...validPaint(o, fallback), match: typeof o.match === 'boolean' ? o.match : fallback.match };
+}
+
+/** A lip or cap trim; a cap cannot be 'stock' (it reads 'face'). */
+function validTrim(v: unknown, fallback: WheelTrim, cap: boolean): WheelTrim {
+  const o = obj(v);
+  const mode = oneOf(o.mode, WHEEL_TRIM_MODES, fallback.mode);
+  return { mode: cap && mode === 'stock' ? 'face' : mode, ...validPaint(o, fallback) };
 }
 
 export function validateVisual(v: unknown): VisualBuild {
@@ -230,7 +252,7 @@ export function validateVisual(v: unknown): VisualBuild {
     paint: validPaint(o.paint, d.paint),
     trimColor: hexColor(o.trimColor, d.trimColor),
     parts,
-    wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire), lettering: wheels.lettering === true },
+    wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire), lettering: wheels.lettering === true, lip: validTrim(wheels.lip, d.wheels.lip, false), cap: validTrim(wheels.cap, d.wheels.cap, true) },
     calipers: validAccent(o.calipers, d.calipers),
     decals,
     stance: {

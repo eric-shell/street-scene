@@ -574,13 +574,13 @@ async function main(): Promise<void> {
     const exporter = join(ROOT, 'scripts/blender/exportCar.py');
     const stale = !existsSync(metaPath) || statSync(metaPath).mtimeMs < Math.max(statSync(wheelBlend).mtimeMs, statSync(exporter).mtimeMs);
     if (stale) execFileSync(blenderW, ['--background', wheelBlend, '--python', exporter, '--', out], { stdio: 'pipe' });
-    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { wheels: { name: string; displayName: string; group?: string }[] };
+    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { wheels: { name: string; displayName: string; group?: string; lip?: string }[] };
     const section: string[] = ['## Wheel set', '', `Source: \`${relative(ROOT, wheelBlend)}\` (scripts/blender/carWheels.py).`, ''];
     for (const wh of meta.wheels) {
       const doc = await io.read(join(out, 'wheels', `wheel_${wh.name}.glb`));
       const id = `wheel_${wh.name}`;
       const w = await writeOptimized(io, doc, join(PUBLIC, `parts/${id}.glb`), 'Wheel');
-      generated.push({ id, displayName: wh.displayName || wh.name, ...(wh.group ? { group: wh.group } : {}), carId: 'universal', slot: 'wheels', file: `parts/${id}.glb`, hides: [], materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
+      generated.push({ id, displayName: wh.displayName || wh.name, ...(wh.group ? { group: wh.group } : {}), ...(wh.lip === 'chrome' || wh.lip === 'rim' ? { lip: wh.lip } : {}), carId: 'universal', slot: 'wheels', file: `parts/${id}.glb`, hides: [], materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
       section.push(`- \`${id}\` ${wh.displayName}: ${(w.bytes / 1024).toFixed(1)} KB, ${w.tris} tris.`);
     }
     inspectSections.push(section.join('\n') + '\n');

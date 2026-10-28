@@ -95,7 +95,8 @@ export class WheelThumbs {
     // The clone shares the cached GLB's geometry: only its materials are swapped, and nothing of it is disposed.
     model.traverse((o) => {
       if (o instanceof THREE.Mesh) {
-        const pick = (m: THREE.Material) => this.materials[m.name] ?? this.materials.Rim;
+        // The cap is the face's finish; the lip is polished or the face's, as the wheel ships it.
+        const pick = (m: THREE.Material) => this.materials[m.name === 'RimCap' ? 'Rim' : m.name === 'RimLip' ? (entry.lip === 'chrome' ? 'Chrome' : 'Rim') : m.name] ?? this.materials.Rim;
         o.material = Array.isArray(o.material) ? o.material.map(pick) : pick(o.material);
       }
     });
