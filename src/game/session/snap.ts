@@ -15,6 +15,8 @@ export interface Snap extends CarPose {
   vz: number;
   rpm: number;
   throttle: number;
+  /** The gear engaged (-1 reverse, 1..n): the exhaust flames read its upshift edge. */
+  gear: number;
   /** A gear change is cutting the drive (engine voice). */
   shifting: boolean;
   /** The two-step or antilag has the spark off (engine voice: the limiter's stutter). */
@@ -43,6 +45,7 @@ export function snap(rc: RaceCar): Snap {
     vz: c.vz,
     rpm: c.rpm,
     throttle: c.throttle,
+    gear: c.gear,
     shifting: c.shiftTimer > 0,
     cut: c.twoStepCut > 0,
     passThrough: rc.passThrough,
@@ -82,6 +85,7 @@ export function lerpSnap(a: Snap, b: Snap, t: number, out?: Snap): Snap {
   o.vz = l(a.vz, b.vz);
   o.rpm = l(a.rpm, b.rpm);
   o.throttle = l(a.throttle, b.throttle);
+  o.gear = b.gear;
   o.shifting = b.shifting;
   o.cut = b.cut;
   o.passThrough = b.passThrough;

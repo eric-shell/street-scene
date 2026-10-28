@@ -28,6 +28,7 @@ import { unmaskVehicle } from '../render/vehicleMask';
 import { applyHeightFog } from '../render/heightFog';
 import { LightTrails } from '../render/car/lightTrails';
 import { Sparks } from '../render/car/sparks';
+import { ExhaustFx } from '../render/car/exhaustFx';
 import { TireFx } from '../render/car/tireFx';
 import { Litter } from '../render/car/litter';
 import { WaypointBeacons } from '../render/race/waypointBeacons';
@@ -226,6 +227,8 @@ export class RaceSession {
   private readonly uiRoot: HTMLElement;
   /** The camera rendered last frame (the drone starts from it). */
   private lastCamera: THREE.PerspectiveCamera | null = null;
+  /** View height of one pixel at 1 m (2 tan(fov / 2) / height px): the sprites' minimum width. */
+  private pixel = 0.001;
   private freeCam: FreeFlyCamera | null = null;
   private tv = new TvCamera();
   private unsub: (() => void)[] = [];
@@ -233,6 +236,10 @@ export class RaceSession {
   private trails: LightTrails;
   /** Underbody and wall sparks for every car near the camera (render/car/sparks.ts). */
   private sparks: Sparks;
+  /** Upshift, overrun and nitrous flames at the tailpipes and the heat haze behind them (render/car/exhaustFx.ts). */
+  private exhaust: ExhaustFx;
+  /** Each car's redline (rpm), for the haze's engine load. */
+  private readonly redlines: number[];
   /** Rubber on the road and tire smoke for every car losing traction (render/car/tireFx.ts). */
   private tireFx: TireFx;
   /** Paper, leaves and cups lifted by the cars' wake (render/car/litter.ts). */
@@ -365,6 +372,9 @@ export class RaceSession {
       // Rivals take the scene's height fog once their parts exist; the player's car sits too close for it to show.
       loads.push(view.load(opts.visuals[i] ?? opts.visuals[0]).then(() => (i > 0 ? applyHeightFog(view.root) : undefined)));
     });
+    this.exhaust = new ExhaustFx(settings.quality, this.views);
+    this.night.scene.add(this.exhaust.mesh);
+    this.redlines = this.race.cars.map((c) => c.tuning.engine.redline);
     this.drivers = new Drivers(this.race.cars.length);
     this.night.scene.add(this.drivers.group);
     if (opts.ghost) {
@@ -698,6 +708,7 @@ export class RaceSession {
     this.hardHitTick = false;
     stepRace(r, frame);
     this.curr = r.cars.map((c) => snap(c));
+    this.exhaust.tick(r, this.prev, this.curr, this.time, this.camPos);
     if (r.traffic) {
       const t = this.trafficPrev;
       this.trafficPrev = this.trafficCurr;
@@ -905,6 +916,7 @@ export class RaceSession {
       const cam = this.lastCamera ?? this.cam.camera;
       const px = this.gr.renderer.domElement.clientHeight || window.innerHeight;
       this.sparks.update(this.time, (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px));
+      this.pixel = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px);
       this.tireFx.update(this.time);
       this.litter.update(this.time);
     }
@@ -924,6 +936,9 @@ export class RaceSession {
       v.root.visible = poses[i].passThrough <= 0 || (poses[i].passThrough * RESET_BLINK_HZ + 0.5) % 1 < 0.5;
     });
     this.drivers.update(this.views, poses);
+    const wet = this.night.weather.live.wet;
+    for (const v of this.views) v.setWet(wet);
+    this.exhaust.update(this.time, dt, poses, this.camPos, this.paused, this.pixel);
     if (this.ghostView && this.ghostPrev && this.ghostCurr) this.ghostView.update(lerpSnap(this.ghostPrev, this.ghostCurr, alpha, (this.ghostPose ??= { ...this.ghostCurr, comp: [], spin: [] })), this.time);
     const p = poses[0];
     let camera: THREE.PerspectiveCamera;
@@ -932,6 +947,7 @@ export class RaceSession {
       camera = this.drone.camera;
     } else camera = this.updateCamera(p, dt);
     this.lastCamera = camera;
+    this.exhaust.haze(this.gr.post, camera, poses, this.redlines, this.time, dt, this.paused);
     this.trails.update(this.views[0].root, camera, this.paused ? 0 : p.nitroStage, dt);
     this.carLight?.follow(p);
     // The few real point lights follow the action, or the drone when it flies off.
@@ -1104,6 +1120,7 @@ export class RaceSession {
     this.ghostView?.dispose();
     this.trails.dispose();
     this.sparks.dispose();
+    this.exhaust.dispose();
     this.tireFx.dispose();
     this.litter.dispose();
     this.beacons?.dispose();

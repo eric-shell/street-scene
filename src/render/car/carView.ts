@@ -58,12 +58,111 @@ const GROUND_FX = {
   beamY: 0.07,
   /** The headlight pool's colour (additive, linear-ish): 0x6f7a8a at 0.7 so the road beside the car keeps a falloff instead of a white blob. */
   beamColor: 0x4e5561,
+  /**
+   * The pool's footprint (m): the cookie (headlightCookie) spans this wide and long from just ahead of the nose,
+   * so the lit road ends in the cutoff about 40 m out instead of fading by 20.
+   */
+  beamWidth: 12,
+  beamLength: 44,
+  beamStart: -0.5,
+  /**
+   * Brightest texel of the cookie, as a share of the old radial pool's peak (1, at the 0.7 tuning). Matching the
+   * old pool's mean texel (0.144) instead left the pool at 0.44 of that peak, spread over 2.7x the road, and it
+   * vanished in the street lighting (A/B on seed 20261019): the peak is what the eye reads, so the hotspots keep
+   * the old brightness and the extra light is what lengthens the pool.
+   */
+  beamPeak: 1,
+  /** Wet road: the pool, and the real spots, brighten by this share at full wet (the streaks throw the lamp light back). */
+  wetBeam: 0.6,
+  wetSpot: 0.25,
   /** Body height over its rest (m) at which the underglow on the road has faded to half: it spreads and dims on a jump. */
   airHalf: 0.5,
 } as const;
 
 let glowTex: THREE.Texture | null = null;
 const glow = () => (glowTex ??= makeRadialGlow());
+
+/**
+ * The headlight cookie: a low beam laid on the road, seen from above. Canvas row 0 is the nose, the last row
+ * beamLength m out; column 0 is the car's right. Two hotspots (the lamps) widen with distance over a soft
+ * spill, brightest 10..15 m out and falling to about a quarter by the cutoff; the cutoff is a sharp
+ * line, stepped as a real low beam's is: the right (kerb) side carries to 41 m, the left to 33 m so it does
+ * not dazzle oncoming drivers. Opaque grey (the pool is additive, so grey is brightness), scaled so its brightest texel is GROUND_FX.beamPeak.
+ */
+const COOKIE = {
+  /** Texels across and along. */
+  size: [128, 512],
+  /** Lamp centre off the car's axis (m) and the hotspot's spread there and its growth per m of distance. */
+  lampX: 0.72,
+  spread: [0.9, 0.075],
+  /** Spill share and its half width (m) at the nose and growth per m. */
+  spill: [0.3, 4, 0.04],
+  /** Distance of the brightest ground (m): nearer it ramps up as a power of the distance, beyond it falls with this length (m). */
+  peak: 12,
+  ramp: 0.6,
+  fall: 22,
+  /** Cutoff distance (m) on the right and the left, the step between them centred on the axis (m), and the edge's softness (m). */
+  cutRight: 41,
+  cutLeft: 33,
+  step: 0.6,
+  soft: 0.35,
+  /** The bright band hugging the line under the cutoff: gain and its half length (m). */
+  band: [0.3, 2.5],
+} as const;
+
+/**
+ * The player's two real headlight spots, matched to the cookie: cone half angle (rad) about the cookie's width
+ * at its hotspot, penumbra (share of the cone that feathers) softening the sides, range (m) ending at the
+ * cutoff line, intensity (cd, unchanged from before the cookie) and where on the road the axis lands (m ahead of the nose).
+ */
+const SPOT = { angle: 0.27, penumbra: 0.7, distance: 46, decay: 1.3, intensity: 90, aim: 12 } as const;
+
+let cookieTex: THREE.Texture | null = null;
+function headlightCookie(): THREE.Texture {
+  if (cookieTex) return cookieTex;
+  const [w, h] = COOKIE.size;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d')!;
+  const img = g.createImageData(w, h);
+  const sm = (a: number, b: number, x: number) => {
+    const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  const v = new Float32Array(w * h);
+  let peak = 0;
+  for (let py = 0; py < h; py++) {
+    const d = ((py + 0.5) / h) * GROUND_FX.beamLength + GROUND_FX.beamStart;
+    for (let px = 0; px < w; px++) {
+      // Canvas left is the car's right (-x in the plane's frame).
+      const x = ((px + 0.5) / w - 0.5) * GROUND_FX.beamWidth;
+      const cut = COOKIE.cutLeft + (COOKIE.cutRight - COOKIE.cutLeft) * (1 - sm(-COOKIE.step, COOKIE.step, x));
+      const sig = COOKIE.spread[0] + COOKIE.spread[1] * Math.max(d, 0);
+      const lamp = (xc: number) => Math.exp(-0.5 * ((x - xc) / sig) ** 2);
+      const spill = COOKIE.spill[0] * Math.exp(-0.5 * (x / (COOKIE.spill[1] + COOKIE.spill[2] * Math.max(d, 0))) ** 2);
+      const lat = Math.min(1, (lamp(COOKIE.lampX) + lamp(-COOKIE.lampX)) * 0.5 + spill);
+      const lon = d < COOKIE.peak ? Math.pow(Math.max(d, 0) / COOKIE.peak, COOKIE.ramp) : Math.exp(-(d - COOKIE.peak) / COOKIE.fall);
+      const edge = 1 - sm(cut - COOKIE.soft, cut + COOKIE.soft, d);
+      const band = 1 + COOKIE.band[0] * Math.exp(-(((d - cut + COOKIE.band[1]) / COOKIE.band[1]) ** 2));
+      const val = lat * lon * edge * band;
+      v[py * w + px] = val;
+      peak = Math.max(peak, val);
+    }
+  }
+  const gain = GROUND_FX.beamPeak / peak;
+  for (let i = 0; i < w * h; i++) {
+    const b = Math.round(Math.min(1, v[i] * gain) * 255);
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = b;
+    img.data[i * 4 + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  t.anisotropy = 4;
+  cookieTex = t;
+  return t;
+}
 
 /**
  * Overrun pop flash, each [crackle, bang]: lifetime (s), the orange tongue's length (m) and width (scale), the hot
@@ -136,6 +235,8 @@ export class CarView {
   /** Underglow brightness left after the body's height over the road (1 on the ground). */
   private airFade = 1;
   private readonly roadLift: number;
+  /** The exhaust tips in car space (x, y, z; m), left to right: where CarView's flames sit and ExhaustFx's start. */
+  readonly tips: [number, number, number][] = [];
   /** Nitrous flames, one per exhaust tip. */
   private flames: THREE.Mesh[] = [];
   /** Overrun pop flames per exhaust tip (the tongue, its hot core, the muzzle glow), the pipe each tip belongs to (0 or 1), when each starts and how big it is (1 bang, 0 crackle). */
@@ -147,6 +248,13 @@ export class CarView {
   /** Rotor heat, 0 cold to 1 glowing: builds under braking and fades quickly once off the brakes (BRAKE.heatUp / coolDown). */
   private rotorHeat = 0;
   private beam: THREE.Mesh;
+  /** The pool's colour before the wet road or the flash scale it. */
+  private readonly beamBase = new THREE.Color();
+  /** How wet the road reads 0..1 (the weather's), and the horn's flash level 0..1: both scale the pool and the spots. */
+  private wet = 0;
+  private flash = 0;
+  /** The spots' own intensity and range (they differ per tier). */
+  private spotBase: { intensity: number; distance: number }[] = [];
   /** The rear license plate (plate.ts), seated on the bumper after every load; null headless or when opted out. */
   private plate: THREE.Mesh | null = null;
   private plateTex: THREE.CanvasTexture | null = null;
@@ -258,21 +366,25 @@ export class CarView {
       this.root.add(this.underglowLight);
     }
 
-    // Headlight beams: a soft additive pool on the road ahead (cheap), plus real spots for the player.
-    const beamMat = track(new THREE.MeshBasicMaterial({ map: glow(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: GROUND_FX.beamColor }));
+    // Headlight beams: the cookie's pool on the road ahead (cheap, every car), plus real spots for the player.
+    const beamMat = track(new THREE.MeshBasicMaterial({ map: headlightCookie(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: GROUND_FX.beamColor }));
     underVehicles(beamMat);
-    this.beam = new THREE.Mesh(new THREE.PlaneGeometry(9, 22).rotateX(-Math.PI / 2).translate(0, GROUND_FX.beamY, dims.length / 2 + 10), beamMat);
+    this.beam = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_FX.beamWidth, GROUND_FX.beamLength).rotateX(-Math.PI / 2).translate(0, GROUND_FX.beamY, dims.length / 2 + GROUND_FX.beamStart + GROUND_FX.beamLength / 2), beamMat);
     this.beam.renderOrder = 3;
     this.groundFx.add(this.beam);
-    // One spot (the Low tier) sits between the lamps with a wider cone, so its pool covers what the pair's would.
+    this.beamBase.copy(beamMat.color);
+    // Spots shaped to the cookie: the cone is only as wide as the pool (a few degrees past the hotspots' spread at
+    // 15 m), aimed at the hotspot 12 m out and cut off by its range at the cutoff line. One spot (the Low tier)
+    // sits between the lamps with a wider cone, so its pool covers what the pair's would.
     const spots = opts.headlights ?? 0;
     if (spots > 0) {
       for (const side of spots === 1 ? [0] : [1, -1]) {
-        const spot = new THREE.SpotLight(0xeaf2ff, 90, 70, spots === 1 ? 0.5 : 0.42, 0.55, 1.3);
+        const spot = new THREE.SpotLight(0xeaf2ff, SPOT.intensity, SPOT.distance, spots === 1 ? SPOT.angle * 1.35 : SPOT.angle, SPOT.penumbra, SPOT.decay);
         spot.position.set(side * dims.width * 0.32, 0.7, dims.length / 2 - 0.2);
-        spot.target.position.set(side * 0.5, 0, dims.length / 2 + 18);
+        spot.target.position.set(side * 0.5, 0, dims.length / 2 + SPOT.aim);
         this.root.add(spot, spot.target);
         this.headlights.push(spot);
+        this.spotBase.push({ intensity: spot.intensity, distance: spot.distance });
       }
     }
 
@@ -281,6 +393,7 @@ export class CarView {
     // (two tips on one side split outer and inner).
     const flameGeo = track(new THREE.ConeGeometry(0.11, 0.9, 10, 1, true).rotateX(-Math.PI / 2).translate(0, 0, -0.45));
     const tips = (this.car.exhaustTips ?? [[DEFAULT_TIP.x, DEFAULT_TIP.y, -dims.length / 2 + 0.05], [-DEFAULT_TIP.x, DEFAULT_TIP.y, -dims.length / 2 + 0.05]]).slice().sort((a, b) => b[0] - a[0]);
+    this.tips.push(...tips);
     const additive = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false } as const;
     for (const [i, [x, y, z]] of tips.entries()) {
       const flame = new THREE.Mesh(flameGeo, track(new THREE.MeshBasicMaterial({ color: NITRO_FLAME.color[0].clone(), opacity: 0.85, ...additive })));
@@ -870,24 +983,40 @@ export class CarView {
     if (pivot) pivot.visible = on;
   }
 
-  private flashBase: { spot: number; spotDist: number; beam: THREE.Color; lens: number } | null = null;
+  private lensBase = NaN;
+
+  /** The wet road throws the lamps back: brighter pool and spots (0 dry .. 1 soaked). Cheap; call it every frame. */
+  setWet(wet: number): void {
+    const w = Math.max(0, Math.min(1, wet));
+    if (w === this.wet) return;
+    this.wet = w;
+    this.applyBeams();
+  }
 
   /** Flash to pass: 0 = normal beams, 1 = full high beam flash (spots, road pool and lenses). Driven by the session's horn. */
   flashHeadlights(level: number): void {
     const k = Math.max(0, Math.min(1, level));
-    // Idle: leave the lights alone (base values are captured when a flash starts).
-    if (k === 0 && !this.flashBase) return;
+    // Idle: leave the lights alone.
+    if (k === 0 && this.flash === 0) return;
+    this.flash = k;
+    this.applyBeams();
     const lens = this.materials.HeadLight as THREE.MeshStandardMaterial | undefined;
-    const beamMat = this.beam.material as THREE.MeshBasicMaterial;
-    this.flashBase ??= { spot: this.headlights[0]?.intensity ?? 0, spotDist: this.headlights[0]?.distance ?? 0, beam: beamMat.color.clone(), lens: lens?.emissiveIntensity ?? 1 };
-    const b = this.flashBase;
-    for (const h of this.headlights) {
-      h.intensity = b.spot * (1 + 1.8 * k);
-      h.distance = b.spotDist * (1 + 0.6 * k);
+    if (lens) {
+      if (Number.isNaN(this.lensBase)) this.lensBase = lens.emissiveIntensity;
+      lens.emissiveIntensity = this.lensBase * (1 + 2.5 * k);
+      if (k === 0) this.lensBase = NaN;
     }
-    beamMat.color.copy(b.beam).multiplyScalar(1 + 1.6 * k);
-    if (lens) lens.emissiveIntensity = b.lens * (1 + 2.5 * k);
-    if (k === 0) this.flashBase = null;
+  }
+
+  /** Pool colour and the spots' intensity and range from the wet road and the flash. */
+  private applyBeams(): void {
+    const k = this.flash;
+    (this.beam.material as THREE.MeshBasicMaterial).color.copy(this.beamBase).multiplyScalar((1 + GROUND_FX.wetBeam * this.wet) * (1 + 1.6 * k));
+    for (const [i, h] of this.headlights.entries()) {
+      const b = this.spotBase[i];
+      h.intensity = b.intensity * (1 + GROUND_FX.wetSpot * this.wet) * (1 + 1.8 * k);
+      h.distance = b.distance * (1 + 0.6 * k);
+    }
   }
 
   dispose(): void {
