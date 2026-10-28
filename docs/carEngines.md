@@ -112,8 +112,8 @@ Source status key: **sourced** = read on a fetched page; **est.** = not found.
 | Drive / curb | ATTESA E-TS Pro: introduced 1995 as an option, **standard on V-spec**, with a hydraulic active rear limited-slip diff (Wikipedia Skyline GT-R). Up to 50 % to the front: est. Super HICAS rear steer: sourced as a GT-R technology. Curb **1,530 kg** (infobox) or 1,540 kg (text); V-spec about 10 kg more. |
 | 0-100 / top | No clean 0-100 km/h figure: monkeymotor lists 5.5 s, ultimatespecs 0-60 mph 5.0 s, lapmeta 5.4 s (all search snippets). Top speed: **180 km/h JDM limiter; UK-imported V-spec limited to 250 km/h** (Wikipedia GT-R). The doc's "250 governed" holds only for the UK cars. |
 | Sound | Smooth-then-ragged inline six, ITB intake induction rasp, twin-turbo flutter, 8,000 rpm top. (Character, not sourced.) |
-| Voice | `intake: itb` **confirmed** (six throttle bodies), `headers: equal`, `pipes: 2`, `crossover: none`, `muffler: quiet` (stock) / `sport` (unchanged) |
-| Synth gaps | Twin-turbine flutter from two separate turbines per bank (parallel, so no handover); ITB honk is shared with N/A engines. Done: stock `diverter: 'recirculating'`, wastegate chatter (`wastegate: 0.4`, the wastegates are sourced above) |
+| Voice | `intake: itb` **confirmed** (six throttle bodies), `headers: equal`, `pipes: 2`, `crossover: none`, `muffler: quiet` (stock) / `sport` (shipped). Shipped: `pipes: 2, muffler: sport, intake: itb, manifold: split3, howl: 1, diverter: recirculating, wastegate: 0.4, twinWhistle: 0.015` (the voice follows the RB26DETT: ITBs, the manifold split front three / rear three, a metallic howl above 0.55 of the redline, two close whistle tones for the parallel twin turbos; sources and measurements in `docs/engineSound.md`, Hinode Horizon GT) |
+| Synth gaps | Twin-turbine flutter from two separate turbines per bank (parallel, so no handover); ITB honk is shared with N/A engines. Done: stock `diverter: 'recirculating'`, wastegate chatter (`wastegate: 0.4`, the wastegates are sourced above), the front three / rear three manifold table (`manifold`, est.), the high-rpm rasp (`howl`) and the twin turbos' two whistle tones (`twinWhistle`) |
 
 Shipped (`hinodeHorizon`) vs sourced: the shipped curve peaks 368 at 4,400, which **matches the sourced R33 figure** (the old doc's 392 was the outlier); gears and 4.111 final match, fifth 0.893 is a deliberate fit (donor 0.752); mass 1,540 matches; redline 8,000 is est.
 
@@ -454,7 +454,7 @@ Sources: https://en.wikipedia.org/wiki/Chrysler_Hemi_engine , https://en.wikiped
 | Strom R6 (R32 VR6) | VR6 | NA | 6,500 | 241 PS / 320 N·m | unequal 0.3, pipes 1, sport, plenum |
 | Rotor (RX-7 13B-REW) | R2 | seq. twin turbo | 7,000-8,000 | 255-280 PS / 294 N·m | pipes 1, quiet |
 | Kombi S (S2 I5) | I5 | single turbo | 6,800 | 230 PS / 350 N·m | equal, pipes 1, quiet |
-| Horizon GT (RB26) | I6 | twin parallel turbo | 8,000 (est.) | 280 PS / 368 N·m | itb, equal, pipes 2, quiet |
+| Horizon GT (RB26) | I6 | twin parallel turbo | 8,000 (est.) | 280 PS / 368 N·m | itb, equal, pipes 2, sport, split3 manifold, howl 1, twin whistle 0.015 |
 | Zenith (2JZ-GTE) | I6 | seq. twin turbo (2nd joins ~4,000) | 6,800-7,000 (est.) | 280 PS / 431 N·m at 3,600 (JDM) | equal, pipes 1, quiet, plenum |
 | Runabout (3S-GTE) | I4 | single turbo (CT20B, 13 psi) | 7,000 (est.) | 245 PS / 304 N·m at 4,000 | equal, pipes 1, quiet |
 | NSX / NSX-R (C30A) | V6 | NA, VTEC at 5,800 | 8,000 (cut 8,300) | 280 PS / 294 N·m (JDM) | pipes 2, h (est.), sport |

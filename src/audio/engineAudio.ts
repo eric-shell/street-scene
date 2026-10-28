@@ -24,7 +24,7 @@
  * Render side only; reads interpolated car state.
  */
 import type { EngineSpec } from '../shared/carSpec';
-import { CHATTER, FAN, FLUTTER, FlapGate, GEAR_WHINE, SEQUENTIAL, TurboModel, chatterClicks, fanHz, fanLevel, flapResponse, flutterPulses, gearWhineHz, gearWhineLevel, sequentialSpec, type Pulse } from './engineAccessories';
+import { CHATTER, FAN, FLUTTER, FlapGate, GEAR_WHINE, SEQUENTIAL, TWIN_WHISTLE, TurboModel, chatterClicks, fanHz, fanLevel, flapResponse, flutterPulses, gearWhineHz, gearWhineLevel, sequentialSpec, twinWhistlePitches, type Pulse } from './engineAccessories';
 import { CHAIN, ENGINE_PROCESSOR, SYNTH_PARAMS, TURBO, buildProgram, firingHz, presenceHz, renderImpulse, type EngineMessage, type EngineProgram, type SynthParams } from './engineSynth';
 import workletUrl from './engineWorklet?worker&url';
 
@@ -298,6 +298,8 @@ export class EngineVoice {
   private readonly model: TurboModel;
   /** The sequential twin turbo's second whistle (null without a handover, and on rivals). */
   private turbo2: { osc: OscillatorNode; gain: GainNode } | null = null;
+  /** A parallel twin turbo's two pitch multipliers (voice.twinWhistle); its second tone is turbo2. Null for one turbo, a sequential pair, and rivals. */
+  private twin: [number, number] | null = null;
   /** Compressor surge flutter: band, level (null for a valve car with no flutter share). */
   private flutter: { filter: BiquadFilterNode; gain: GainNode } | null = null;
   /** Wastegate chatter: the ticks' gain and the car's level (null without the field, and on rivals). */
@@ -454,6 +456,18 @@ export class EngineVoice {
         this.turboSources.push(osc);
         this.turbo2 = { osc, gain };
       }
+      // The parallel twin turbo's second tone: the second turbine runs a hair off the first, always at full (both are fed all the time).
+      if (spec.voice?.twinWhistle && !sequentialSpec(spec.voice) && !opts.lite) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        osc.connect(gain).connect(this.out);
+        osc.start();
+        this.turboSources.push(osc);
+        this.turbo2 = { osc, gain };
+        this.twin = twinWhistlePitches(spec.voice.twinWhistle);
+      }
       // Induction whoosh: noise through a band that climbs with boost, silent until the car asks for it.
       const level = spec.voice?.whoosh ?? 0;
       if (level > 0 && !opts.lite) {
@@ -593,9 +607,13 @@ export class EngineVoice {
       m.step(rpm, e.redline, load, dt);
       const W = TURBO.whistle;
       const hz = W.hz + m.speed * W.span;
-      this.turbo.frequency.setTargetAtTime(hz * m.primaryPitch, t, 0.08);
-      this.gTurbo.gain.setTargetAtTime(m.boost * W.gain * m.primaryLevel * e.proximity, t, 0.08);
-      if (this.turbo2) {
+      const tw = this.twin;
+      this.turbo.frequency.setTargetAtTime(hz * m.primaryPitch * (tw ? tw[0] : 1), t, 0.08);
+      this.gTurbo.gain.setTargetAtTime(m.boost * W.gain * m.primaryLevel * (tw ? TWIN_WHISTLE.share : 1) * e.proximity, t, 0.08);
+      if (this.turbo2 && tw) {
+        this.turbo2.osc.frequency.setTargetAtTime(hz * tw[1], t, 0.08);
+        this.turbo2.gain.gain.setTargetAtTime(m.boost * W.gain * TWIN_WHISTLE.share * e.proximity, t, 0.08);
+      } else if (this.turbo2) {
         this.turbo2.osc.frequency.setTargetAtTime(hz * SEQUENTIAL.secondaryPitch, t, 0.08);
         this.turbo2.gain.gain.setTargetAtTime(m.boost * W.gain * SEQUENTIAL.secondaryGain * m.secondary * e.proximity, t, 0.08);
       }

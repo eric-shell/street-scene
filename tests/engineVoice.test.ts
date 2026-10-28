@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { Biquad, CAM, CHAIN, LAYOUT_VOICE, LOPE, RASP, TURBO, buildProgram, EngineSynth, kWeighting, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
+import { Biquad, CAM, CHAIN, HOWL, LAYOUT_VOICE, LOPE, MANIFOLD, RASP, TURBO, buildProgram, EngineSynth, kWeighting, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
 import { powerSpectrum } from '../src/audio/dsp';
-import { CHATTER, FAN, FLAPS, FLUTTER, FlapGate, GEAR_WHINE, SEQUENTIAL, TurboModel, chatterClicks, fanHz, fanLevel, flapResponse, flutterPulses, gearWhineHz, gearWhineLevel, sequentialSpec, type Pulse } from '../src/audio/engineAccessories';
+import { CHATTER, FAN, FLAPS, FLUTTER, FlapGate, GEAR_WHINE, SEQUENTIAL, TWIN_WHISTLE, TurboModel, chatterClicks, fanHz, fanLevel, flapResponse, flutterPulses, gearWhineHz, gearWhineLevel, sequentialSpec, twinWhistlePitches, type Pulse } from '../src/audio/engineAccessories';
 import { ENGINE_LAYOUTS, engineSpecErrors, type EngineLayout, type EngineSpec } from '../src/shared/carSpec';
 import manifest from '../src/assets/carManifest.json';
 
@@ -898,5 +898,149 @@ describe('fan and gear whine', () => {
     expect(engineSpecErrors({ ...spec('V6'), voice: { gearWhine: 1 } })).toEqual([]);
     expect(engineSpecErrors({ ...spec('V6'), voice: { gearWhine: 3 } })).toEqual([expect.stringContaining('engine.voice.gearWhine 3 is not a number from 0 to 2')]);
     for (const c of manifest.cars as { id: string; engine: EngineSpec }[]) expect(c.engine.voice ?? {}, c.id).not.toHaveProperty('gearWhine');
+  });
+});
+
+describe('RB26DETT voice (Hinode Horizon GT)', () => {
+  const cars = manifest.cars as { id: string; engine: EngineSpec }[];
+  const horizonSpec = cars.find((c) => c.id === 'hinodeHorizon')!.engine;
+  const zenithSpec = cars.find((c) => c.id === 'tachibanaZenith')!.engine;
+  const horizon = buildProgram(horizonSpec, { seed: 5 });
+  const zenith = buildProgram(zenithSpec, { seed: 5 });
+  /** The Horizon as it was before this pass (docs/engineSound.md): no throttle bodies, no manifold table, no howl, one whistle. */
+  const before = buildProgram({ ...horizonSpec, voice: { pipes: 2, muffler: 'sport', diverter: 'recirculating', wastegate: 0.4 } }, { seed: 5 });
+  const noHowl = buildProgram({ ...horizonSpec, voice: { ...horizonSpec.voice, howl: undefined } }, { seed: 5 });
+
+  /** Level of one line over the whole of cycle harmonics 1 to 24 (dB), and the strongest other line's level under it. */
+  const lines = (p: EngineProgram, rpm: number) => {
+    const x = render(p, rpm, 1, 1.5).subarray(SR / 2);
+    const cycle = rpm / 120;
+    return Array.from({ length: 24 }, (_, k) => tone(x, (k + 1) * cycle) ** 2);
+  };
+  /** Share of the exhaust's power between 1 and 3 kHz, dB re the whole (raw synth, before the silencer). */
+  const share13 = (p: EngineProgram, rpm: number) => bandShare(render(p, rpm, 1, 1.5), 1000, 3000);
+
+  it('is the RB26DETT as data: throttle bodies, the split manifold, the howl and two whistles, on twin pipes; nobody else has the new fields', () => {
+    expect(horizonSpec.voice).toMatchObject({ pipes: 2, muffler: 'sport', intake: 'itb', manifold: 'split3', diverter: 'recirculating', wastegate: 0.4 });
+    expect(horizonSpec.voice!.howl).toBeGreaterThan(0.5);
+    expect(horizonSpec.voice!.twinWhistle).toBeGreaterThan(0);
+    expect(horizonSpec.voice!.twinWhistle).toBeLessThan(0.05);
+    for (const c of cars) if (c.id !== 'hinodeHorizon') for (const k of ['manifold', 'howl', 'twinWhistle']) expect(c.engine.voice ?? {}, `${c.id} ${k}`).not.toHaveProperty(k);
+    // The layout's own ramp is the 2JZ's: the generic six has no runner table.
+    expect(LAYOUT_VOICE.I6.runners).toBeUndefined();
+    expect(horizon.howl).toBe(horizonSpec.voice!.howl);
+    expect(zenith.howl).toBe(0);
+    expect(buildProgram(horizonSpec, { lite: true }).howl).toBe(horizonSpec.voice!.howl);
+  });
+
+  it('splits the manifold front three / rear three: each trio has its middle runner short and its outer pair 0.05 m longer, on its own pipe', () => {
+    const c = horizon.cylinders; // firing order 1-5-3-6-2-4
+    const cyl = (n: number) => c[[1, 5, 3, 6, 2, 4].indexOf(n)];
+    for (const [a, mid, b] of [[1, 2, 3], [4, 5, 6]] as const) {
+      expect(cyl(mid).delay).toBeLessThan(cyl(a).delay);
+      expect(cyl(a).delay).toBeCloseTo(cyl(b).delay, 9);
+    }
+    expect(MANIFOLD.split3.runners).toEqual([0.05, 0, 0.05]);
+    expect(cyl(1).delay).toBeGreaterThan(0.00012);
+    expect(cyl(1).delay).toBeLessThan(0.0004); // gentle: a few tenths of a millisecond
+    expect(cyl(1).gain).toBeGreaterThan(0.85);
+    expect(cyl(1).gain).toBeLessThan(0.95);
+    expect([1, 2, 3].map((n) => cyl(n).pipe)).toEqual([0, 0, 0]);
+    expect([4, 5, 6].map((n) => cyl(n).pipe)).toEqual([1, 1, 1]);
+    // The Zenith keeps the generic six's ramp: its delay grows down the head.
+    const zc = zenith.cylinders;
+    const zl = (n: number) => zc[[1, 5, 3, 6, 2, 4].indexOf(n)];
+    expect(zl(1).delay).toBe(0);
+    expect(zl(3).delay).toBeGreaterThan(zl(2).delay);
+    expect(zl(2).delay).toBeGreaterThan(zl(1).delay);
+  });
+
+  it('keeps the smooth straight six note: the 3rd order (rpm / 60 x 3) is the strongest line at every rpm, and nothing off it comes close', () => {
+    for (const rpm of [1000, 3000, 5000, 7000]) {
+      const l = lines(horizon, rpm);
+      const third = l[5];
+      for (const [i, v] of l.entries()) if (i !== 5) expect(third, `${rpm} rpm line ${i + 1}`).toBeGreaterThan(v);
+      // The strongest line that is not a multiple of the 3rd order (a half order, at most) is well under it.
+      const off = Math.max(...l.filter((_, i) => (i + 1) % 6 !== 0));
+      expect(10 * Math.log10(off / third), `${rpm} rpm`).toBeLessThan(-6);
+    }
+  });
+
+  it('is clearly not the Zenith: twin pipes and two trios put a half-order texture under the 3rd that the 2JZ lacks, and the throttle bodies breathe', () => {
+    for (const rpm of [1000, 3000, 5000, 7000]) {
+      const h = lines(horizon, rpm);
+      const z = lines(zenith, rpm);
+      // The 1.5 order (cycle harmonic 3) against the 3rd.
+      const half = (l: number[]) => 10 * Math.log10(l[2] / l[5]);
+      expect(half(h) - half(z), `${rpm} rpm`).toBeGreaterThan(10);
+      expect(half(h), `${rpm} rpm`).toBeLessThan(-12); // still faint
+    }
+    // The throttle bodies' honk: the intake output at full throttle is about 3.5 times the plenum's.
+    const hi = renderAll(horizon, 5000, 1, 1).intake.subarray(SR / 2);
+    const zi = renderAll(zenith, 5000, 1, 1).intake.subarray(SR / 2);
+    expect(horizon.intake.gain).toBeGreaterThan(3 * before.intake.gain);
+    expect(rms(hi)).toBeGreaterThan(0);
+    expect(rms(zi)).toBeGreaterThan(0);
+  });
+
+  it('turns raspy toward the top: the howl is nothing below half the redline and opens the 1 to 3 kHz band above it', () => {
+    // Below the onset (0.55 x the 7,500 rpm these renders run at) the voice is sample for sample the one without the field.
+    const a = render(horizon, 3500, 1, 0.5);
+    const b = render(noHowl, 3500, 1, 0.5);
+    expect(Array.from(a.subarray(0, 4000))).toEqual(Array.from(b.subarray(0, 4000)));
+    // Above it the energy moves up into the metallic band; at the redline the change is the biggest.
+    const gain = (rpm: number) => share13(horizon, rpm) - share13(noHowl, rpm);
+    expect(gain(4000)).toBeLessThan(0.5);
+    expect(gain(6500)).toBeGreaterThan(1.5);
+    expect(gain(7300)).toBeGreaterThan(gain(6500));
+    // A lifted pedal lets most of it go (floor), and the follower takes ~80 ms rather than clicking.
+    const synth = new EngineSynth(horizon, SR);
+    const blk = [new Float32Array(128)];
+    const run = (load: number, blocks: number) => {
+      for (let i = 0; i < blocks; i++) synth.render(blk, new Float32Array(128), new Float32Array(128), { rpm: 7300, redline: 7500, load, cut: 0, limiter: 0, nitro: 0 });
+      return synth.howlNow;
+    };
+    expect(run(1, 2)).toBeLessThan(0.5);
+    const full = run(1, 400);
+    expect(full).toBeGreaterThan(0.9);
+    expect(run(0, 400)).toBeCloseTo(HOWL.floor * full, 1);
+    // Neutral for a car without the field.
+    expect(new EngineSynth(zenith, SR).howlNow).toBe(0);
+    expect(engineSpecErrors({ ...spec('I6'), voice: { howl: 1.5 } })).toEqual([expect.stringContaining('engine.voice.howl 1.5 is not a number from 0 to 1')]);
+  });
+
+  it('separates the two sixes in the metallic band at the top: more 1 to 3 kHz than the Zenith at 7,000 rpm', () => {
+    // Measured (raw synth, share of the power between 1 and 3 kHz, Horizon / Zenith): -9.0 / -10.4 dB at 4,000 rpm (the
+    // same smooth note), -3.6 / -6.9 at 7,000 and -3.5 / -6.3 at 7,300; without the howl the Horizon is -6.4 and -6.6.
+    expect(Math.abs(share13(horizon, 4000) - share13(zenith, 4000))).toBeLessThan(2.5);
+    expect(share13(horizon, 7000)).toBeGreaterThan(share13(zenith, 7000) + 2);
+    expect(share13(horizon, 7300)).toBeGreaterThan(share13(zenith, 7300) + 2);
+    expect(share13(horizon, 7000)).toBeGreaterThan(share13(before, 7000) + 2.5);
+  });
+
+  it('whistles with two turbos: two tones a hair apart, centred on the single pitch, at the same total power', () => {
+    const [lo, hi] = twinWhistlePitches(horizonSpec.voice!.twinWhistle!);
+    expect(lo).toBeLessThan(1);
+    expect(hi).toBeGreaterThan(1);
+    expect((lo + hi) / 2).toBeCloseTo(1, 12);
+    expect(hi / lo - 1).toBeCloseTo(horizonSpec.voice!.twinWhistle!, 2);
+    expect(2 * TWIN_WHISTLE.share ** 2).toBeGreaterThan(0.95);
+    expect(2 * TWIN_WHISTLE.share ** 2).toBeLessThan(1.1);
+    // Rendered: at 4 kHz the lines are 60 Hz apart and each stands clear of the gap between them.
+    const hz = 4000;
+    const x = new Float32Array(SR);
+    for (let i = 0; i < SR; i++) x[i] = TWIN_WHISTLE.share * (Math.sin((2 * Math.PI * hz * lo * i) / SR) + Math.sin((2 * Math.PI * hz * hi * i) / SR));
+    expect(tone(x, hz * lo)).toBeGreaterThan(8 * tone(x, hz));
+    expect(tone(x, hz * hi)).toBeGreaterThan(8 * tone(x, hz));
+    expect(hz * (hi - lo)).toBeGreaterThan(20);
+    expect(hz * (hi - lo)).toBeLessThan(120);
+    // Validation: parallel twins only.
+    expect(engineSpecErrors({ ...spec('I6', 'turbo'), voice: { twinWhistle: 0.02 } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('I6', 'na'), voice: { twinWhistle: 0.02 } })).toEqual([expect.stringContaining('twinWhistle is for a turbo')]);
+    expect(engineSpecErrors({ ...spec('I6', 'turbo'), voice: { twinWhistle: 0.02, handoverRpm: 4000 } })).toEqual([expect.stringContaining('parallel twins, not a sequential pair')]);
+    expect(engineSpecErrors({ ...spec('I6', 'turbo'), voice: { twinWhistle: 0.2 } })).toEqual([expect.stringContaining('twinWhistle 0.2 is not a number from 0 to 0.1')]);
+    expect(engineSpecErrors({ ...spec('I4'), voice: { manifold: 'split3' } })).toEqual([expect.stringContaining('manifold is for an inline six')]);
+    expect(engineSpecErrors({ ...spec('I6'), voice: { manifold: 'split3' } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('I6'), voice: { manifold: 'log' as 'split3' } })).toEqual([expect.stringContaining('engine.voice.manifold "log" is not one of split3')]);
   });
 });

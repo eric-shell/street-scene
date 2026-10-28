@@ -334,8 +334,12 @@
         "voice": {
           "pipes": 2,
           "muffler": "sport",
+          "intake": "itb",
+          "manifold": "split3",
+          "howl": 1,
           "diverter": "recirculating",
-          "wastegate": 0.4
+          "wastegate": 0.4,
+          "twinWhistle": 0.015
         }
       },
       "exhaustTips": [

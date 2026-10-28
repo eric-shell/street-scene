@@ -14,6 +14,24 @@ import { clamp01, lerp, smoothstep } from '../sim/math';
 import { TURBO } from './engineSynth';
 
 // ---------------------------------------------------------------------------
+// Parallel twin turbo whistle
+// ---------------------------------------------------------------------------
+
+/**
+ * A parallel twin turbo (voice.twinWhistle): two identical turbines each fed by three cylinders spin at slightly
+ * different speeds, so the whistle is two close tones, a chorus, instead of one. The RB26DETT has a pair of T25-type
+ * ceramic turbos (docs/carEngines.md; Wikipedia's RB page); how far apart they run is our estimate. The tones sit
+ * symmetrically about the single turbo's pitch, so the pitch the ear hears stays where it was, and each carries `share`
+ * of a single turbo's level (two uncorrelated tones at 0.72 add up to the power of one: 2 x 0.72^2 = 1.04).
+ */
+export const TWIN_WHISTLE = { share: 0.72 } as const;
+
+/** The two parallel turbos' pitch multipliers for a spread (fraction of pitch): [lower, upper], centred on 1. */
+export function twinWhistlePitches(spread: number): [number, number] {
+  return [1 - spread / 2, 1 + spread / 2];
+}
+
+// ---------------------------------------------------------------------------
 // Sequential twin turbo
 // ---------------------------------------------------------------------------
 

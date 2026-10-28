@@ -84,6 +84,12 @@ export const VOICE_OPTIONS = {
    * no valve at all: the compressor stalls against the closed throttle and chatters "stu-tu-tu" (a deleted valve).
    */
   diverter: ['vent', 'recirculating', 'flutter'],
+  /**
+   * Inline six only, the cast exhaust manifold's runner table: `split3` is a twin turbo manifold split front three and
+   * rear three (the RB26DETT's), each trio running into its own turbine with the middle runner shortest. Absent: the
+   * layout's own ramp, as the 2JZ-GTE's single turbo manifold has.
+   */
+  manifold: ['split3'],
 } as const;
 
 /** Numeric voice fields: [min, max]. */
@@ -122,6 +128,14 @@ export const VOICE_RANGES = {
   fanRatio: [0.5, 3],
   /** Gearbox whine level, as a multiple of the reference (0 none, the default; 1 a straight cut dog box), locked to the driven shaft's speed. */
   gearWhine: [0, 2],
+  /**
+   * The high-rpm rasp: from about half the redline up, with the pedal down, the pulses sharpen and the band limit and
+   * the derivative share open, so a smooth note turns metallic and ragged toward the top (0 none, the default; 1 the
+   * full change, as a straight six with throttle bodies wails at 8,000).
+   */
+  howl: [0, 1],
+  /** Parallel twin turbo (turbo only): the two turbines' whistles as two tones this far apart as a fraction of pitch (0.015 is 1.5 percent), each at about 0.72 of a single turbo's level; absent means one tone. */
+  twinWhistle: [0, 0.1],
 } as const;
 
 export interface EngineVoiceSpec {
@@ -169,6 +183,12 @@ export interface EngineVoiceSpec {
   fanRatio?: number;
   /** Gear whine level (VOICE_RANGES). */
   gearWhine?: number;
+  /** Inline six manifold runner table (VOICE_OPTIONS). */
+  manifold?: (typeof VOICE_OPTIONS.manifold)[number];
+  /** High-rpm rasp depth (VOICE_RANGES). */
+  howl?: number;
+  /** Parallel twin turbo whistle spread (VOICE_RANGES). */
+  twinWhistle?: number;
 }
 
 /** The `engine` block of a car in carManifest.json. */
@@ -259,6 +279,9 @@ export function engineSpecErrors(spec: unknown): string[] {
       if (voice.crank === 'oddfire' && layout !== 'V10') errors.push('engine.voice.crank "oddfire" is for a V10');
       if ('camStep' in voice && !('camRpm' in voice)) errors.push('engine.voice.camStep needs camRpm');
       for (const k of ['idleLope', 'apexRasp']) if (k in voice && !ENGINE_LAYOUTS[layout]?.rotary) errors.push(`engine.voice.${k} is for a rotary`);
+      if ('manifold' in voice && layout !== 'I6') errors.push('engine.voice.manifold is for an inline six');
+      if ('twinWhistle' in voice && s.aspiration !== 'turbo') errors.push('engine.voice.twinWhistle is for a turbo');
+      if ('twinWhistle' in voice && 'handoverRpm' in voice) errors.push('engine.voice.twinWhistle is for parallel twins, not a sequential pair (handoverRpm)');
       for (const k of ['flutter', 'wastegate', 'spoolRpm', 'preboostRpm', 'handoverRpm', 'handoverDip']) if (k in voice && s.aspiration !== 'turbo') errors.push(`engine.voice.${k} is for a turbo`);
       if (voice.diverter === 'flutter' && s.aspiration !== 'turbo') errors.push('engine.voice.diverter "flutter" is for a turbo');
       for (const k of ['spoolRpm', 'preboostRpm', 'handoverDip']) if (k in voice && !('handoverRpm' in voice)) errors.push(`engine.voice.${k} needs handoverRpm`);

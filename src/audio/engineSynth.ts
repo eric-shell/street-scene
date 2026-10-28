@@ -27,7 +27,8 @@
  * output, dry, since a backfire goes off at the tip, past the silencer.
  * A few per car behaviours sit on top, each neutral unless the car's voice asks
  * for it: a cam changeover (CAM: the VTEC step), an odd-fire crank (V10odd), a
- * rotary's idle lope and apex seal rasp (LOPE, RASP).
+ * rotary's idle lope and apex seal rasp (LOPE, RASP), a straight six's high-rpm rasp (HOWL) and a runner table per
+ * manifold (MANIFOLD).
  * Deterministic: all randomness comes from a seeded xorshift.
  */
 import type { EngineLayout, EngineSpec, EngineVoiceSpec } from '../shared/carSpec';
@@ -108,6 +109,8 @@ export interface EngineProgram {
   lope: number;
   /** Apex seal rasp level (RASP), a multiple of the 13B-REW's; 0 is none. */
   rasp: number;
+  /** High-rpm rasp depth (HOWL), 0..1; 0 is none. */
+  howl: number;
   ir: ImpulseSpec;
   /** Level trim that brings this program to LOUDNESS_REF through the chain model (estimateLoudness). */
   trim: number;
@@ -258,6 +261,20 @@ const FIVE_LOG = {
  */
 const VR6_HEAD = [0.07, 0.035, 0, 0, 0.035, 0.07] as const;
 
+/**
+ * Named manifold runner tables a car's `voice.manifold` picks instead of its layout's ramp (extra primary over the
+ * shortest runner by position along the head or bank, m; same rules as FIVE_LOG).
+ * - split3: the RB26DETT's cast manifold, split front three / rear three with each trio converging on its own turbine
+ *   (docs/carEngines.md: a parallel twin turbo, "one turbo per three cylinders" is itself an estimate, Wikipedia's RB
+ *   page says only a pair of T25-type ceramic turbos). The positions are within a trio (cylinders 1-2-3 and 4-5-6 both
+ *   map to 0-1-2), so the table is symmetric: the outer runners reach in to the middle of the trio's collector and the
+ *   middle one runs straight, 0.05 m longer on the outer pair. No runner length is published (nothing found); this is
+ *   our estimate and deliberately gentle: 0.15 ms late at 0.92 of the pulse, against the old ramp's 0 / 0.15 / 0.29 ms.
+ */
+export const MANIFOLD = {
+  split3: { runners: [0.05, 0, 0.05] },
+} as const;
+
 /** The character each layout starts from before the car's own voice spec. */
 export const LAYOUT_VOICE: Record<EngineLayout, LayoutVoice> = {
   I3: { ...BASE, rough: 0.12, mech: 0.55 },
@@ -331,6 +348,22 @@ export const LOPE = {
 export const RASP = { len: 0.0012, gain: 0.35, power: 1.5, floor: 0.35 } as const;
 
 /**
+ * The high-rpm rasp (voice.howl): a smooth even note turns metallic and ragged toward the redline, the straight six with
+ * throttle bodies and a free flowing head at 7,000 to 8,000 (Wikipedia's RB page: the RB26DETT is "smooth then ragged",
+ * and its standard engine "experiences vibrations between 7,000 and 8,000 rpm"; character is not a sourced figure, so
+ * the numbers are tuned by measurement). Above `from` of the redline, with the pedal down, the pulses sharpen (a
+ * second wavetable with a shorter blowdown rise and exhaust stroke, as the cam changeover has, blended in
+ * continuously), the band limit opens and the derivative share rises, and the intake honk swells. The leveler holds
+ * the RMS, so the change is in where the energy sits: toward 1 to 3 kHz. Numbers are at depth 1; a car's depth scales
+ * them. Neutral without the field: the output is sample for sample the plain voice.
+ * - from / to: share of the redline where it starts (nothing under) and is full (smoothstep).
+ * - floor: share left with the pedal up. tau: the follower's time constant (s), so a lift does not click.
+ * - rise / decay: the sharper wavetable's blowdown rise and exhaust stroke against the plain pulse.
+ * - lowpass / edge / intake: extra band limit, derivative share and intake honk at full.
+ */
+export const HOWL = { from: 0.55, to: 1, floor: 0.3, tau: 0.08, rise: 0.55, decay: 0.8, lowpass: 0.5, edge: 0.5, intake: 0.5 } as const;
+
+/**
  * Silencers: exhaust system length (m), band limit (Hz), how freely pops get through, and the response recipe:
  * the pipe column's first three modes (Q and boost of the first, the rest fall off), the chamber [Hz, Q, boost],
  * the tailpipe ring [Hz, Q, boost] (none for a quiet box) and the diffuse tail.
@@ -363,7 +396,7 @@ function pipeModes(system: number, q: number, boost: number, count: number): [nu
 /** Build the program for a car's engine. `lite` is for rivals: shorter response, no intake or body detail. */
 export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boolean } = {}): EngineProgram {
   const layout = ENGINE_LAYOUTS[spec.layout];
-  const v = { ...LAYOUT_VOICE[spec.layout], ...spec.voice };
+  const v = { ...LAYOUT_VOICE[spec.layout], ...(spec.voice?.manifold ? MANIFOLD[spec.voice.manifold] : {}), ...spec.voice };
   const turbo = spec.aspiration === 'turbo';
   const seed = (opts.seed ?? 1) | 0 || 1;
   const muffler = MUFFLER[v.muffler ?? (turbo ? 'quiet' : 'sport')];
@@ -408,6 +441,7 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
     cam: v.camRpm ? { rpm: v.camRpm, step: v.camStep ?? CAM.defaultStep } : null,
     lope: v.idleLope ?? 0,
     rasp: opts.lite ? 0 : (v.apexRasp ?? 0),
+    howl: v.howl ?? 0,
     ir,
     trim: 1,
     seed,
@@ -529,6 +563,8 @@ export class EngineSynth {
   private readonly intakeTable: Float32Array;
   /** The high-lift cam's sharper pulse (the exhaust table at step 1), blended in by the cam level; null without a cam. */
   private readonly camTable: Float32Array | null;
+  /** The howl's sharper pulse (the exhaust table at the car's depth), blended in by the howl level; null without the field. */
+  private readonly howlTable: Float32Array | null;
   private readonly fire: Float64Array;
   private readonly delay: Float64Array;
   private readonly pipe: Int32Array;
@@ -576,6 +612,8 @@ export class EngineSynth {
   /** The cam changeover: engaged (with its hysteresis) and the smoothed step 0..1 the sound follows. */
   private camOn = false;
   private camLevel = 0;
+  /** The high-rpm rasp's smoothed level 0..1 (HOWL). */
+  private howlLevel = 0;
   /** The idle lope's two slow waves (cycles) and the apex seal rasp burst in flight. */
   private lopeA = 0;
   private lopeB = 0;
@@ -594,6 +632,7 @@ export class EngineSynth {
     this.intakeTable = pulseTable({ rise: 0.02, decay: 0.05, dip: 0.5 });
     const cam = program.cam;
     this.camTable = cam ? pulseTable({ rise: program.pulse.rise * (1 - (1 - CAM.rise) * cam.step), decay: program.pulse.decay * (1 - (1 - CAM.decay) * cam.step), dip: program.pulse.dip }) : null;
+    this.howlTable = program.howl > 0 ? pulseTable({ rise: program.pulse.rise * (1 - (1 - HOWL.rise) * program.howl), decay: program.pulse.decay * (1 - (1 - HOWL.decay) * program.howl), dip: program.pulse.dip }) : null;
     this.fire = new Float64Array(program.cylinders.map((c) => c.fire));
     this.delay = new Float64Array(program.cylinders.map((c) => c.delay));
     this.pipe = new Int32Array(program.cylinders.map((c) => c.pipe));
@@ -623,6 +662,11 @@ export class EngineSynth {
     this.popHp = 1 - Math.exp((-2 * Math.PI * POP.hp) / sampleRate);
     this.popTailCoef = 1 - Math.exp((-2 * Math.PI * POP.tail.hz) / sampleRate);
     this.derivK = (DERIV * sampleRate) / 44100;
+  }
+
+  /** How far the high-rpm rasp has come in (0..1); for the tests. */
+  get howlNow(): number {
+    return this.howlLevel;
   }
 
   /** Whether the high-lift cam is in, and how far the sound has followed it (0..1); for the tests. */
@@ -684,6 +728,16 @@ export class EngineSynth {
     }
     const TC = this.camTable;
     const camMix = this.camLevel;
+    // High-rpm rasp: how far into the top of the rev range, on the pedal, smoothed per block (a lift fades it in ~80 ms).
+    let howlDepth = 0;
+    const HT = this.howlTable;
+    if (HT) {
+      const x = Math.max(0, Math.min(1, (r - HOWL.from) / (HOWL.to - HOWL.from)));
+      const target = x * x * (3 - 2 * x) * (HOWL.floor + (1 - HOWL.floor) * pedal);
+      this.howlLevel += (target - this.howlLevel) * (1 - Math.exp(-n / (HOWL.tau * sr)));
+      howlDepth = this.howlLevel;
+    }
+    const howl = P.howl * howlDepth;
     // Idle lope: how likely a firing is weak, from the rpm, the pedal and the two slow waves' crest.
     let lopeChance = 0;
     if (P.lope > 0) {
@@ -696,12 +750,12 @@ export class EngineSynth {
     }
     const raspLevel = P.rasp > 0 ? P.rasp * RASP.gain * r ** RASP.power * (RASP.floor + (1 - RASP.floor) * pedal) : 0;
     const amp = (0.12 + 0.88 * load ** 0.8) * (nitro ? 1.2 : 1);
-    const intakeAmp = ((P.intake.gain * load ** 1.5 * (0.3 + 0.7 * Math.min(1, rpm / 6000))) / nc) * (1 + CAM.intake * camStep);
-    const lowpass = Math.min(sr * 0.45, P.lowpass * (nitro ? 1.3 : 1) * (0.85 + 0.15 * load) * (1 + CAM.lowpass * camStep));
+    const intakeAmp = ((P.intake.gain * load ** 1.5 * (0.3 + 0.7 * Math.min(1, rpm / 6000))) / nc) * (1 + CAM.intake * camStep) * (1 + HOWL.intake * howl);
+    const lowpass = Math.min(sr * 0.45, P.lowpass * (nitro ? 1.3 : 1) * (0.85 + 0.15 * load) * (1 + CAM.lowpass * camStep) * (1 + HOWL.lowpass * howl));
     const lpCoef = 1 - Math.exp((-2 * Math.PI * lowpass) / sr);
     const jitter = (P.jitter * sr) / 44100;
     const rough = P.rough * (0.3 + 0.7 * (1 - load));
-    const edge = P.edge * this.derivK;
+    const edge = P.edge * this.derivK * (1 + HOWL.edge * howl);
     const camGain = 1 + CAM.level * camStep;
     const air = P.air;
     const envAtk = 1 - Math.exp(-1 / (0.01 * sr));
@@ -749,6 +803,7 @@ export class EngineSynth {
         const fr = x - k;
         let shape = T[k] + (T[k + 1] - T[k]) * fr;
         if (TC && camMix > 0.002) shape += (TC[k] + (TC[k + 1] - TC[k]) * fr - shape) * camMix;
+        if (HT && howlDepth > 0.002) shape += (HT[k] + (HT[k + 1] - HT[k]) * fr - shape) * howlDepth;
         const pulse = shape * this.fireGain[c];
         const cross = this.cross[c];
         this.pipeSum[this.pipe[c]] += pulse * (1 - cross);
