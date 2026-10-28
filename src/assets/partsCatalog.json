@@ -2,162 +2,92 @@
   "version": 1,
   "parts": [
     {
+      "id": "wheel_ame",
+      "displayName": "Ame",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_ame.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9674,
+      "generated": true
+    },
+    {
+      "id": "wheel_aoi",
+      "displayName": "Aoi",
+      "group": "Seiryu",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_aoi.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 8892,
+      "generated": true
+    },
+    {
+      "id": "wheel_fubuki",
+      "displayName": "Fubuki",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_fubuki.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9942,
+      "generated": true
+    },
+    {
+      "id": "wheel_gekko",
+      "displayName": "Gekko",
+      "group": "Kaito",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_gekko.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 8633,
+      "generated": true
+    },
+    {
+      "id": "wheel_getsuei",
+      "displayName": "Getsuei",
+      "group": "Seiryu",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_getsuei.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10011,
+      "generated": true
+    },
+    {
       "id": "wheel_hagane",
       "displayName": "Hagane",
+      "group": "Kaito",
       "carId": "universal",
       "slot": "wheels",
       "file": "parts/wheel_hagane.glb",
-      "hides": [],
-      "materialSlots": [
-        "Rim",
-        "Chrome",
-        "Tire"
-      ],
-      "tris": 9005,
-      "generated": true
-    },
-    {
-      "id": "wheel_hari",
-      "displayName": "Hari",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_hari.glb",
-      "hides": [],
-      "materialSlots": [
-        "Rim",
-        "Chrome",
-        "Tire"
-      ],
-      "tris": 9642,
-      "generated": true
-    },
-    {
-      "id": "wheel_kagero",
-      "displayName": "Kagero",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_kagero.glb",
-      "hides": [],
-      "materialSlots": [
-        "Rim",
-        "Chrome",
-        "Tire"
-      ],
-      "tris": 9495,
-      "generated": true
-    },
-    {
-      "id": "wheel_kasumi",
-      "displayName": "Kasumi",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_kasumi.glb",
-      "hides": [],
-      "materialSlots": [
-        "Rim",
-        "Chrome",
-        "Tire"
-      ],
-      "tris": 9228,
-      "generated": true
-    },
-    {
-      "id": "wheel_kaze",
-      "displayName": "Kaze",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_kaze.glb",
-      "hides": [],
-      "materialSlots": [
-        "Rim",
-        "Black",
-        "Chrome",
-        "Tire"
-      ],
-      "tris": 9338,
-      "generated": true
-    },
-    {
-      "id": "wheel_kumo",
-      "displayName": "Kumo",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_kumo.glb",
-      "hides": [],
-      "materialSlots": [
-        "Rim",
-        "Chrome",
-        "Tire"
-      ],
-      "tris": 9191,
-      "generated": true
-    },
-    {
-      "id": "wheel_raiden",
-      "displayName": "Raiden",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_raiden.glb",
-      "hides": [],
-      "materialSlots": [
-        "Rim",
-        "Chrome",
-        "Tire"
-      ],
-      "tris": 9038,
-      "generated": true
-    },
-    {
-      "id": "wheel_ryusei",
-      "displayName": "Ryusei",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_ryusei.glb",
-      "hides": [],
-      "materialSlots": [
-        "Rim",
-        "Chrome",
-        "Tire"
-      ],
-      "tris": 9716,
-      "generated": true
-    },
-    {
-      "id": "wheel_shinobi",
-      "displayName": "Shinobi",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_shinobi.glb",
-      "hides": [],
-      "materialSlots": [
-        "Rim",
-        "Chrome",
-        "Tire"
-      ],
-      "tris": 11476,
-      "generated": true
-    },
-    {
-      "id": "wheel_tsume",
-      "displayName": "Tsume",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_tsume.glb",
-      "hides": [],
-      "materialSlots": [
-        "Rim",
-        "Chrome",
-        "Tire"
-      ],
-      "tris": 10651,
-      "generated": true
-    },
-    {
-      "id": "wheel_tsurugi",
-      "displayName": "Tsurugi",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_tsurugi.glb",
       "hides": [],
       "materialSlots": [
         "Rim",
@@ -168,8 +98,586 @@
       "generated": true
     },
     {
+      "id": "wheel_hane",
+      "displayName": "Hane",
+      "group": "Suzaku",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_hane.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10375,
+      "generated": true
+    },
+    {
+      "id": "wheel_hari",
+      "displayName": "Hari",
+      "group": "Kaito",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_hari.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9754,
+      "generated": true
+    },
+    {
+      "id": "wheel_hikari",
+      "displayName": "Hikari",
+      "group": "Seiryu",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_hikari.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10867,
+      "generated": true
+    },
+    {
+      "id": "wheel_hisui",
+      "displayName": "Hisui",
+      "group": "Seiryu",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_hisui.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9383,
+      "generated": true
+    },
+    {
+      "id": "wheel_homura",
+      "displayName": "Homura",
+      "group": "Hiryu",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_homura.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10825,
+      "generated": true
+    },
+    {
+      "id": "wheel_hyo",
+      "displayName": "Hyo",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_hyo.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10764,
+      "generated": true
+    },
+    {
+      "id": "wheel_iwa",
+      "displayName": "Iwa",
+      "group": "Genbu",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_iwa.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9045,
+      "generated": true
+    },
+    {
+      "id": "wheel_kagami",
+      "displayName": "Kagami",
+      "group": "Seiryu",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_kagami.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10419,
+      "generated": true
+    },
+    {
+      "id": "wheel_kagero",
+      "displayName": "Kagero",
+      "group": "Kaito",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_kagero.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9607,
+      "generated": true
+    },
+    {
+      "id": "wheel_kasumi",
+      "displayName": "Kasumi",
+      "group": "Kaito",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_kasumi.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9340,
+      "generated": true
+    },
+    {
+      "id": "wheel_kawa",
+      "displayName": "Kawa",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_kawa.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9776,
+      "generated": true
+    },
+    {
+      "id": "wheel_kaze",
+      "displayName": "Kaze",
+      "group": "Kaito",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_kaze.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Black",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9450,
+      "generated": true
+    },
+    {
+      "id": "wheel_kirameki",
+      "displayName": "Kirameki",
+      "group": "Seiryu",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_kirameki.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9820,
+      "generated": true
+    },
+    {
+      "id": "wheel_kiri",
+      "displayName": "Kiri",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_kiri.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9944,
+      "generated": true
+    },
+    {
+      "id": "wheel_kori",
+      "displayName": "Kori",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_kori.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10471,
+      "generated": true
+    },
+    {
+      "id": "wheel_kumo",
+      "displayName": "Kumo",
+      "group": "Kaito",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_kumo.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9415,
+      "generated": true
+    },
+    {
+      "id": "wheel_minato",
+      "displayName": "Minato",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_minato.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10056,
+      "generated": true
+    },
+    {
+      "id": "wheel_mio",
+      "displayName": "Mio",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_mio.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10304,
+      "generated": true
+    },
+    {
+      "id": "wheel_nami",
+      "displayName": "Nami",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_nami.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10111,
+      "generated": true
+    },
+    {
+      "id": "wheel_raiden",
+      "displayName": "Raiden",
+      "group": "Kaito",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_raiden.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9262,
+      "generated": true
+    },
+    {
+      "id": "wheel_ryusei",
+      "displayName": "Ryusei",
+      "group": "Kaito",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_ryusei.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10276,
+      "generated": true
+    },
+    {
+      "id": "wheel_seiun",
+      "displayName": "Seiun",
+      "group": "Seiryu",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_seiun.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10652,
+      "generated": true
+    },
+    {
+      "id": "wheel_seseragi",
+      "displayName": "Seseragi",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_seseragi.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10805,
+      "generated": true
+    },
+    {
+      "id": "wheel_shigure",
+      "displayName": "Shigure",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_shigure.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10651,
+      "generated": true
+    },
+    {
+      "id": "wheel_shinobi",
+      "displayName": "Shinobi",
+      "group": "Kaito",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_shinobi.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 11588,
+      "generated": true
+    },
+    {
+      "id": "wheel_shio",
+      "displayName": "Shio",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_shio.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9608,
+      "generated": true
+    },
+    {
+      "id": "wheel_shizuku",
+      "displayName": "Shizuku",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_shizuku.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 8555,
+      "generated": true
+    },
+    {
+      "id": "wheel_sora",
+      "displayName": "Sora",
+      "group": "Seiryu",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_sora.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 8891,
+      "generated": true
+    },
+    {
+      "id": "wheel_taki",
+      "displayName": "Taki",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_taki.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9787,
+      "generated": true
+    },
+    {
+      "id": "wheel_tora",
+      "displayName": "Tora",
+      "group": "Byakko",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_tora.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 8039,
+      "generated": true
+    },
+    {
+      "id": "wheel_tsuchi",
+      "displayName": "Tsuchi",
+      "group": "Hotaru",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_tsuchi.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10080,
+      "generated": true
+    },
+    {
+      "id": "wheel_tsume",
+      "displayName": "Tsume",
+      "group": "Kaito",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_tsume.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10987,
+      "generated": true
+    },
+    {
+      "id": "wheel_tsurugi",
+      "displayName": "Tsurugi",
+      "group": "Kaito",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_tsurugi.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9789,
+      "generated": true
+    },
+    {
+      "id": "wheel_tsuyu",
+      "displayName": "Tsuyu",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_tsuyu.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 10078,
+      "generated": true
+    },
+    {
+      "id": "wheel_umi",
+      "displayName": "Umi",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_umi.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9823,
+      "generated": true
+    },
+    {
+      "id": "wheel_uzu",
+      "displayName": "Uzu",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_uzu.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9523,
+      "generated": true
+    },
+    {
       "id": "wheel_yari",
       "displayName": "Yari",
+      "group": "Kaito",
       "carId": "universal",
       "slot": "wheels",
       "file": "parts/wheel_yari.glb",
@@ -179,7 +687,23 @@
         "Chrome",
         "Tire"
       ],
-      "tris": 10539,
+      "tris": 10763,
+      "generated": true
+    },
+    {
+      "id": "wheel_yuki",
+      "displayName": "Yuki",
+      "group": "Mizuchi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_yuki.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 9796,
       "generated": true
     }
   ]

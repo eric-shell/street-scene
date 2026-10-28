@@ -9,6 +9,7 @@
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
+import type { PartEntry } from '../shared/parts';
 import { AXLES, Axle, AxleStance, CarBuild, GLOW_PATTERNS, STANCE_LIMITS, TireShape, VinylShape } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
@@ -223,21 +224,25 @@ export function renderTabContent(host: TabHost): void {
         ),
         section(
           title('wheel'),
-          choiceList(
-            wheels.map((p) => ({ value: p.id, label: p.displayName })),
-            rear ? (w.rearPart ?? front) : front,
-            (id) => {
-              if (rear) w.rearPart = id;
-              else {
-                // Linked, the rear follows the front; unlinked, it keeps the wheel it wore.
-                w.rearPart = linked ? null : (w.rearPart ?? front);
-                v.parts.wheels = id;
-              }
-              // Each wheel model has its own profile: re-render so the inch range fits the new one.
-              void host.changed().then(() => host.tab === 'wheels' && host.renderTab());
-            },
-            true,
-          ),
+          // One list per maker, makers and their wheels alphabetical: a neutral order, no ranking.
+          ...wheelGroups(wheels).flatMap(([group, list]) => [
+            h('div', { class: 'garage-section__subtitle' }, group),
+            choiceList(
+              list.map((p) => ({ value: p.id, label: p.displayName })),
+              rear ? (w.rearPart ?? front) : front,
+              (id) => {
+                if (rear) w.rearPart = id;
+                else {
+                  // Linked, the rear follows the front; unlinked, it keeps the wheel it wore.
+                  w.rearPart = linked ? null : (w.rearPart ?? front);
+                  v.parts.wheels = id;
+                }
+                // Each wheel model has its own profile: re-render so the inch range fits the new one.
+                void host.changed().then(() => host.tab === 'wheels' && host.renderTab());
+              },
+              true,
+            ),
+          ]),
         ),
         section(title('size'), axleSlider(axle, 'wheelSize', true, linked), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls.')),
         section(
@@ -392,6 +397,19 @@ function linkToggle(host: TabHost): HTMLElement {
       host.renderTab();
     },
   );
+}
+
+/** The wheels by maker (`group`), makers and wheels in alphabetical order; a wheel without one goes under Other, last. */
+function wheelGroups(wheels: PartEntry[]): [string, PartEntry[]][] {
+  const groups = new Map<string, PartEntry[]>();
+  for (const p of wheels) {
+    const g = p.group ?? 'Other';
+    groups.set(g, [...(groups.get(g) ?? []), p]);
+  }
+  const rank = (g: string) => (g === 'Other' ? '￿' : g);
+  return [...groups]
+    .sort(([a], [b]) => rank(a).localeCompare(rank(b)))
+    .map(([g, list]) => [g, list.sort((a, b) => a.displayName.localeCompare(b.displayName))]);
 }
 
 /** The Wheels tab's link: linked, front and rear wear the same wheel, size, tire and paint; unlinked, each axle picks its own. */

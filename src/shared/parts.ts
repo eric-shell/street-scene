@@ -46,6 +46,8 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
 export interface PartEntry {
   id: string;
   displayName: string;
+  /** The garage section a wheel is listed under: a fictional maker name standing for its donor's real maker. */
+  group?: string;
   /** Car id, or "universal" (wheels). */
   carId: string;
   slot: PartSlot;

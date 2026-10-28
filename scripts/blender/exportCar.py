@@ -16,7 +16,8 @@ collections:
           (`frontBumper_street`, `spoiler_1`); optional custom properties
           `displayName` and `hides` (comma separated base node names).
   Wheels  wheels in wheel space (center at the origin, axle along X, outer face
-          toward +X), named `wheel_<n>`; universal parts.
+          toward +X), named `wheel_<n>`; universal parts. Optional custom
+          properties `displayName` and `group` (the garage section it is listed under).
   Rig     empties `Wheel_FL`, `Wheel_FR`, `Wheel_RL`, `Wheel_RR` at the wheel
           centers. Their height is the wheel radius.
 
@@ -144,7 +145,7 @@ def export_wheels(wheels, out_dir, meta):
         n = short(o.name).replace("wheel_", "")
         # Wheels keep their own shading: lathed rings and hex heads were built with it.
         export([o], os.path.join(out_dir, "wheels", f"wheel_{n}.glb"), reshade=False)
-        meta["wheels"].append({"name": n, "displayName": o.get("displayName", ""), "tris": tris(o)})
+        meta["wheels"].append({"name": n, "displayName": o.get("displayName", ""), "group": o.get("group", ""), "tris": tris(o)})
 
 
 def collection(suffix):
