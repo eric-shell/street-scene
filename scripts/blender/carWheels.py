@@ -65,7 +65,7 @@ JUNK = r'(?i)(?<![a-z])(stand|ground|plane|shadow|floor|backdrop|logo|badge|embl
 GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'Byakko', 'Fifteen52': 'Hotaru',
           'SSR': 'Hiryu', 'BBS': 'Suzaku', 'Volk': 'Genbu', 'Enkei': 'Kohaku',
           'Advan': 'Kitsune', 'Avant Garde': 'Tengu', 'Brixton Forged': 'Oni', 'Kyusha Shoes': 'Tanuki', 'Velare': 'Yamabiko',
-          'VIP Modular': 'Raijin', 'Weds': 'Fujin', '326 Power': 'Kirin', 'Brabus': 'Nue', 'Budnik': 'Orochi',
+          'VIP Modular': 'Baku', 'Weds': 'Fujin', '326 Power': 'Kirin', 'Brabus': 'Nue', 'Budnik': 'Orochi',
           'Devil Japan': 'Shuten', 'Kansei': 'Nekomata', 'MAE': 'Kamaitachi',
           'Rays': 'Genbu',   # Volk is a Rays brand: one group
           'Vossen-x-Work': 'Seiryu'}   # a Vossen collaboration, listed with Vossen

@@ -173,7 +173,7 @@ Learnings:
 
 ### Fifty-six more (2026-10-28)
 
-56 donor models from jonver87 (37), dermaks (17), portfoliorodrigues (the Fifteen52 Turbomac) and alexanderlyreo (a Work Meister S1 3P) became **54 wheels**, 100 in the set, 5,418 to 11,381 triangles each (under the 12,000 budget; the smallest is `sagi`, a four spoke whose face is 2,258 of them, the largest `tsubaki`). Names are new pseudo-Japanese words (retired and taken names skipped: `tsubasa` belongs to another file); 13 makers got fictional groups (Advan Kitsune, Avant Garde Tengu, Brixton Forged Oni, Kyusha Shoes Tanuki, Velare Yamabiko, VIP Modular Raijin, Weds Fujin, 326 Power Kirin, Brabus Nue, Budnik Orochi, Devil Japan Shuten, Kansei Nekomata, MAE Kamaitachi); Rays goes under Volk's Genbu and Vossen-x-Work under Seiryu (`GROUPS` maps the real maker, so a collaboration or a sister brand needs only a key).
+56 donor models from jonver87 (37), dermaks (17), portfoliorodrigues (the Fifteen52 Turbomac) and alexanderlyreo (a Work Meister S1 3P) became **54 wheels**, 100 in the set, 5,418 to 11,381 triangles each (under the 12,000 budget; the smallest is `sagi`, a four spoke whose face is 2,258 of them, the largest `tsubaki`). Names are new pseudo-Japanese words (retired and taken names skipped: `tsubasa` belongs to another file); 13 makers got fictional groups (Advan Kitsune, Avant Garde Tengu, Brixton Forged Oni, Kyusha Shoes Tanuki, Velare Yamabiko, VIP Modular Baku, Weds Fujin, 326 Power Kirin, Brabus Nue, Budnik Orochi, Devil Japan Shuten, Kansei Nekomata, MAE Kamaitachi); Rays goes under Volk's Genbu and Vossen-x-Work under Seiryu (`GROUPS` maps the real maker, so a collaboration or a sister brand needs only a key).
 
 **Byakko** (HRE)
 
@@ -287,7 +287,7 @@ Learnings:
 |---|---|---|---|
 | Sagi | Budnik Tusk | dermaks | no overrides |
 
-**Raijin** (VIP Modular; new group)
+**Baku** (VIP Modular; new group, renamed from Raijin on 2026-10-28, which is the brake brand on the calipers)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|

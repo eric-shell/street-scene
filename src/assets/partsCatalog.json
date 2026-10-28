@@ -1175,7 +1175,7 @@
     {
       "id": "wheel_sango",
       "displayName": "Sango",
-      "group": "Raijin",
+      "group": "Baku",
       "lip": "chrome",
       "carId": "universal",
       "slot": "wheels",
@@ -1194,7 +1194,7 @@
     {
       "id": "wheel_sazanami",
       "displayName": "Sazanami",
-      "group": "Raijin",
+      "group": "Baku",
       "lip": "chrome",
       "carId": "universal",
       "slot": "wheels",
@@ -1492,7 +1492,7 @@
     {
       "id": "wheel_tsubaki",
       "displayName": "Tsubaki",
-      "group": "Raijin",
+      "group": "Baku",
       "lip": "chrome",
       "carId": "universal",
       "slot": "wheels",
