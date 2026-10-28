@@ -242,37 +242,39 @@
       }
     },
     "brandtKombi": {
-      "_name": "Brandt Kombi (S2 Avant donor): front twin turbo 90 degree V6, all wheel drive split evenly (a Torsen centre differential). A flat biturbo torque plateau from 1,800 rpm and an AWD launch; the longest car, a little more yaw inertia.",
-      "mass": 1550,
+      "_name": "Brandt Kombi (1992-95 Audi S2 Avant donor): front 2.2 L 20 valve turbo inline five (ABY), all wheel drive split evenly (a Torsen centre differential). 230 PS (169 kW) at 5,900 rpm and 350 N\u00b7m from 1,950 to 3,000 rpm behind one KKK K24 turbo, a six speed manual, about 1,480 kg. A fat low rpm plateau and a long tail; the longest car, a little more yaw inertia.",
+      "mass": 1480,
       "yawInertiaScale": 0.95,
       "drivetrain": { "layout": "awd", "awdFrontShare": 0.5 },
       "engine": {
-        "redline": 7000,
+        "idleRpm": 850,
+        "redline": 6600,
         "torqueCurve": [
-          [800, 170],
-          [1800, 370],
-          [2500, 400],
-          [3600, 400],
-          [4800, 385],
-          [5800, 350],
-          [6500, 310],
-          [7000, 280]
+          [800, 150],
+          [1500, 255],
+          [1950, 350],
+          [3000, 350],
+          [4000, 335],
+          [5000, 305],
+          [5900, 274],
+          [6500, 225],
+          [6600, 215]
         ],
-        "torqueMul": 0.76,
+        "torqueMul": 0.94,
         "launchRpm": 3500
       },
       "gearbox": {
-        "_": "Audi's 01E six speed: 3.5 / 1.88 / 1.32 / 1.034 / 0.857 as in the S4 and S6, with the S2 and RS2's 0.73 sixth, on the 4.375 final drive the same box carries in the allroad. Sixth's limiter (250 km/h) sits just over the slipstream top speed (245): the drag top speed (227) comes at 92% of the redline.",
-        "ratios": [3.5, 1.88, 1.32, 1.034, 0.857, 0.73],
-        "finalDrive": 4.375
+        "_": "Audi's 01E six speed as the RS2 (CRB) carries it and the S2's CGR is listed, 3.500 / 1.889 / 1.320 / 1.034 / 0.857 / 0.711, on the quattro 37:9 = 4.111 final drive. Sixth at 0.711 on the 4.111 gives about 40 km/h per 1,000 rpm, the 24.7 mph per 1,000 rpm S2 owners quote for a stock ABY. Sixth's limiter (6,600 rpm, 257 km/h) sits 10% over the drag top speed (234; the real car does 246 to 250: the sim's drivetrain and rolling losses take more than the real car's, so the top speed is held 5% under rather than lifted with a drag below the real figure), as on the other cars; the Gear Ratio slider's test needs the limiter that close (Short puts it at 0.92 of the drag top speed through a 1.2 final drive). aero.drag 0.36 is the real wagon's (Cd about 0.31 on 2.0 m2, 0.5 x air density x Cd x area = 0.37). torqueMul 0.94 on the real S2 torque shape lands the 0-100 on 5.8 s (the real 5.9). The shift rpm is the default 0.93 of the redline (6,140), just past the 5,900 rpm power peak where the real car would be shifted.",
+        "ratios": [3.5, 1.889, 1.32, 1.034, 0.857, 0.711],
+        "finalDrive": 4.111
       },
       "tires": { "gripFront": 1.79, "gripRear": 1.63 },
-      "aero": { "drag": 0.42 },
+      "aero": { "drag": 0.36 },
       "launch": {
-        "_": "B5 S4 and RS4 2.7T owners launch at 3,000 to 4,000 rpm (bogs under 3,000, spins over 3,500 to 4,000 on a clutch dump); a two-step at 4,000 holds the twins on boost and the even AWD split takes the torque.",
-        "defaultRpm": 4000,
-        "_antilag": "Rolling antilag at 4,500: the K03 twins are on full boost from about 3,000, and the 2.7T still makes 95% of its peak torque there, with room in the gear for the pull.",
-        "antilagRpm": 4500
+        "_": "S2 launch practice is a clutch dump at 3,500 to 4,000 rpm, where the K24 is on boost (it is full at 1,950); the even AWD split takes the torque.",
+        "defaultRpm": 3500,
+        "_antilag": "Rolling antilag at 4,000: the K24 turbo is long past its lag there, with the plateau still 335 N\u00b7m and room in the gear for the pull.",
+        "antilagRpm": 4000
       }
     },
     "ridgewayFiend": {

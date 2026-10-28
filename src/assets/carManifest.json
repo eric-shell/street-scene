@@ -181,12 +181,13 @@
       "defaultPaint": "#7d8186",
       "selectable": true,
       "engine": {
-        "layout": "V6",
+        "layout": "I5",
         "aspiration": "turbo",
         "position": "front",
         "voice": {
-          "pipes": 2,
-          "muffler": "sport"
+          "headers": "equal",
+          "pipes": 1,
+          "muffler": "quiet"
         }
       },
       "exhaustTips": [

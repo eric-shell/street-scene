@@ -72,7 +72,7 @@ describe('engine programs', () => {
     }
   });
 
-  it('read the manifest cars: single pipe VR6, turbo twin rotor, twin pipe turbo V6', () => {
+  it('read the manifest cars: single pipe VR6, turbo twin rotor, single pipe turbo inline five', () => {
     const car = (id: string) => buildProgram(manifest.cars.find((c) => c.id === id)!.engine as EngineSpec);
     const hatch = car('wendtStrom');
     const coupe = car('kazamaRotor');
@@ -93,10 +93,11 @@ describe('engine programs', () => {
     expect(coupe.lowpass).toBeLessThan(hatch.lowpass);
     expect(coupe.edge).toBeLessThan(hatch.edge);
     expect(coupe.pulse.rise).toBeGreaterThan(hatch.pulse.rise);
-    // The Wagon: a V6 with a pipe per bank.
-    expect(wagon.cylinders).toHaveLength(6);
-    expect(wagon.pipes).toBe(2);
-    expect(new Set(wagon.cylinders.map((c) => c.pipe)).size).toBe(2);
+    // The Wagon: the S2's turbo inline five on one system, firing 1-2-4-5-3 every 144 degrees (even fire).
+    expect(wagon.cylinders).toHaveLength(5);
+    expect(wagon.pipes).toBe(1);
+    expect(new Set(wagon.cylinders.map((c) => c.pipe)).size).toBe(1);
+    expect(wagon.cylinders.map((c) => c.fire)).toEqual([0, 0.2, 0.4, 0.6, 0.8]);
     // The spread is the car's to set, and a crossover hands a share of each bank to the other pipe.
     const wide = buildProgram({ ...spec('VR6'), voice: { headers: 'unequal', headerSpread: 0.6 } });
     expect(Math.max(...wide.cylinders.map((c) => c.delay))).toBeGreaterThan(Math.max(...hatch.cylinders.map((c) => c.delay)));

@@ -50,6 +50,8 @@ The manifest's `engine` block gained an optional `voice` (vocabulary in `src/sha
 
 Defaults by layout are `LAYOUT_VOICE`; turbo engines default to the quiet silencer, the rest to sport.
 
+Per-car donor data (engine, intake, exhaust, drivetrain, sound character and the voice fields to use): [carEngines.md](carEngines.md).
+
 ## The garage engines
 
 ### Wendt Strom: VW VR6, naturally aspirated (Golf R32 Mk4)
@@ -66,12 +68,12 @@ Defaults by layout are `LAYOUT_VOICE`; turbo engines default to the quiet silenc
 - Spec: `R2`, `turbo`, `voice: { pipes: 1, muffler: 'sport' }`.
 - Still to add: the idle brap (port overlap as a rough, slow lope at low rpm), the secondary turbo's step near 4,500 rpm, and the rotary's metallic ring at high rpm.
 
-### Brandt Kombi: Audi 2.7 V6 biturbo (S2 Avant donor)
+### Brandt Kombi: Audi 2.2 20V turbo inline five (S2 Avant donor)
 
-- Reference: 2,671 cc 90° V6, 30 valves (three intake, two exhaust per cylinder) with variable inlet timing, 81.0 x 86.4 mm, 9.3:1, firing order 1-4-3-6-2-5, one turbo per bank and an exhaust per bank: the S4 and RS4 B5 engine, as specified for the wagon (the S2 Avant itself had a 2.2 turbo five).
-- The sound: banks alternate on an even fire, each bank an even three into its own turbine and pipe, so each tailpipe carries half the pulses: a smooth growl, smeared by the turbines.
-- Spec: `V6`, `turbo`, `voice: { pipes: 2, muffler: 'sport' }`.
-- Still to add: per bank 3-into-1 primaries (the even fire V6 row below), the twin turbo whoosh band following boost.
+- Reference: the 2,226 cc 20 valve turbocharged inline five of the 1992-95 Audi S2 (engine codes 3B, then ABY from October 1992: 230 PS / 169 kW at 5,900 rpm, 350 N·m from 1,950 to 3,000 rpm), one KKK K24 turbo on a short log manifold, firing order 1-2-4-5-3, quattro with a Torsen centre differential and the 01E six speed. Sources: Wikipedia's Audi S2 (the 2,226 cc five, codes 3B and ABY, 230 PS and 350 N·m with 380 N·m on overboost, 246 km/h) and a catalogue listing of the ABY at 230 PS / 5,900 rpm and 350 N·m / 1,950 rpm; the 01E ratios are the RS2's (CRB) 3.500 / 1.889 / 1.320 / 1.034 / 0.857 / 0.711 on the 4.111 final drive, the S2's CGR box being listed with the same (forum sources disagree on its fifth and sixth).
+- The sound: even 144° firing, but the five's runners are not alike (the short, position dependent log manifold feeding the turbine gives each cylinder its own path), so the pulses reach the pipe with a slow uneven pattern: the warble of an Audi five, rather than a header spread. The headers stay `equal`. One turbine smears the pulses, and the stock S2 has one exhaust system ending in twin tips, so the voice is one pipe (`pipes: 1`, two tips rendered from the one train) behind the quiet (turbo default) silencer.
+- Spec: `I5`, `turbo`, `voice: { headers: 'equal', pipes: 1, muffler: 'quiet' }`. The `I5` program (`SCHEDULE.I5` is 1-2-4-5-3 at 0.2 cycle steps, `LAYOUT_VOICE.I5` adds `rough` and the runner `stagger`) needed no change.
+- Still to add: tune `stagger` against a recording of an S2 or RS2, and the K24's whoosh band.
 
 ## The plan for the rest
 
