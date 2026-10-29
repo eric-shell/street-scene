@@ -204,10 +204,9 @@
       ],
       "materialSlots": [
         "Paint",
-        "Black",
-        "Chrome"
+        "Black"
       ],
-      "tris": 1023,
+      "tris": 931,
       "generated": true
     },
     {
