@@ -1586,6 +1586,92 @@ def swap_islands(o, skin, box, near=0.015):
     return len(kill), len(isl)
 
 
+def handle_tail(o, fit, y0, y1, zc, hw, proud, rc=0.012, r=0.003, crown=0.002, sink=(0.008, 0.003), cup=(0.322, 0.335),
+                material='Paint', step=0.008, arc=5, rounds=3):
+    """A door handle's bar carried on to its rear end, on both sides (built at +x and mirrored): the bar's
+    cross-section, `hw` either side of `zc`, standing `proud` (front, rear) m off the door along x, from `y0`
+    inside the bar to `y1` with plan corners of radius `rc`, edges rounded at `r` and the face crowned by
+    `crown`. The door is the plane through the body's +x vertices for which fit(co) holds; the walls run
+    `sink` (ahead of cup[0], behind cup[1]) under it, deep where the handle's cup is recessed. The Wendt
+    Strom's donor models the bar's last 5 cm as a plate in the door's own surface (0.2 mm under it), and
+    the reduction left the bar ending at the cup. Smooth normals of its own. Returns the faces added."""
+    pts = np.array([tuple(v.co) for v in o.data.vertices if v.co.x > 0 and fit(v.co)])
+    a, b, c = np.linalg.lstsq(np.c_[np.ones(len(pts)), pts[:, 1], pts[:, 2]], pts[:, 0], rcond=None)[0]
+    door = lambda y, z: a + b * y + c * z
+    ramp = lambda y, lo, hi: min(1.0, max(0.0, (y - lo) / (hi - lo)))
+    height = lambda y: proud[0] + (proud[1] - proud[0]) * ramp(y, cup[1], y1)
+    base = lambda y: -(sink[0] + (sink[1] - sink[0]) * ramp(y, cup[0], cup[1]))
+    n_s = max(2, math.ceil((y1 - rc - y0) / step))
+
+    def outline(d):
+        """The bottom half of the footprint inset by d: (y, w) from y0 round the rear corner to the end."""
+        out = [(y0 + (y1 - rc - y0) * i / n_s, hw - d) for i in range(n_s + 1)]
+        out += [(y1 - rc + (rc - d) * math.sin(math.pi / 2 * j / arc), hw - rc + (rc - d) * math.cos(math.pi / 2 * j / arc)) for j in range(1, arc + 1)]
+        return out + [(y1 - d, 0.0)] if hw - rc > 1e-6 else out
+
+    inner = outline(r)
+    rings = [(0.0, None), (0.0, -r)] + [(r * (1 - math.cos(math.pi / 2 * j / rounds)), -r + r * math.sin(math.pi / 2 * j / rounds)) for j in range(1, rounds + 1)]
+    stash_normals(o)
+    me = o.data
+    mi = [m.name.split('.')[0] for m in me.materials].index(material)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector['src_normal']
+    added = 0
+    for side in (1, -1):
+        cache = {}
+
+        def vert(y, z, h):
+            k = (round(y, 7), round(z, 7))
+            if k not in cache:
+                cache[k] = bm.verts.new((side * (door(y, z) + h), y, z))
+            return cache[k]
+
+        grid = []   # per ring: (bottom, top) vertex lists
+        for d, dh in rings:
+            bot, top = [], []
+            for (y, w), (_, wi) in zip(outline(d), inner):
+                edge = height(y) - crown * (wi / (hw - r)) ** 2
+                h = base(y) if dh is None else edge + dh
+                bot.append(vert(y, zc - w, h))
+                top.append(vert(y, zc + w, h))
+            grid.append((bot, top))
+        mid = [vert(y, zc, height(y)) for y, _ in inner]
+        quads = []
+        for k in range(len(grid) - 1):
+            for half in (0, 1):
+                p, q = grid[k][half], grid[k + 1][half]
+                quads += [(p[i], p[i + 1], q[i + 1], q[i]) for i in range(len(p) - 1)]
+        bot, top = grid[-1]
+        quads += [(bot[i], bot[i + 1], mid[i + 1], mid[i]) for i in range(len(mid) - 1)]
+        quads += [(mid[i], mid[i + 1], top[i + 1], top[i]) for i in range(len(mid) - 1)]
+        new = []
+        for qd in quads:
+            vs = [v for i, v in enumerate(qd) if v is not qd[i - 1]]
+            if len(set(vs)) < 3:
+                continue
+            f = bm.faces.new(vs)
+            f.material_index = mi
+            f.smooth = True
+            new.append(f)
+        # Outward: away from the bar's core line, a little off the door and short of the rear corner's centre.
+        for f in new:
+            f.normal_update()
+            cc = f.calc_center_median()
+            core = Vector((side * (door(cc.y, zc) + 0.005), min(cc.y, y1 - rc), zc))
+            if f.normal.dot(cc - core) < 0:
+                f.normal_flip()
+        bm.normal_update()
+        for f in new:
+            for l in f.loops:
+                l[sn] = l.vert.normal
+        added += len(new)
+    bm.to_mesh(me)
+    bm.free()
+    restore_normals(o)
+    return added
+
+
 def _inside_2d(p, poly):
     c = False
     for i in range(len(poly)):
