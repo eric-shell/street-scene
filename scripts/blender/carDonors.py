@@ -118,12 +118,15 @@ DONORS = {
         # patches: it is paint (the bezel's top lip, ahead of the lens, stays black). The pop-ups'
         # lamps glow whole: cover, reflector and bulb.
         'recolor': [(lambda c, n, m: m == 'Black' and POPUP(c) and c.y > -1.74 and c.z > 0.765 and abs(n.z) > 0.5, 'Paint'),
-                    (lambda c, n, m: m in ('Lens', 'Chrome') and POPUP(c), 'HeadLight'),
-                    # Each bumper lamp's inner (clear) round lamp glows whole too: lens, reflector
-                    # and bulb, about its own center (the donor's left lamp sits 6 mm further out
-                    # than the right one's mirror). The outer, amber one is the indicator, unlit.
-                    (lambda c, n, m: m in ('Lens', 'Chrome') and math.hypot(c.x - (0.5736 if c.x > 0 else -0.58), c.z - 0.4716) < 0.04
-                     and -1.9 < c.y < -1.865, 'HeadLight')],
+                    (lambda c, n, m: m in ('Lens', 'Chrome') and POPUP(c), 'HeadLight')],
+        # The bumper lamps' two round lamps a side give way to clean discs (`cull`, then `discs`):
+        # the collapse left them 8- to 10-sided and unalike (52 faces by the 60k skin). The inner,
+        # clear one glows whole; the outer, amber one is the indicator, unlit. Each about its own
+        # center (the donor's left lamps sit 5 mm further out than the right ones' mirror) and just
+        # in front of its black bezel, whose lip stands 14 mm further forward on the left, under
+        # the clear cover.
+        'discs': [((0.5736, -1.925, 0.4705), 0.0325, 'HeadLight'), ((-0.5787, -1.925, 0.4705), 0.0325, 'HeadLight'),
+                  ((0.6705, -1.875, 0.4793), 0.0335, 'Light'), ((-0.6756, -1.875, 0.4793), 0.0335, 'Light')],
         # The third brake light: the donor's four red blocks in the black pocket mid tail bar give
         # way to one thin strip arched along its top edge (6 mm under it), lit only under braking,
         # as on the car.
@@ -147,6 +150,8 @@ DONORS = {
         # stood through the roof. By hand on the shipped file on 2026-10-29.
         'cull': [lambda c, n, m: m == 'Black' and abs(c.x) < 0.5 and -0.78 < c.y < -0.665 and 0.8 < c.z < 0.87,
                  lambda c, n, m: m == 'TailLight' and abs(c.x) < 0.25 and c.y > 2.0,
+                 lambda c, n, m: m in ('Lens', 'Chrome') and math.hypot(c.x - (0.5736 if c.x > 0 else -0.58), c.z - 0.4716) < 0.04 and -1.9 < c.y < -1.865,
+                 lambda c, n, m: m in ('Light', 'Lens', 'Chrome') and math.hypot(c.x - (0.6705 if c.x > 0 else -0.6756), c.z - 0.4793) < 0.04 and -1.87 < c.y < -1.815,
                  lambda c, n, m: m == 'Black' and 0.39 < c.x < 0.68 and -0.67 < c.y < -0.47 and 0.8 < c.z < 0.85,
                  lambda c, n, m: m == 'Interior' and abs(c.x) < 0.035 and -0.1 < c.y < -0.03 and c.z > 1.15,
                  lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y < -1.89 and 0.55 < c.z < 0.63,
@@ -1418,6 +1423,8 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
         back_panels(low, DONORS[cid]['backPanels'])
     for points, height, material in DONORS[cid].get('strips', ()):
         lamp_strip(low, points, height, material)
+    for center, radius, material in DONORS[cid].get('discs', ()):
+        lamp_disc(low, center, radius, material)
     turned = shade_from_source(low, skin)
     if cabin.data.polygons:
         _collapse(cabin, interior)
@@ -1441,6 +1448,34 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
           f'drift mean {sum(d) / len(d) * 1000:.1f} mm, p95 {d[int(len(d) * 0.95)] * 1000:.1f} mm; '
           f'lost p95 {lost[int(len(lost) * 0.95)] * 1000:.1f} mm, max {lost[-1] * 1000:.0f} mm')
     return low
+
+
+def lamp_disc(o, center, radius, material, segments=24):
+    """A flat round lamp lens, `segments` triangles round `center` (x, y, z) in the car's xz
+    plane, turned out of the nearer end: a recipe `discs` entry `(center, radius, material)`. A
+    round lens is rebuilt, never collapsed (the wheels' rule): the RX-7's bumper lamps came out
+    8- and 10-sided and unalike, side to side."""
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+    mi = mat_index(o, material)
+    cx, cy, cz = center
+    hub = bm.verts.new((cx, cy, cz))
+    rim = [bm.verts.new((cx + radius * math.cos(2 * math.pi * i / segments), cy, cz + radius * math.sin(2 * math.pi * i / segments)))
+           for i in range(segments)]
+    out = 1 if cy > 0 else -1
+    for i in range(segments):
+        f = bm.faces.new([hub, rim[i], rim[(i + 1) % segments]])
+        f.material_index = mi
+        f[own] = 1
+        f.smooth = False
+        f.normal_update()
+        if f.normal.y * out < 0:
+            f.normal_flip()
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
 
 
 def _clusters(points, reach=0.05):
