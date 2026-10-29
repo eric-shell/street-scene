@@ -3,25 +3,27 @@
  * steering lock move a wheel further than the arch was cut for, so at full compression the tire's
  * crown came up through the fender and at full lock its corners swung out through the arch's ends.
  *
- * Each car measures its body once per part change: over each wheel, a height field of the body
- * surface above every spot (car space, from the ground up). The wheel materials discard any fragment
- * above that surface. Under the fender the field is the outer skin, the highest surface over the spot
- * (fender top, hood): what a tire pokes through. The wheel well's liner below it is interior, so a
- * lowered build's tire is left to pass into it and disappear, as a tucked tire does; cutting at the
- * liner (the lowest surface, as this once did) carved the crown away a few centimetres under the
- * fender and showed the liner, a flat black plane, through the arch in front of the wheel. At the
- * fender's edge the field is the lowest surface instead, the arch lip's underside, and outboard of the
- * body that lip height carries on, so a tire pushed out past the fender (offset, camber, lock) is cut
- * at the fender's line and reads as the wheel tucking under it.
+ * Each car measures its body once per part change: over each wheel, two height fields of the body
+ * surface above every spot (car space, from the ground up), both in one texture.
  *
- * A stanced build (lowered, the wheel pushed out past the fender on a stretched tire) puts the tire's
- * shoulder up into the fender's lip while the wheel's lip sits a hair under it. The cut alone then
- * opened a hole: the shoulder gone, the lip and the barrel under the tread lit as if in the open, so the
- * fender read as slicing between tire and wheel. So every wheel fragment is also judged by the tire's
- * crown over it (its position pushed out radially to the tire's outer radius, `uArchR`) and darkens
- * toward `CLIP.shade.floor` as that crown goes up into the body: the lip, the sidewall and whatever shows
- * through the cut sink into the arch's shadow under the fender's edge, the way a tucked wheel does, and
- * nothing of the geometry moves. A stock stance never reaches the shade.
+ * The cut field is the outer skin, the highest surface over the spot (fender top, hood, the flare down
+ * to its edge): the wheel materials discard any fragment above it. The wheel well's liner below it is
+ * interior, so a lowered build's tire is left to pass into it and disappear, as a tucked tire does;
+ * cutting at the liner (the lowest surface, as this once did) carved the crown away a few centimetres
+ * under the fender and showed the liner, a flat black plane, through the arch in front of the wheel.
+ * Outboard of the body the skin's height at its edge carries on, so a tire pushed out past the fender
+ * (offset, camber, lock) stands beside the flare up to its edge and is cut above it.
+ *
+ * The shade field is the arch's line: the skin under the fender, but at the fender's edge the lowest
+ * surface, the arch lip's underside, carried outboard. Every wheel fragment is judged against it by the
+ * tire's crown over it (its position pushed out radially to the tire's outer radius, `uArchR`) and
+ * darkens toward `CLIP.shade.floor` as that crown goes up past the line. A stanced build (lowered, the
+ * wheel pushed out past the fender on a stretched tire) puts the tire's shoulder up into the fender's
+ * lip with the wheel's lip a hair under it: cutting the shoulder at the lip line, as this once did,
+ * opened a hole into the well from below and left the lip and barrel lit as if in the open, so the
+ * fender read as slicing between tire and wheel. Now the shoulder stays, and it, the lip, the sidewall
+ * and the barrel sink into the arch's shadow under the fender's edge the way a tucked wheel does,
+ * while nothing of the geometry moves. A stock stance never reaches the shade.
  *
  * Cost: eight texel fetches per wheel fragment, no extra pass or draw call; measuring rasterizes the body's
  * triangles into four small grids twice (lowest and highest surface; a few milliseconds, only when the
@@ -67,20 +69,21 @@ uniform float uArchMidZ;
 varying vec3 vArchPos;
 varying vec3 vArchEnv;
 float archShade = 1.0;
-// The body's height over a spot of one wheel's field (open where the spot is off the field), bilinear between the
-// cell centers (by hand: float textures need not filter), so the cut is a smooth line, not steps.
-float archHeight(vec2 p, int wheel) {
+// The body over a spot of one wheel's field (x the skin to cut at, y the arch line to shade from; open where the spot
+// is off the field), bilinear between the cell centers (by hand: float textures need not filter), so the cut is a
+// smooth line, not steps.
+vec2 archHeight(vec2 p, int wheel) {
   vec4 box = uArchBox[wheel];
   vec2 cell = (p - box.xy) / box.zw;
-  if (cell.x < 0.0 || cell.y < 0.0 || cell.x >= ${CLIP.nx}.0 || cell.y >= ${CLIP.nz}.0) return ${CLIP.open.toFixed(1)};
+  if (cell.x < 0.0 || cell.y < 0.0 || cell.x >= ${CLIP.nx}.0 || cell.y >= ${CLIP.nz}.0) return vec2(${CLIP.open.toFixed(1)});
   vec2 g = clamp(cell - 0.5, vec2(0.0), vec2(${CLIP.nx - 1}.0, ${CLIP.nz - 1}.0));
   ivec2 c0 = ivec2(min(floor(g), vec2(${CLIP.nx - 2}.0, ${CLIP.nz - 2}.0)));
   vec2 f = g - vec2(c0);
   c0.y += wheel * ${CLIP.nz};
-  float h00 = texelFetch(uArchMap, c0, 0).r;
-  float h10 = texelFetch(uArchMap, c0 + ivec2(1, 0), 0).r;
-  float h01 = texelFetch(uArchMap, c0 + ivec2(0, 1), 0).r;
-  float h11 = texelFetch(uArchMap, c0 + ivec2(1, 1), 0).r;
+  vec2 h00 = texelFetch(uArchMap, c0, 0).rg;
+  vec2 h10 = texelFetch(uArchMap, c0 + ivec2(1, 0), 0).rg;
+  vec2 h01 = texelFetch(uArchMap, c0 + ivec2(0, 1), 0).rg;
+  vec2 h11 = texelFetch(uArchMap, c0 + ivec2(1, 1), 0).rg;
   return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
 }
 `;
@@ -89,8 +92,8 @@ float archHeight(vec2 p, int wheel) {
 const FRAG_BODY = /* glsl */ `
 {
   int wheel = (vArchPos.z > uArchMidZ ? 0 : 2) + (vArchPos.x > 0.0 ? 0 : 1);
-  if (vArchPos.y > archHeight(vArchPos.xz, wheel)) discard;
-  archShade = mix(1.0, ${CLIP.shade.floor.toFixed(3)}, smoothstep(0.0, ${CLIP.shade.depth.toFixed(3)}, vArchEnv.y - archHeight(vArchEnv.xz, wheel)));
+  if (vArchPos.y > archHeight(vArchPos.xz, wheel).x) discard;
+  archShade = mix(1.0, ${CLIP.shade.floor.toFixed(3)}, smoothstep(0.0, ${CLIP.shade.depth.toFixed(3)}, vArchEnv.y - archHeight(vArchEnv.xz, wheel).y));
 }
 `;
 const FRAG_SHADE = /* glsl */ `
@@ -103,10 +106,12 @@ const TO_CAR = new THREE.Matrix4();
 const BODY_INV = new THREE.Matrix4();
 
 export class WheelClip {
-  private readonly data = new Float32Array(CLIP.nx * CLIP.nz * 4).fill(CLIP.open);
-  /** The highest body surface over each cell (the outer skin), gathered beside the lowest while measuring. */
+  /** The texture: per cell the skin to cut at (r) and the arch line to shade from (g), settled from `low` and `high`. */
+  private readonly data = new Float32Array(CLIP.nx * CLIP.nz * 4 * 2).fill(CLIP.open);
+  /** The lowest and the highest body surface over each cell (the liner and the outer skin), gathered while measuring. */
+  private readonly low = new Float32Array(CLIP.nx * CLIP.nz * 4).fill(CLIP.open);
   private readonly high = new Float32Array(CLIP.nx * CLIP.nz * 4).fill(-CLIP.open);
-  private readonly map = new THREE.DataTexture(this.data, CLIP.nx, CLIP.nz * 4, THREE.RedFormat, THREE.FloatType);
+  private readonly map = new THREE.DataTexture(this.data, CLIP.nx, CLIP.nz * 4, THREE.RGFormat, THREE.FloatType);
   /** Shared by every wheel material of this car; the world to body matrix is set as each wheel mesh draws. */
   private readonly uniforms = {
     uArchMap: { value: this.map },
@@ -139,7 +144,7 @@ export class WheelClip {
    */
   measure(keep: (mesh: THREE.Mesh) => boolean): void {
     const { nx, nz } = CLIP;
-    this.data.fill(CLIP.open);
+    this.low.fill(CLIP.open);
     this.high.fill(-CLIP.open);
     this.body.updateWorldMatrix(true, true);
     BODY_INV.copy(this.body.matrixWorld).invert();
@@ -179,7 +184,7 @@ export class WheelClip {
               const y = l1 * a.y + l2 * b.y + l3 * c.y;
               const cell = (w * nz + j) * nx + i;
               if (y <= this.floor[w]) continue;
-              if (y < this.data[cell]) this.data[cell] = y;
+              if (y < this.low[cell]) this.low[cell] = y;
               if (y > this.high[cell]) this.high[cell] = y;
             }
           }
@@ -191,43 +196,56 @@ export class WheelClip {
   }
 
   /**
-   * Two passes over one wheel's field once the body is in. Along each row, from the inboard side out:
-   * under the body the cell clips at the outer skin (the highest surface); the last two cells before the
-   * body's edge keep the lowest, the arch lip's underside; outboard of the edge that lip height carries
-   * on, so a tire pushed out by the offset, camber or steering lock tucks under the fender's line instead
-   * of standing beside it. Then each cell takes the lowest of itself and its neighbours: a cell holds
-   * the surface at its center, so on a steep lip half of it sat above the panel and the tire peeked
-   * through in steps; the lowest neighbour keeps the cut at or just under the panel.
+   * Settle one wheel's field once the body is in. Along each row, from the inboard side out, the body
+   * ends at its last measured cell (the fender's edge). The cut field is the outer skin, the highest
+   * surface, every cell under the body; outboard of the edge the skin's height there carries on. The
+   * shade field is the skin too, but the last two cells before the edge keep the lowest surface, the
+   * arch lip's underside, and outboard of the edge that lip height carries on, so a tire pushed out by
+   * the offset, camber or steering lock shades under the fender's line. Then each cell of both takes the
+   * lowest of itself and its neighbours: a cell holds the surface at its center, so on a steep lip half
+   * of it sat above the panel and the tire peeked through in steps; the lowest neighbour keeps the cut
+   * at or just under the panel.
    */
   private settle(w: number, out: 1 | -1): void {
     const { nx, nz } = CLIP;
     const base = w * nz * nx;
     const d = this.data;
+    const lo = this.low;
     const h = this.high;
+    const cut = new Float32Array(nz * nx);
+    const line = new Float32Array(nz * nx);
     for (let j = 0; j < nz; j++) {
       const row = base + j * nx;
       const at = (k: number): number => row + (out > 0 ? k : nx - 1 - k);
       let edge = -1;
-      for (let k = 0; k < nx; k++) if (d[at(k)] < CLIP.open) edge = k;
+      for (let k = 0; k < nx; k++) if (lo[at(k)] < CLIP.open) edge = k;
+      const skinAt = (cell: number): number => (h[cell] > -CLIP.open ? h[cell] : CLIP.open);
+      const edgeSkin = edge < 0 ? CLIP.open : skinAt(at(edge));
+      const edgeLine = edge < 0 ? CLIP.open : lo[at(edge)];
       for (let k = 0; k < nx; k++) {
         const cell = at(k);
-        if (k < edge - 1) d[cell] = h[cell] > -CLIP.open ? h[cell] : CLIP.open;
-        else if (k > edge) d[cell] = edge < 0 ? CLIP.open : d[at(edge)];
+        const skin = k <= edge ? skinAt(cell) : edgeSkin;
+        cut[cell - base] = skin;
+        line[cell - base] = k < edge - 1 ? skin : k <= edge ? lo[cell] : edgeLine;
       }
     }
-    const src = d.slice(base, base + nz * nx);
     for (let j = 0; j < nz; j++) {
       for (let i = 0; i < nx; i++) {
-        let low = src[j * nx + i];
+        let lowCut = cut[j * nx + i];
+        let lowLine = line[j * nx + i];
         for (let dj = -1; dj <= 1; dj++) {
           const jj = j + dj;
           if (jj < 0 || jj >= nz) continue;
           for (let di = -1; di <= 1; di++) {
             const ii = i + di;
-            if (ii >= 0 && ii < nx) low = Math.min(low, src[jj * nx + ii]);
+            if (ii < 0 || ii >= nx) continue;
+            lowCut = Math.min(lowCut, cut[jj * nx + ii]);
+            lowLine = Math.min(lowLine, line[jj * nx + ii]);
           }
         }
-        d[base + j * nx + i] = low;
+        const cell = base + j * nx + i;
+        d[cell * 2] = lowCut;
+        d[cell * 2 + 1] = lowLine;
       }
     }
   }
