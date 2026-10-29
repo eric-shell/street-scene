@@ -758,10 +758,10 @@
       "lip": "chrome",
       "lugs": {
         "count": 5,
-        "r": 0.03777,
-        "phase": -1.88585,
-        "x": -0.05072,
-        "size": 0.01
+        "r": 0.04262,
+        "phase": -1.25622,
+        "x": -0.06515,
+        "size": 0.0085
       },
       "carId": "universal",
       "slot": "wheels",
@@ -808,9 +808,9 @@
       "lip": "rim",
       "lugs": {
         "count": 5,
-        "r": 0.03968,
-        "phase": -1.88541,
-        "x": 0.0469,
+        "r": 0.04347,
+        "phase": -1.26101,
+        "x": 0.02232,
         "size": 0.0095
       },
       "carId": "universal",
@@ -2276,10 +2276,10 @@
       "lip": "chrome",
       "lugs": {
         "count": 4,
-        "r": 0.0415,
-        "phase": -2.35535,
-        "x": 0.03298,
-        "size": 0.0065
+        "r": 0.05703,
+        "phase": -1.57013,
+        "x": 0.01576,
+        "size": 0.01
       },
       "carId": "universal",
       "slot": "wheels",
@@ -2581,10 +2581,10 @@
       "lip": "chrome",
       "lugs": {
         "count": 5,
-        "r": 0.05691,
-        "phase": -1.88496,
-        "x": -0.00268,
-        "size": 0.01175
+        "r": 0.06101,
+        "phase": -1.25682,
+        "x": -0.00999,
+        "size": 0.012
       },
       "carId": "universal",
       "slot": "wheels",
@@ -2598,7 +2598,7 @@
         "RimCap",
         "Tire"
       ],
-      "tris": 9560,
+      "tris": 8714,
       "generated": true
     },
     {
@@ -2686,10 +2686,10 @@
       "lip": "chrome",
       "lugs": {
         "count": 5,
-        "r": 0.04779,
-        "phase": -1.25664,
-        "x": 0.03681,
-        "size": 0.01021
+        "r": 0.04816,
+        "phase": -1.88496,
+        "x": 0.00127,
+        "size": 0.0095
       },
       "carId": "universal",
       "slot": "wheels",

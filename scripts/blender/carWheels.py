@@ -87,12 +87,13 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
 # `chunks` True for a scan cut into chunks that each run from the hub to the lip: its islands are no parts (the ring ones are barrel
 # scraps, the narrow and flat ones pieces of spoke), so all but the hub's join the face and the lip is turned out of it as on a one-piece.
 # `keep` a regex of names the junk words would drop that are the wheel (the 57DR's spokes sit under a node named DISK).
-# `lugs` 0 when no lug circle shows (a cap or a solid face hides it), or (count, r over the lip) for the circle to take where the innermost is a decoration.
+# `lugs` 0 when no lug circle shows (a cap or a solid face hides it), or (count, r over the lip) for the circle to take where the innermost is a decoration, with an optional dict as a third item (see `fit_lugs`): `phase` (deg) for two circles at one radius, `seat` (m) to seat the nuts on a ring of that radius where the hole's floor is not the seat.
 _J = {'author': 'jonver87', 'license': 'CC Attribution'}
 WHEELS = {
     'kumo': {'name': 'Work VS-TX', 'uid': '31c76095a0754cb1b08591d63973a2c2', 'maker': 'Work', **_J},
     'yari': {'name': 'Work Equip 03', 'uid': '13c021b58f2b4c42ac747feb5457750b', 'maker': 'Work', **_J},
-    'tsume': {'name': 'Work Equip 40', 'uid': 'ac9b1a3ffbd8400a9b364d0596fdcc56', 'maker': 'Work', **_J},
+    'tsume': {'name': 'Work Equip 40', 'uid': 'ac9b1a3ffbd8400a9b364d0596fdcc56', 'maker': 'Work', **_J,
+              'lugs': (4, 0.275, {'seat': 0.010})},   # a dual drilled hub: the four holes on the spokes (114.3), in countersinks, not the four hex collars between them (100) or the crescents inboard; the nut sits where the cone is 10 mm out
     'hari': {'name': 'Work Emitz', 'uid': '0dd4b490ee624aeda867cd5ccfe530e6', 'maker': 'Work', **_J},
     'kasumi': {'name': 'Work VS-KF', 'uid': 'f762ae9a968d4971a9c4c61922310e44', 'maker': 'Work', **_J},
     'raiden': {'name': 'Work VS-XV', 'uid': 'bb47f6dd1ab6406289c59e3c0a86be38', 'maker': 'Work', **_J},
@@ -177,7 +178,8 @@ WHEELS = {
              'lip': 'rim'},   # a one-piece: the bolt test found a circle of three heads, no lip bolt ring
     'ibuki': {'name': 'Brixton Forged VL7', 'uid': '051fba725036489288a0ed6ded9a4abe', 'maker': 'Brixton Forged', **_J,
              'face': -1},   # the normal vote put the lattice face 0.7 of the way down the barrel
-    'kaen': {'name': 'Brixton Forged PF6', 'uid': '60d3005ced7f42fa9100b0aa03979269', 'maker': 'Brixton Forged', **_J},
+    'kaen': {'name': 'Brixton Forged PF6', 'uid': '60d3005ced7f42fa9100b0aa03979269', 'maker': 'Brixton Forged', **_J,
+              'lugs': (5, 0.21)},   # the five round holes, not the slots' inner holes (innermost won): the nuts seat at the bottom of the hole
     'kanade': {'name': 'HRE 522M', 'uid': '17dfb9313e3346d59021dbcca0142762', 'maker': 'HRE', **_J,
               'pick': ('x', 0, 1)},   # the scene holds two wheels side by side: the one on +X
     'karasu': {'name': 'Vossen VFS4', 'uid': '2a078ce1d2b3463cab9bc3179432bf1c', 'maker': 'Vossen', **_J},
@@ -213,10 +215,12 @@ WHEELS = {
     'usagi': {'name': 'Vossen HC-1', 'uid': 'a09cf8de7a8940fa9733c46198a46fd1', 'maker': 'Vossen', **_J},
     'wakaba': {'name': 'fifteen52 Turbomac', 'uid': '0dbadec625c249eea309d95eb015c9f4', 'maker': 'Fifteen52', 'author': 'portfoliorodrigues', 'license': 'CC Attribution'},
     'yamabuki': {'name': 'Work Meister S1 3P', 'uid': '7205c04f3cb24a7dbdaf6a304fb31f21', 'maker': 'Work', 'author': 'alexanderlyreo', 'license': 'CC Attribution'},   # its brake rotor and hat are welded into the one mesh, so the junk names miss them: deleted by hand after wheel() (the islands behind the spokes, x < 0.047 and r 0.055 to 0.12)
-    'yoake': {'name': 'WORK MEISTER CR01', 'uid': '9b2bb4a769de4c6098efe95001072841', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'yoake': {'name': 'WORK MEISTER CR01', 'uid': '9b2bb4a769de4c6098efe95001072841', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution',
+              'lugs': (5, 0.294, {'seat': 0.012})},   # the five stepped pockets (the donor's black nuts), not the plain holes between them (a hole beats a nut); the nut sits on the ledge above the stud tube and the donor's nut goes down to it
     'yuzu': {'name': 'SSR Minerva', 'uid': '704b405602b74a788a0678fd39ac4e51', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
              'lip': 'chrome'},   # multi-piece: its rivets are moulded into the face's rim, so no bolt circle is rebuilt
-    'zan': {'name': 'RAYS nismo LMGT1', 'uid': '6ed19c4728744e0b95246b5e125ea286', 'maker': 'Rays', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'zan': {'name': 'RAYS nismo LMGT1', 'uid': '6ed19c4728744e0b95246b5e125ea286', 'maker': 'Rays', 'author': 'dermaks', 'license': 'CC Attribution',
+            'lugs': (5, 0.23, {'phase': 36})},   # ten holes on one circle: the five stud holes (a plate at the mounting plane, in pockets) at 36 deg, not the five open bores between them at 0 deg, which have no seat
     'hotaka': {'name': 'SSR Longchamp XR4', 'uid': '6b3cc8dc828b4e319d625ef3318a26ff', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
     'sagi': {'name': 'Budnik Tusk', 'uid': 'ab0c4c881d2d41f8a479273e81491978', 'maker': 'Budnik', 'author': 'dermaks', 'license': 'CC Attribution'},
     'uguisu': {'name': 'Weds Kranze Bazreia', 'uid': '9f55befda4a64aeea5d6fc3586e055ae', 'maker': 'Weds', 'author': 'dermaks', 'license': 'CC Attribution'},
@@ -226,7 +230,8 @@ WHEELS = {
     'sazanka': {'name': 'KANSEI TANDEM', 'uid': '4d467ea742e94f6aa9ffa8f7f1a0a913', 'maker': 'Kansei', 'author': 'dermaks', 'license': 'CC Attribution',
                 'bolts': 0},   # a one-piece wheel: the raised lettering on its dish wall made a bolt circle of 13 heads
     'mikazuki': {'name': 'O.Z MAE', 'uid': '75f3ef08221849e2ac3a17dd2ecf2386', 'maker': 'MAE', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'inazuma': {'name': 'WORK EMOTION T5R 2P', 'uid': '38c31e5755494f7fa5e53fdbc95fa313', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'inazuma': {'name': 'WORK EMOTION T5R 2P', 'uid': '38c31e5755494f7fa5e53fdbc95fa313', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution',
+                'lugs': (5, 0.205)},   # the five counterbored pockets (r 42 mm), not the ring of small decorative holes inboard (innermost won); the nut sits at the bottom of the bore
     'hanabi': {'name': 'SSR Starshark', 'uid': '58970916a3be46a48d61de853149a22a', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
     'minamo': {'name': 'MAE CROWN JEWEL', 'uid': '2c77da7f41df431aa1db7b7c2afa92ca', 'maker': 'MAE', 'author': 'dermaks', 'license': 'CC Attribution',
               'face': 1},   # the normal vote put the spokes 0.76 down the barrel; the same template as the MAE above reads 0.39 turned
@@ -934,9 +939,9 @@ def _lug_circles(blobs):
     return found
 
 
-def _seat_x(o, centers, size):
+def _seat_x(o, centers, size, ring=1.3):
     """Where a nut's base sits: the median, over the lugs, of the surface just round each one (the upper
-    quartile of 16 rays down -X on a circle 1.3 seat radii from its center, `centers` (y, z) in m; through
+    quartile of 16 rays down -X on a circle `ring` (1.3) seat radii from its center, `centers` (y, z) in m; through
     kasumi's mesh face the median sank its nuts 21 mm). The ring's median depth over the
     whole circle ran up spokes and down windows: a nut stood 6 mm proud of the face round its hole on yari."""
     me = o.data
@@ -944,7 +949,7 @@ def _seat_x(o, centers, size):
     tree = BVHTree.FromPolygons([v.co for v in me.vertices], [p.vertices[:] for p in me.polygons if names[p.material_index] != 'Tire'])
     xs = []
     for cy, cz in centers:
-        hits = sorted(h.x for h in (tree.ray_cast(Vector((0.3, cy + 1.3 * size * math.cos(2 * math.pi * k / 16), cz + 1.3 * size * math.sin(2 * math.pi * k / 16))), Vector((-1, 0, 0)))[0] for k in range(16)) if h is not None)
+        hits = sorted(h.x for h in (tree.ray_cast(Vector((0.3, cy + ring * size * math.cos(2 * math.pi * k / 16), cz + ring * size * math.sin(2 * math.pi * k / 16))), Vector((-1, 0, 0)))[0] for k in range(16)) if h is not None)
         if hits:
             xs.append(hits[(3 * len(hits)) // 4])   # the upper quartile: rays through a mesh face's openings fall past the seat
     return sorted(xs)[len(xs) // 2] if xs else None
@@ -986,6 +991,13 @@ def _recess(o, centers, x, size, tree=None):
     return floor, max(min(size, wall - 0.0005), 0.006)
 
 
+def _phase_gap(c, deg):
+    """How far a lug circle's first lug is from `deg` (the catalog's phase, atan2(-y, z)), modulo the spacing, in degrees."""
+    n = c['n']
+    ph = math.atan2(sum(math.sin(n * math.atan2(-m['y'], m['z'])) for m in c['members']), sum(math.cos(n * math.atan2(-m['y'], m['z'])) for m in c['members'])) / n
+    return abs(((ph - math.radians(deg)) * n + math.pi) % (2 * math.pi) - math.pi) / n * 180 / math.pi
+
+
 def fit_lugs(o, want=None):
     """Measure the wheel's lug circle and make way for the house nuts: the donor's nuts (Chrome, or face
     standing proud of the hub within a lug's radius) go, and the object's `lugs` property (JSON, the
@@ -996,16 +1008,25 @@ def fit_lugs(o, want=None):
     The lugs are holes, pockets or nuts in a depth image of the hub (`_lug_blobs`) on a circle of 4 to 6
     (`_lug_circles`); the innermost circle wins, since decorative windows and spoke gaps sit further
     out. `want` is the recipe's `lugs`: 0 for none (a solid face or a cap hides them), or (count, r) to
-    take the circle of that count nearest that radius where the innermost is a decoration. Returns the
-    circle as (count, r over the lip, kind) or None."""
+    take the circle of that count nearest that radius where the innermost is a decoration, with an optional
+    third item, a dict, for what the measurement cannot tell: `phase` (deg, in the catalog's frame) takes the
+    circle of that count and radius (within 0.02) whose first lug is nearest that angle (modulo the spacing),
+    where two circles share a radius, a dual drilled hub (zan: five stud holes and five bores between them);
+    `seat` (m) seats the nuts on the surface on a ring of that radius round each lug and sets the washer to
+    it, where the floor `_recess` finds is not the seat (a countersink's cone, a ledge above a deeper tube:
+    tsume, yoake). Returns the circle as (count, r over the lip, kind) or None."""
     L = TIRE_R * BEAD
     if 'lugs' in o.keys():
         del o['lugs']
     if want == 0:
         return None
     circles = _lug_circles(_lug_blobs(_depth_image(o, L)))
+    opt = want[2] if want and len(want) > 2 else {}
     if want:
         circles = sorted((c for c in circles if c['n'] == want[0]), key=lambda c: abs(c['r'] - want[1]))
+        if 'phase' in opt:
+            near = [c for c in circles if abs(c['r'] - want[1]) < 0.02]
+            circles = sorted(near, key=lambda c: _phase_gap(c, opt['phase']))
     else:
         # At one radius a through hole is the surest lug, a nut standing proud the least (a raised boss looks the same).
         circles.sort(key=lambda c: (round(c['r'] / 0.03), ('hole', 'pocket', 'nut').index(c['members'][0]['kind']), c['spread']))
@@ -1027,13 +1048,22 @@ def fit_lugs(o, want=None):
     bm = bmesh.new()
     bm.from_mesh(me)
     gone = []
+    xcut = None
+    if opt.get('seat'):   # a nut seated on a ledge down in a pocket (yoake): the donor's nut, tall slivers of its flange and body included, goes down to that seat, not just what stands proud of the face
+        xcut = _seat_x(o, [(m['y'] * L, m['z'] * L) for m in members], opt['seat'], 1.0)
     for f in bm.faces:
         mat = names[f.material_index]
         if mat not in ('Chrome', 'Rim', 'Black'):
             continue
         p = f.calc_center_median()
         reach = [(math.hypot(p.y - m['y'] * L, p.z - m['z'] * L), m['rad'] * L * 1.1) for m in members]
-        if any(d < cr for d, cr in reach) if mat == 'Chrome' else (p.x > x + 0.0015 and all(v.co.x > x + 0.0005 for v in f.verts) and any(d < 0.9 * size for d, cr in reach)):
+        if mat == 'Chrome':
+            hit = any(d < cr for d, cr in reach)
+        elif xcut is not None:
+            hit = max(v.co.x for v in f.verts) > xcut + 0.003 and any(d < 1.1 * opt['seat'] for d, cr in reach)
+        else:
+            hit = p.x > x + 0.0015 and all(v.co.x > x + 0.0005 for v in f.verts) and any(d < 0.9 * size for d, cr in reach)
+        if hit:
             gone.append(f)
     bmesh.ops.delete(bm, geom=gone, context='FACES')
     sn = bm.loops.layers.float_vector['src_normal']
@@ -1046,6 +1076,9 @@ def fit_lugs(o, want=None):
     by, bz = c['r'] * L * math.cos(phase), c['r'] * L * math.sin(phase)
     x = _seat_x(o, [(m['y'] * L, m['z'] * L) for m in members], size) or x
     x, size = _recess(o, [(m['y'] * L, m['z'] * L) for m in members], x, size) or (x, size)
+    if opt.get('seat'):
+        size = opt['seat']
+        x = _seat_x(o, [(m['y'] * L, m['z'] * L) for m in members], size, 1.0) or x
     o['lugs'] = json.dumps({'count': n, 'r': round(c['r'] * L, 5), 'phase': round(math.atan2(-by, bz), 5), 'x': round(x, 5),
                             'size': round(size, 5)})
     return n, round(c['r'], 3), members[0]['kind'], len(gone)
