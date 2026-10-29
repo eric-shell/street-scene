@@ -80,14 +80,14 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
 # shade the face from its own shape when the donor's normals are wrong, `dark` a luminance (0-1):
 # faces whose base colour texture is darker go (a tire welded to the wheel in one textured mesh).
 # `pick` (axis, lo, hi): keep only the faces whose centre lies between lo and hi on that axis of the import's frame (a scene holding several wheels).
-# `cap` the turned hub cap's radius (share of the lip) where the round test stops short of an opening a dropped logo cap covered.
+# `cap` the turned hub cap's radius (share of the lip) where the round test stops short of an opening a dropped logo cap covered. An explicit radius may be under 0.12 and must clear the vertices of the hub's fan of faces (momiji's 20.8 mm recess: 0.105).
 # `cap_fill` True closes a cap ring's open center, so the whole center wears the cap's paint (sora).
 # `cap_disc` (share of the lip): the turned cap takes in the face's front-facing faces inside this radius too, so the cap is the hub's whole round disc out to where the spokes begin, with no face-paint ring round it (homura).
 # `turn` (share of the lip): on a multi-piece wheel, turn the face's surfaces of revolution joined to faces outside it, as on a one-piece (a round flange the spokes stand on, which a collapse crumples: mio).
 # `chunks` True for a scan cut into chunks that each run from the hub to the lip: its islands are no parts (the ring ones are barrel
 # scraps, the narrow and flat ones pieces of spoke), so all but the hub's join the face and the lip is turned out of it as on a one-piece.
 # `keep` a regex of names the junk words would drop that are the wheel (the 57DR's spokes sit under a node named DISK).
-# `lugs` 0 when no lug circle shows (a cap or a solid face hides it), or (count, r over the lip) for the circle to take where the innermost is a decoration, with an optional dict as a third item (see `fit_lugs`): `phase` (deg) for two circles at one radius, `seat` (m) to seat the nuts on a ring of that radius where the hole's floor is not the seat.
+# `lugs` 0 when no lug circle shows (a cap or a solid face hides it), or (count, r over the lip) for the circle to take where the innermost is a decoration, with an optional dict as a third item (see `fit_lugs`): `phase` (deg) for two circles at one radius, `seat` (m) to seat the nuts on a ring of that radius where the hole's floor is not the seat. `x` (m) sets the seat outright (kazakiri, momiji).
 _J = {'author': 'jonver87', 'license': 'CC Attribution'}
 WHEELS = {
     'kumo': {'name': 'Work VS-TX', 'uid': '31c76095a0754cb1b08591d63973a2c2', 'maker': 'Work', **_J},
@@ -187,7 +187,8 @@ WHEELS = {
     'mizore': {'name': 'Vossen LC108T', 'uid': '124076f7e61f43109c78f329bbb4ee8b', 'maker': 'Vossen', **_J},
     'momiji': {'name': 'Vossen-x-Work VWS3', 'uid': 'bff5b9a09f0f42febac5fba5c2f2860c', 'maker': 'Vossen-x-Work', **_J,
               'face': -1,   # the spokes' concave fronts; face 1 showed the hub's mounting pad and stud holes (2026-10-28)
-              'cap': 0.235,   # its logo cap went as a decal over a star shaped opening wider than the round hub
+              'cap': 0.105,   # the real cap is the round logo disc in the hub's center (a recess 20.8 mm across its fan of faces, 3 mm deep, ringed by the hub's cone, the five nuts out at r 40 mm); 0.235 turned the whole hub pad round it, stud holes and all, as cap, and 0.101 missed the recess' fan (its rim vertices sit at 20.7 mm) (2026-10-28)
+              'lugs': (5, 0.194, {'x': -0.0229}),   # five through holes at r 40 mm on the hub's cone: with the nuts and the oversize cap gone the rays round a hole fall through to the barrel (the seat read -58 mm), so the nut sits where the cone is at the holes (x -22.9 mm)
               'lip': 'chrome'},   # a Work 3-piece line, though the model carries no lip bolts
     'nagi': {'name': 'Vossen VPS 310T', 'uid': '2128c0d05b98416c9de4f3eccf2605aa', 'maker': 'Vossen', **_J},
     'natsu': {'name': 'Rotiform HVN', 'uid': 'c89560b091cf49e9b2cc4f0f38074d40', 'maker': 'Rotiform', **_J,
@@ -245,7 +246,8 @@ WHEELS = {
     'kawasemi': {'name': 'Spoon SW388', 'uid': '069b86d4b4a2492e92eb3349805479f9', 'maker': 'Spoon', 'author': 'TinoD2', 'license': 'CC Attribution',
                  'drop': r'LowPoly|Tire'},   # a stand scene: a low poly copy beside the high poly wheel, both on tires
     'kazakiri': {'name': 'Work Emotion CR-KAI', 'uid': '3025fa1677784df99abcf1cd2a30c5fa', 'maker': 'Work', 'author': 'gordeykomark', 'license': 'CC Attribution',
-                 'drop': r'Tire|Rough_metal'},   # its own tire, and the valve stem
+                 'drop': r'Tire|Rough_metal',   # its own tire, and the valve stem
+                 'lugs': (5, 0.229, {'x': 0.022})},   # five 13 mm radius holes in counterbores that rise to the spokes' roots 56 mm out: the rays round a lug read the wall, so the nut seats on the ledge (x 22 mm) round the hole; the donor's nuts, standing in them, were cap islands that made the cap a 57 mm disc (see clean_cap)
     'tatsumaki': {'name': 'Rotiform DAB', 'uid': '48ff08bbf17b43b4abbc2ee9113be954', 'maker': 'Rotiform', 'author': 'blakebella', 'license': 'CC Attribution',
                  'drop': r'^tire$'},   # its own tire (the rotor goes as junk)
     'kogane': {'name': 'BBS LM Gold Wheels', 'uid': '3aac505aa9484d088204fabef6a8a4c2', 'maker': 'BBS', 'author': 'zxargon', 'license': 'CC Attribution'},
@@ -262,7 +264,9 @@ WHEELS = {
     'kaminari': {'name': 'Rays Gramlights 57CR', 'uid': '47063c38bdaa46ebaf2d2af2079c7118', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
                'drop': r'^(7\.001|material)$',   # the spoke stickers
                'chunks': True},   # a scan in chunks: the ring islands were barrel scraps (the face stood 18 cm proud of them), and
-                                  # 109k triangles of spoke went as bolts
+                                  # 109k triangles of spoke went as bolts. The donor has no cap, an open 24 mm bore in a bare hub with five nuts (r 51 mm):
+                                  # its hub pieces and nuts classified as cap made a 62 mm flat disc (clean_cap now turns only the piece reaching the bore:
+                                  # the house cap, 32 mm), and the lug circle read r 55.7 mm on that disc, not the nuts' 51 mm in their pockets (x 41 mm)
     'fuuga': {'name': 'RAYS G025', 'uid': '8b14891bb44b43729d07f1e4e2744488', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
             'drop': r'^material\.001$',   # the spoke sticker
             'lugs': 0,   # the center cap covers the lug circle
@@ -746,11 +750,50 @@ def clean_cap(o, pick=None, seg=CAP_SEG, fill=False):
         if n not in [m.name for m in me.materials]:
             me.materials.append(shared_mat(n))
     cap_i = [m.name for m in me.materials].index('RimCap')
+    default_pick = pick is None
     pick = pick or (lambda f, L: f.material_index == cap_i)
     _carry_normals(o)
     bm = bmesh.new()
     bm.from_mesh(me)
     faces = [f for f in bm.faces if pick(f, L)]
+    # Only the piece that reaches in to the bore is the cap. A donor's lug nuts (inside 0.35 of the
+    # lip, so classified as cap too), or the rest of a scan's hub, sit in pieces of their own outside
+    # 0.15: left in the pick, the cap's profile ran out to the outermost of them as a flat disc
+    # (kazakiri's 57 mm cap over its recessed hub and its nuts, kaminari's 62 mm over a bare hub).
+    # The nuts (raised 6 mm or more) go, as the house nuts replace them; the flat remainder is the hub: Rim.
+    if default_pick and faces:
+        seen, comps = set(), []
+        for f in faces:
+            if f in seen:
+                continue
+            seen.add(f)
+            stack, comp = [f], []
+            while stack:
+                g = stack.pop()
+                comp.append(g)
+                for v in g.verts:
+                    for h in v.link_faces:
+                        if h not in seen and h.material_index == cap_i:
+                            seen.add(h)
+                            stack.append(h)
+            comps.append(comp)
+        inner = [c for c in comps if min(_rad(v.co) for g in c for v in g.verts) < 0.15 * L]
+        if inner and len(inner) < len(comps):
+            if 'Rim' not in [m.name for m in me.materials]:
+                me.materials.append(shared_mat('Rim'))
+            rim_i = [m.name for m in me.materials].index('Rim')
+            nuts = []
+            for c in comps:
+                if c in inner:
+                    continue
+                xs = [v.co.x for g in c for v in g.verts]
+                if max(xs) - min(xs) > 0.006:
+                    nuts += c
+                else:
+                    for g in c:
+                        g.material_index = rim_i
+            bmesh.ops.delete(bm, geom=nuts, context='FACES')
+            faces = [f for c in inner for f in c]
     # A cap reaches in to the bore; a ring of lug nuts round the hub (inside 0.35 of the lip, so
     # classified as cap) starts outside 0.15.
     lugs = bool(faces) and min(_rad(v.co) for f in faces for v in f.verts) > 0.15 * L
@@ -799,6 +842,7 @@ def hub_cap(o, cut=None, planes=24, step=0.005, most=0.4):
         return 0
     tree = BVHTree.FromPolygons([v.co for v in me.vertices], [p.vertices[:] for p in cand])
     top = max(me.vertices[i].co.x for p in cand for i in p.vertices) + 0.02
+    explicit = bool(cut)   # the recipe's own radius stands, however small a cap it is
     if cut:
         cut *= L
     for k in range(0 if cut else int(most / step)):
@@ -807,7 +851,7 @@ def hub_cap(o, cut=None, planes=24, step=0.005, most=0.4):
         if len(hits) * 2 <= planes or r > 0.12 * L and (len(hits) < 0.9 * planes or hits[int(0.9 * len(hits))] - hits[int(0.1 * len(hits))] > 0.003):
             break
         cut = r
-    if not cut or cut < 0.12 * L:
+    if not cut or cut < 0.12 * L and not explicit:
         return 0
     rim = cut * 0.97
     clean_cap(o, lambda f, L: f.material_index in keep and all(_rad(v.co) < rim for v in f.verts))
@@ -1024,7 +1068,7 @@ def fit_lugs(o, want=None):
     where two circles share a radius, a dual drilled hub (zan: five stud holes and five bores between them);
     `seat` (m) seats the nuts on the surface on a ring of that radius round each lug and sets the washer to
     it, where the floor `_recess` finds is not the seat (a countersink's cone, a ledge above a deeper tube:
-    tsume, yoake); `at` (deg, the catalog's phase of the first lug) places the circle from the recipe's count and
+    tsume, yoake); `x` (m) sets the seat's x outright, where the rays round a lug find the wall of its pocket, not the ledge the nut sits on (kazakiri); `at` (deg, the catalog's phase of the first lug) places the circle from the recipe's count and
     r without measuring it, for a hub the depth image cannot read (asahi), with `rad` the lug's radius over the lip. Returns the circle as (count, r over the lip, kind) or None."""
     L = TIRE_R * BEAD
     if 'lugs' in o.keys():
@@ -1057,6 +1101,8 @@ def fit_lugs(o, want=None):
     rad = sorted(m['rad'] for m in members)[len(members) // 2] * L
     size = min(max(rad * 1.05, LUG['size'][0]), LUG['size'][1])
     x = seats[len(seats) // 2] if seats else _seat_x(o, [(m['y'] * L, m['z'] * L) for m in members], size)
+    if opt.get('x') is not None:
+        x = opt['x']
     # The donor's nuts: Chrome hardware within each lug's radius, or face standing proud of the seat within
     # what the house nut covers (a wider cut would open the face round it).
     me = o.data
@@ -1096,6 +1142,8 @@ def fit_lugs(o, want=None):
     if opt.get('seat'):
         size = opt['seat']
         x = _seat_x(o, [(m['y'] * L, m['z'] * L) for m in members], size, 1.0) or x
+    if opt.get('x') is not None:
+        x = opt['x']
     o['lugs'] = json.dumps({'count': n, 'r': round(c['r'] * L, 5), 'phase': round(math.atan2(-by, bz), 5), 'x': round(x, 5),
                             'size': round(size, 5)})
     return n, round(c['r'], 3), members[0]['kind'], len(gone)

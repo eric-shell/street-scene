@@ -901,10 +901,10 @@
       "lip": "rim",
       "lugs": {
         "count": 5,
-        "r": 0.05569,
-        "phase": -1.88576,
-        "x": 0.05332,
-        "size": 0.0085
+        "r": 0.05075,
+        "phase": -1.88541,
+        "x": 0.0414,
+        "size": 0.0105
       },
       "carId": "universal",
       "slot": "wheels",
@@ -916,7 +916,7 @@
         "RimLip",
         "Tire"
       ],
-      "tris": 8174,
+      "tris": 8346,
       "generated": true
     },
     {
@@ -1077,6 +1077,13 @@
       "displayName": "Kazakiri",
       "group": "Kaito",
       "lip": "rim",
+      "lugs": {
+        "count": 5,
+        "r": 0.04748,
+        "phase": -2.19911,
+        "x": 0.022,
+        "size": 0.01483
+      },
       "carId": "universal",
       "slot": "wheels",
       "file": "parts/wheel_kazakiri.glb",
@@ -1087,7 +1094,7 @@
         "RimLip",
         "Tire"
       ],
-      "tris": 5523,
+      "tris": 5443,
       "generated": true
     },
     {
@@ -1441,9 +1448,9 @@
       "lugs": {
         "count": 5,
         "r": 0.04027,
-        "phase": -1.88519,
-        "x": -0.02287,
-        "size": 0.01
+        "phase": -1.88376,
+        "x": -0.0229,
+        "size": 0.0095
       },
       "carId": "universal",
       "slot": "wheels",
@@ -1456,7 +1463,7 @@
         "RimLip",
         "Tire"
       ],
-      "tris": 9266,
+      "tris": 9911,
       "generated": true
     },
     {
