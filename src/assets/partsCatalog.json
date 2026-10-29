@@ -162,22 +162,6 @@
       "generated": true
     },
     {
-      "id": "wendtStrom_rearBumper_euro",
-      "displayName": "Euro",
-      "carId": "wendtStrom",
-      "slot": "rearBumper",
-      "file": "parts/wendtStrom_rearBumper_euro.glb",
-      "hides": [
-        "Bumper_Rear"
-      ],
-      "materialSlots": [
-        "Paint",
-        "Black"
-      ],
-      "tris": 1114,
-      "generated": true
-    },
-    {
       "id": "wendtStrom_roof_sunroofDelete",
       "displayName": "Sunroof Delete",
       "carId": "wendtStrom",
@@ -191,6 +175,38 @@
         "Black"
       ],
       "tris": 514,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_rearBumper_cut",
+      "displayName": "Cut Bumper",
+      "carId": "wendtStrom",
+      "slot": "rearBumper",
+      "file": "parts/wendtStrom_rearBumper_cut.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 974,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_rearBumper_euro",
+      "displayName": "Euro",
+      "carId": "wendtStrom",
+      "slot": "rearBumper",
+      "file": "parts/wendtStrom_rearBumper_euro.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 1114,
       "generated": true
     },
     {
