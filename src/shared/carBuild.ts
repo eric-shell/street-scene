@@ -64,11 +64,14 @@ export interface WheelTrim {
 export const VINYL_SHAPES = ['stripe', 'twinStripe', 'flame', 'tribal', 'sponsorA', 'sponsorB', 'sponsorC', 'number', 'star', 'chevron'] as const;
 export type VinylShape = (typeof VINYL_SHAPES)[number];
 
-/** Underglow patterns; the underglow shader reads the index, so carView's mode tests follow this order. */
-export const GLOW_PATTERNS = ['steady', 'pulse', 'strobe', 'alternate', 'chase', 'rainbow'] as const;
+/** Underglow patterns, in the garage's order. */
+export const GLOW_PATTERNS = ['steady', 'pulse', 'strobe', 'chase', 'rainbow'] as const;
 export type GlowPattern = (typeof GLOW_PATTERNS)[number];
-/** Patterns builds from before saved: 'breathe' was a slower pulse (the Speed slider spans both), 'wave' the rainbow. */
-const GLOW_RENAMES: Record<string, GlowPattern> = { breathe: 'pulse', wave: 'rainbow' };
+/**
+ * Patterns builds from before saved: 'breathe' was a slower pulse and 'alternate' a slow two-color strobe (the Speed
+ * slider spans both), 'wave' the rainbow.
+ */
+const GLOW_RENAMES: Record<string, GlowPattern> = { breathe: 'pulse', alternate: 'strobe', wave: 'rainbow' };
 
 /** Tire shapes (render/car/tireShapes.ts draws each). */
 /** Tire stretch, least to most: none ('standard'), mild, and full ('stretched', the first stretched tire, so old saves keep their look). */
@@ -152,7 +155,7 @@ export interface VisualBuild {
   underglow: {
     enabled: boolean;
     color: string;
-    /** Second color for alternate / chase patterns. */
+    /** Second color for the strobe and chase patterns (a black one strobes the primary on and off). */
     color2: string;
     pattern: GlowPattern;
     /** 0.2..2 */

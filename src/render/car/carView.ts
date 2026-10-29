@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import { BODY_PART_SLOTS, PartSlot } from '../../shared/parts';
-import { GLOW_PATTERNS, STANCE_LIMITS, TireShape, VisualBuild, defaultVisual } from '../../shared/carBuild';
+import { STANCE_LIMITS, TireShape, VisualBuild, defaultVisual } from '../../shared/carBuild';
 import { CarAssetLibrary, ManifestCar, manifestCar, partById, partsFor } from './carAssets';
 import { CarMaterialSet, LAMP_GLOW, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBrake } from './carMaterials';
 import { makeRadialGlow } from '../textures/textures';
@@ -50,9 +50,8 @@ const WHEEL_STEER = new THREE.Quaternion();
 const POSE_Q = new THREE.Quaternion();
 const POSE_E = new THREE.Euler();
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
-/** Scratch for the underglow's two colors, set every frame. */
+/** Scratch for the underglow's color, set every frame. */
 const GLOW_C1 = new THREE.Color();
-const GLOW_C2 = new THREE.Color();
 
 /** The glows a car throws on the road (underglow, headlight pool), laid on the ground under its wheels. */
 const GROUND_FX = {
@@ -336,7 +335,7 @@ export class CarView {
         color1: { value: new THREE.Color(0x00e5ff) },
         color2: { value: new THREE.Color(0xff3df2) },
         intensity: { value: 1 },
-        mode: { value: 0 },
+        chase: { value: 0 },
         time: { value: 0 },
         halfSize: { value: new THREE.Vector2(dims.width / 2, dims.length / 2) },
         planeHalf: { value: new THREE.Vector2(dims.width * 1.3, dims.length * 0.95) },
@@ -352,7 +351,7 @@ export class CarView {
         uniform vec3 color1;
         uniform vec3 color2;
         uniform float intensity;
-        uniform float mode;
+        uniform float chase;
         uniform float time;
         uniform vec2 halfSize;
         uniform vec2 planeHalf;
@@ -366,10 +365,7 @@ export class CarView {
           vec2 e = abs(vPos) / planeHalf;
           glow *= 1.0 - smoothstep(0.6, 0.98, max(e.x, e.y));
           vec3 c = color1;
-          if (mode > 2.5 && mode < 3.5) {
-            // alternate: whole car switches between the two colors
-            c = mix(color1, color2, step(0.5, fract(time * 0.5)));
-          } else if (mode > 3.5 && mode < 4.5) {
+          if (chase > 0.5) {
             // chase: the two colors run around the car
             float a = atan(vPos.x, vPos.y) / 6.2831853 + 0.5;
             c = mix(color1, color2, smoothstep(0.35, 0.65, fract(a * 2.0 - time * 0.6)));
@@ -969,18 +965,20 @@ export class CarView {
     const c1 = GLOW_C1.set(g.color);
     // Pulse is a 2 s sine at 1x, so the Speed slider runs it from a fast throb (0.67 s) to a slow breath (8 s).
     if (g.pattern === 'pulse') k = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * Math.PI));
-    else if (g.pattern === 'strobe') k = Math.sin(t * 18) > 0.3 ? 1 : 0.08;
+    // Strobe swaps the whole glow between the two colors (a black secondary flashes it on and off). Its rate is
+    // exponential in Speed, so the one slider runs from a slow swap (a 2.3 s cycle at 0.25x) through 1 Hz at 1x
+    // to a hard 9 Hz strobe at 3x.
+    else if (g.pattern === 'strobe' && Math.floor(time * 2 ** ((g.speed - 1) * 1.6) * 2) % 2) c1.set(g.color2);
     else if (g.pattern === 'rainbow') c1.offsetHSL((t * 0.12) % 1, 0, 0);
     const u = this.underglowMat.uniforms;
     u.color1.value.copy(c1);
     u.color2.value.set(g.color2);
     u.intensity.value = 1.5 * g.brightness * k * this.airFade;
-    // The shader picks the pattern by its index in GLOW_PATTERNS (3 alternate, 4 chase).
-    u.mode.value = GLOW_PATTERNS.indexOf(g.pattern);
+    u.chase.value = g.pattern === 'chase' ? 1 : 0;
     u.time.value = t;
     this.underglow.scale.set(g.size, 1, g.size);
     if (this.underglowLight) {
-      this.underglowLight.color.copy(g.pattern === 'alternate' && Math.floor(t * 0.5 * 2) % 2 ? GLOW_C2.set(g.color2) : c1);
+      this.underglowLight.color.copy(c1);
       this.underglowLight.intensity = 14 * g.brightness * k;
       this.underglowLight.distance = 6 * g.size;
     }

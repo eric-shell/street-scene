@@ -397,7 +397,7 @@ export function renderTabContent(host: TabHost): void {
               host.changed();
             },
           ),
-          note('Alternate and chase use both colors.'),
+          note('Strobe and chase use both colors; a black secondary strobes on and off.'),
         ),
         section(
           'Glow colors',
