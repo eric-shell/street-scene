@@ -653,6 +653,84 @@ def groove_z(o, origin, direction, z0, z1, step=0.002, span=3):
     return best
 
 
+def stash_normals(o):
+    """Copy a piece's custom normals into its `src_normal` corner attribute before a bmesh edit (bmesh
+    drops custom normals, a generic attribute survives and is interpolated on cuts). Returns whether there
+    was anything to carry: only pieces with `authored_normals` (donor bodies and what is cut from them)."""
+    me = o.data
+    if not (o.get('authored_normals') and me.has_custom_normals):
+        return False
+    sn = me.attributes.get('src_normal') or me.attributes.new('src_normal', 'FLOAT_VECTOR', 'CORNER')
+    sn.data.foreach_set('vector', [x for c in me.corner_normals for x in c.vector])
+    return True
+
+
+def restore_normals(o):
+    """Set the custom normals back from `src_normal` and drop it. Corners the edit made without one (a
+    zero vector) take their face's normal, so new geometry is flat shaded unless its builder wrote its own."""
+    me = o.data
+    s = me.attributes.get('src_normal')
+    if s is None:
+        return
+    vs = [Vector(v.vector) for v in s.data]
+    for p in me.polygons:
+        for li in p.loop_indices:
+            if vs[li].length < 1e-6:
+                vs[li] = p.normal.copy()
+    me.normals_split_custom_set([v.normalized() for v in vs])
+    me.attributes.remove(s)
+    o['authored_normals'] = me.has_custom_normals
+
+
+def round_lamp(o, center, normal, r_lens, r_bezel, proud=0.02, lens='HeadLight', bezel='Chrome', wall='Black', segments=24):
+    """A round lamp set into a panel or an intake (fog lamps, a bumper's driving lamps): a `wall` cup from
+    5 mm behind `center` out to `proud` m along `normal`, a flat `bezel` ring on its face and a `lens` disc
+    3 mm back inside it. `center` is the point on the panel behind the lamp and `normal` the way the lamp
+    looks. Writes its own corner normals into `src_normal` when the piece carries them (stash_normals), the
+    cup radial and the face flat. Round lamps are built, never collapsed (docs/carDonors.md, Lamps): about
+    six triangles a segment."""
+    n = Vector(normal).normalized()
+    u = n.cross(Vector((0, 0, 1))).normalized()
+    w = u.cross(n)
+    c = Vector(center)
+    ring = lambda base, r: [base + (u * math.cos(2 * math.pi * i / segments) + w * math.sin(2 * math.pi * i / segments)) * r for i in range(segments)]
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    mw, mb, ml = mat_index(o, wall), mat_index(o, bezel), mat_index(o, lens)
+    back = [bm.verts.new(p) for p in ring(c - n * 0.005, r_bezel)]
+    front = [bm.verts.new(p) for p in ring(c + n * proud, r_bezel)]
+    inner = [bm.verts.new(p) for p in ring(c + n * proud, r_lens)]
+    lens_rim = [bm.verts.new(p) for p in ring(c + n * (proud - 0.003), r_lens)]
+    hub = bm.verts.new(c + n * (proud - 0.003))
+
+    def face(vs, mat, facing, loop_normal=None):
+        f = bm.faces.new(vs)
+        f.material_index = mat
+        f.smooth = True
+        f.normal_update()
+        if f.normal.dot(facing) < 0:
+            f.normal_flip()
+        if sn is not None:
+            for loop in f.loops:
+                loop[sn] = loop_normal(loop.vert.co) if loop_normal else n
+        return f
+
+    radial = lambda p: (p - c - n * (p - c).dot(n)).normalized()
+    for i in range(segments):
+        j = (i + 1) % segments
+        mid = (front[i].co + front[j].co) / 2 - c
+        face([back[i], back[j], front[j], front[i]], mw, mid - n * mid.dot(n), radial)
+        face([front[i], front[j], inner[j], inner[i]], mb, n)
+        mid = (inner[i].co + inner[j].co) / 2 - c
+        face([inner[i], inner[j], lens_rim[j], lens_rim[i]], mb, -(mid - n * mid.dot(n)))
+        face([hub, lens_rim[i], lens_rim[j]], ml, n)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
 def split_off(src, name, pred, cname=None):
     """Move the faces for which pred(center, material_name, normal) is true out of src into a new object
     `name` (in src's collection, or `cname`). Unlike split_parts this carries custom normals through the
@@ -661,10 +739,7 @@ def split_off(src, name, pred, cname=None):
     so the faces part along a clean edge. Returns the new object."""
     me = src.data
     names = [m.name.split('.')[0] for m in me.materials]
-    carry = bool(src.get('authored_normals')) and me.has_custom_normals
-    if carry:
-        sn = me.attributes.get('src_normal') or me.attributes.new('src_normal', 'FLOAT_VECTOR', 'CORNER')
-        sn.data.foreach_set('vector', [x for c in me.corner_normals for x in c.vector])
+    carry = stash_normals(src)
     keep = {p.index for p in me.polygons if pred(p.center, names[p.material_index], p.normal)}
     part = src.copy()
     part.data = me.copy()
@@ -679,10 +754,7 @@ def split_off(src, name, pred, cname=None):
         bm.to_mesh(o.data)
         bm.free()
         if carry:
-            s = o.data.attributes.get('src_normal')
-            o.data.normals_split_custom_set([Vector(v.vector).normalized() for v in s.data])
-            o.data.attributes.remove(s)
-            o['authored_normals'] = o.data.has_custom_normals
+            restore_normals(o)
         o.data.update()
     return part
 

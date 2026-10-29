@@ -18,6 +18,24 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_frontBumper_euroFogs",
+      "displayName": "Euro w/ Fogs",
+      "carId": "wendtStrom",
+      "slot": "frontBumper",
+      "file": "parts/wendtStrom_frontBumper_euroFogs.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Chrome",
+        "HeadLight"
+      ],
+      "tris": 3481,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",
