@@ -262,6 +262,7 @@ export function choiceList<T extends string | number | null>(items: Choice<T>[],
   return list;
 }
 
-/** Slider readouts: a length (m) in cm, a factor as a percent. */
+/** Slider readouts: a length (m) in cm or mm, a factor as a percent. */
 export const cm = (x: number) => `${Math.round(x * 100)} cm`;
+export const mm = (x: number) => `${Math.round(x * 1000)} mm`;
 export const percent = (x: number) => `${Math.round(x * 100)}%`;

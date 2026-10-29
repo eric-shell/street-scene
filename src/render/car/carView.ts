@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import { BODY_PART_SLOTS, PartSlot } from '../../shared/parts';
-import { GLOW_PATTERNS, TireShape, VisualBuild, defaultVisual } from '../../shared/carBuild';
+import { GLOW_PATTERNS, STANCE_LIMITS, TireShape, VisualBuild, defaultVisual } from '../../shared/carBuild';
 import { CarAssetLibrary, ManifestCar, manifestCar, partById, partsFor } from './carAssets';
 import { CarMaterialSet, LAMP_GLOW, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBrake } from './carMaterials';
 import { makeRadialGlow } from '../textures/textures';
@@ -875,6 +875,32 @@ export class CarView {
     const p = this.wheelProfiles[axle];
     const scale = this.car.wheelRadius / (p.outer || 1);
     return sizeForBead(p, (inches * 0.0254) / 2 / scale);
+  }
+
+  /**
+   * Wheel width in inches for a width factor on this car and one axle's wheel (for the garage readout): the lip's
+   * edge to the barrel's back, the barrel behind the moved spokes stretched by the factor (the brake cover's floor
+   * is not counted: the readout is what the slider asks for). A wheel without a lip ring reads its tire's width.
+   */
+  wheelWidthInches(width: number, axle: 0 | 1 = 0): number {
+    const fit = this.widthFit[axle];
+    const scale = this.car.wheelRadius / (this.wheelProfiles[axle].outer || 1);
+    const { lipEdge, barrelBack } = fit.face;
+    const sb = spokeBackOf(fit);
+    const w = lipEdge === 0 && barrelBack === 0 ? fit.tireMax - fit.tireMin : lipEdge - sb + (sb - fit.back) * width;
+    return (w * scale) / 0.0254;
+  }
+
+  /** Inverse of wheelWidthInches: the width factor that gives this wheel width (in) on this car and one axle's wheel (clamped to the slider range). */
+  wheelWidthForInches(inches: number, axle: 0 | 1 = 0): number {
+    const fit = this.widthFit[axle];
+    const scale = this.car.wheelRadius / (this.wheelProfiles[axle].outer || 1);
+    const sb = spokeBackOf(fit);
+    const barrel = sb - fit.back;
+    const [lo, hi] = STANCE_LIMITS.wheelWidth;
+    if (barrel <= 0) return 1;
+    const w = ((inches * 0.0254) / scale - (fit.face.lipEdge - sb)) / barrel;
+    return Math.max(lo, Math.min(hi, w));
   }
 
   /** True once both axles are baked, so wheelInches measures the real profiles rather than the placeholder one. */

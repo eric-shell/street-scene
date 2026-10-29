@@ -18,7 +18,7 @@ import { h, segmented, toast } from '../ui/kit/dom';
 import { ArrowUpDown, Car, Disc3, Gauge, Hammer, Layers, Moon, Paintbrush, RotateCcw, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { GaragePrefs, saveGaragePrefs } from './storage';
-import { capital, choiceList, cm, colorPicker, field, matchBody, note, paintPicker, percent, rowName, section, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
+import { capital, choiceList, cm, colorPicker, field, matchBody, mm, note, paintPicker, percent, rowName, section, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
 import { renderVinyls } from './garageVinyls';
 import { setupSlider } from './setupSliders';
 import { wheelPicker } from './wheelPicker';
@@ -112,7 +112,8 @@ export function renderTabContent(host: TabHost): void {
     const spec = {
       rideHeight: { min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
       camber: { min: L[0], max: L[1], step: 0.5, fmt: (x: number) => `${x}°`, toUi: id, fromUi: id },
-      offset: { min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
+      // The track offset in whole mm, as a tuner reads an offset (the user, 2026-10-28).
+      offset: { min: L[0], max: L[1], step: 0.001, fmt: mm, toUi: id, fromUi: id },
       wheelSize: car
         ? (() => {
             // Front and rear may wear different wheels, so each axle measures its own.
@@ -122,7 +123,16 @@ export function renderTabContent(host: TabHost): void {
             return { min, max, step: 1, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.wheelInches(x, ax)))), fromUi: (x: number) => car.wheelSizeForInches(x, ax) };
           })()
         : { min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
-      wheelWidth: { min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
+      // Wheel width in half inches once the wheel is measured (the lip's edge to the barrel's back on this car),
+      // the same way as the size: the build keeps the width factor and the slider converts both ways.
+      wheelWidth: car
+        ? (() => {
+            const ax = axle === 'front' ? 0 : 1;
+            const min = Math.ceil(car.wheelWidthInches(L[0], ax) * 2 - 1e-6) / 2;
+            const max = Math.floor(car.wheelWidthInches(L[1], ax) * 2 + 1e-6) / 2;
+            return { min, max, step: 0.5, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.wheelWidthInches(x, ax) * 2) / 2)), fromUi: (x: number) => car.wheelWidthForInches(x, ax) };
+          })()
+        : { min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
     }[key];
     const el = slider(capital(axle), spec.toUi(v.stance[axle][key]), spec.min, spec.max, spec.step, spec.fmt, (ui) => {
       const x = spec.fromUi(ui);

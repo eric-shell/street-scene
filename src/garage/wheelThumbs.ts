@@ -39,6 +39,8 @@ const done = new Map<string, Promise<string | null>>();
 interface Unpacked {
   pos: Float32Array;
   nrm: Float32Array | null;
+  /** The mesh's own triangle index, shared read-only (the GLBs are indexed; without it the vertices draw as a triangle soup). */
+  index: THREE.BufferAttribute | null;
   material: THREE.Material;
   tire: boolean;
   ring: boolean;
@@ -66,7 +68,7 @@ function unpack(mesh: THREE.Mesh): Unpacked {
     }
   }
   const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-  return { pos, nrm, material: mat, tire: mat.name === 'Tire', ring: mat.name === 'RimLip' };
+  return { pos, nrm, index: geo.getIndex(), material: mat, tire: mat.name === 'Tire', ring: mat.name === 'RimLip' };
 }
 
 export class WheelThumbs {
@@ -149,24 +151,24 @@ export class WheelThumbs {
     const shift = this.faceShift(entry, parts, target);
     const shown = new THREE.Group();
     const geos: THREE.BufferGeometry[] = [];
-    const add = (pos: Float32Array, nrm: Float32Array | null, material: THREE.Material, tire: boolean, rigid: boolean) => {
+    const add = (pos: Float32Array, nrm: Float32Array | null, index: THREE.BufferAttribute | null, material: THREE.Material, tire: boolean, rigid: boolean) => {
       const geo = new THREE.BufferGeometry();
       const p = Float32Array.from(pos);
       const n = nrm ? Float32Array.from(nrm) : null;
       if (shift.fit) remapWheel(pos, nrm, p, n, shift.profile, 1, 1, shift.fit, tire, rigid);
       geo.setAttribute('position', new THREE.BufferAttribute(p, 3));
       if (n) geo.setAttribute('normal', new THREE.BufferAttribute(n, 3));
+      if (index) geo.setIndex(index);
       geos.push(geo);
       shown.add(new THREE.Mesh(geo, material));
     };
     for (const part of parts) {
       const name = part.material.name;
       const material = this.materials[name === 'RimCap' ? 'Rim' : name === 'RimLip' ? (entry.lip === 'chrome' ? 'Chrome' : 'Rim') : name] ?? this.materials.Rim;
-      add(part.pos, part.nrm, material, part.tire, false);
+      add(part.pos, part.nrm, part.index, material, part.tire, false);
     }
     if (lugs) {
-      add(lugs.getAttribute('position').array as Float32Array, (lugs.getAttribute('normal')?.array as Float32Array | undefined) ?? null, this.materials.Chrome, false, true);
-      lugs.dispose();
+      add(lugs.getAttribute('position').array as Float32Array, (lugs.getAttribute('normal')?.array as Float32Array | undefined) ?? null, lugs.getIndex(), this.materials.Chrome, false, true);
     }
     // Framed on the tire's radius, not the bounding sphere: the sphere counts the width too and leaves the wheel small.
     const box = new THREE.Box3().setFromObject(shown);
@@ -181,7 +183,12 @@ export class WheelThumbs {
     // Read in the same task as the draw: the drawing buffer is not kept past it.
     const url = r.domElement.toDataURL('image/png');
     this.scene.remove(shown);
-    for (const g of geos) g.dispose();
+    // The index is the cached GLB's: dropped before the dispose so it stays with the GLB.
+    for (const g of geos) {
+      g.setIndex(null);
+      g.dispose();
+    }
+    lugs?.dispose();
     return url;
   }
 
