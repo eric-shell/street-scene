@@ -321,7 +321,13 @@ export class CarView {
     const { track } = this.owned;
     this.clip = track(new WheelClip(this.car, this.body));
     // Tire and wheel paints are the wheels' alone; the clip goes straight on them.
-    for (const m of [this.materials.Tire, this.materials.Rim, this.materials.RimRear, this.materials.RimLip, this.materials.RimLipRear, this.materials.RimCap, this.materials.RimCapRear, this.materials.Lug, this.materials.LugRear, this.materials.Hardware, this.materials.HardwareRear]) this.clip.clipMaterial(m);
+    this.clip.clipMaterial(this.materials.Tire, true);
+    // The lip ring is only the bulb's visible shell (scripts/blender/carWheels.py turns it from the lip edge back to
+    // the face), and a stretched tire's bead sits behind the bulb (tireShapes.ts), so the ring is drawn both sides
+    // or its far side is see-through where its inside shows.
+    this.materials.RimLip.side = THREE.DoubleSide;
+    this.materials.RimLipRear.side = THREE.DoubleSide;
+    for (const m of [this.materials.Rim, this.materials.RimRear, this.materials.RimLip, this.materials.RimLipRear, this.materials.RimCap, this.materials.RimCapRear, this.materials.Lug, this.materials.LugRear, this.materials.Hardware, this.materials.HardwareRear]) this.clip.clipMaterial(m);
     // Underglow: a shader glow on the road around the footprint, plus an optional real light.
     this.underglowMat = track(new THREE.ShaderMaterial({
       uniforms: {

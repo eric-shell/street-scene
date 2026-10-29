@@ -19,8 +19,10 @@
  * whose top sits 1 cm inboard of the stock bead and whose dish drops away a further 1.5 cm behind it
  * (measured over public/parts, 2026-10-28), so a bead up to 2 cm in still hides behind the bulb from the
  * front, and it dips a hair under the bead radius (v below 0) to sit in the metal rather than on it. The
- * back bead stays where the stock one is whatever the shape: the barrel behind the spokes must stay
- * covered (wheelFit.tirePull), and nothing of the back shows.
+ * profile starts with a bead band under the bulb's top (from 0.96 to the seat, the rubber a real bead
+ * leaves on the seat): the lip ring is only the bulb's visible shell, so without it the far side of the
+ * ring was see-through where its inside showed. The back bead stays where the stock one is whatever the
+ * shape: the barrel behind the spokes must stay covered (wheelFit.tirePull), and nothing of the back shows.
  *
  * UVs: u runs once around the tire (the seam column is duplicated), v across the profile in three bands
  * (`TREAD.band`): the face side's sidewall, the tread, and a plain strip the back sidewall is pinned to,
@@ -45,10 +47,10 @@ const PROFILES: Record<TireShape, ProfileDef> = {
   standard: { side: [[1, 0], [1.19, 0.242], [1.238, 0.573], [1.167, 0.763]], tread: [[1, 0.963], [0.714, 1]] },
   // Pulled a little tight: the bead in the lip's bulb so its edge shows, the bulge gone, the shoulder tucked in,
   // the tread a touch narrower.
-  mild: { side: [[0.93, -0.03], [0.95, 0.25], [0.9, 0.6], [0.8, 0.86]], tread: [[0.72, 0.97], [0.56, 1]] },
+  mild: { side: [[0.96, -0.03], [0.93, -0.03], [0.95, 0.25], [0.9, 0.6], [0.8, 0.86]], tread: [[0.72, 0.97], [0.56, 1]] },
   // Pulled tight over a wide wheel: the bead at the back of the lip's bulb, a straight, steep sidewall leaning in
   // to a narrow tread, the lip standing a modest band proud of the rubber.
-  stretched: { side: [[0.85, -0.03], [0.66, 0.7]], tread: [[0.56, 0.92], [0.5, 0.99], [0.38, 1]] },
+  stretched: { side: [[0.96, -0.03], [0.85, -0.03], [0.66, 0.7]], tread: [[0.56, 0.92], [0.5, 0.99], [0.38, 1]] },
 };
 
 /**

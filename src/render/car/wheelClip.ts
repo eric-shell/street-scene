@@ -15,17 +15,18 @@
  * (offset, camber, lock) stands beside the flare up to its edge and is cut above it.
  *
  * The shade field is the arch's line: the skin under the fender, but at the fender's edge the lowest
- * surface, the arch lip's underside, carried outboard. Every wheel fragment is judged against it by the
- * tire's crown over it (its position pushed out radially to the tire's outer radius, `uArchR`) and
- * darkens toward `CLIP.shade.floor` as that crown goes up past the line. A stanced build (lowered, the
+ * surface, the arch lip's underside, carried outboard. Every tire fragment is judged against it by the
+ * crown over it (its position pushed out radially to the tire's outer radius, `uArchR`) and darkens
+ * toward `CLIP.shade.floor` as that crown goes up past the line; the wheel itself keeps its light (a
+ * shaded wheel face read as painted black), only the cut applies to it. A stanced build (lowered, the
  * wheel pushed out past the fender on a stretched tire) puts the tire's shoulder up into the fender's
  * lip with the wheel's lip a hair under it: cutting the shoulder at the lip line, as this once did,
  * opened a hole into the well from below and left the lip and barrel lit as if in the open, so the
- * fender read as slicing between tire and wheel. Now the shoulder stays, and it, the lip, the sidewall
- * and the barrel sink into the arch's shadow under the fender's edge the way a tucked wheel does,
- * while nothing of the geometry moves. A stock stance never reaches the shade.
+ * fender read as slicing between tire and wheel. Now the shoulder stays and the sidewall sinks into the
+ * arch's shadow under the fender's edge the way a tucked tire does, while nothing of the geometry moves.
+ * A stock stance never reaches the shade.
  *
- * Cost: eight texel fetches per wheel fragment, no extra pass or draw call; measuring rasterizes the body's
+ * Cost: four texel fetches per wheel fragment and eight per tire fragment, no extra pass or draw call; measuring rasterizes the body's
  * triangles into four small grids twice (lowest and highest surface; a few milliseconds, only when the
  * body or its parts change).
  */
@@ -88,12 +89,12 @@ vec2 archHeight(vec2 p, int wheel) {
 }
 `;
 // Which wheel's field by the quadrant of car space (FL, FR, RL, RR: +x is left, +z forward); cut what is above the
-// body, shade what the tire's crown over it has carried up into the body.
-const FRAG_BODY = /* glsl */ `
+// body and, on the tire, shade what its crown over the fragment has carried up into the body.
+const fragBody = (shade: boolean): string => /* glsl */ `
 {
   int wheel = (vArchPos.z > uArchMidZ ? 0 : 2) + (vArchPos.x > 0.0 ? 0 : 1);
   if (vArchPos.y > archHeight(vArchPos.xz, wheel).x) discard;
-  archShade = mix(1.0, ${CLIP.shade.floor.toFixed(3)}, smoothstep(0.0, ${CLIP.shade.depth.toFixed(3)}, vArchEnv.y - archHeight(vArchEnv.xz, wheel).y));
+  ${shade ? `archShade = mix(1.0, ${CLIP.shade.floor.toFixed(3)}, smoothstep(0.0, ${CLIP.shade.depth.toFixed(3)}, vArchEnv.y - archHeight(vArchEnv.xz, wheel).y));` : ''}
 }
 `;
 const FRAG_SHADE = /* glsl */ `
@@ -250,8 +251,12 @@ export class WheelClip {
     }
   }
 
-  /** Make a wheel material discard what is above the body (its own material: the body must not take the clip). */
-  clipMaterial(mat: THREE.Material): void {
+  /**
+   * Make a wheel material discard what is above the body (its own material: the body must not take the clip).
+   * `shade` is for the tire alone: the wheel's spokes and lip keep their light under the fender, where a
+   * shaded wheel face read as painted black.
+   */
+  clipMaterial(mat: THREE.Material, shade = false): void {
     // After whatever the material already patches in (the tire's tread shader).
     const prior = mat.onBeforeCompile;
     mat.onBeforeCompile = (shader, renderer) => {
@@ -262,8 +267,8 @@ export class WheelClip {
         .replace('#include <project_vertex>', `#include <project_vertex>\n${VERT_BODY}`);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>\n${FRAG_HEAD}`)
-        .replace('#include <clipping_planes_fragment>', `${FRAG_BODY}\n#include <clipping_planes_fragment>`)
-        .replace('#include <opaque_fragment>', FRAG_SHADE);
+        .replace('#include <clipping_planes_fragment>', `${fragBody(shade)}\n#include <clipping_planes_fragment>`)
+        .replace('#include <opaque_fragment>', shade ? FRAG_SHADE : '#include <opaque_fragment>');
     };
     mat.needsUpdate = true;
   }
