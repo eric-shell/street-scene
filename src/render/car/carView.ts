@@ -41,6 +41,8 @@ export interface CarPose {
 
 export const WHEEL_KEYS = ['FL', 'FR', 'RL', 'RR'] as const;
 const DEG = Math.PI / 180;
+/** The garage readouts quote wheel diameter and width this many inches under the model's measured size, so the numbers match what real cars of that look wear; the geometry is unchanged. */
+const WHEEL_READOUT_OFFSET = 1;
 /** Scratch for CarView.update's wheel placement. */
 const WHEEL_POS = new THREE.Vector3();
 const WHEEL_STEER = new THREE.Quaternion();
@@ -863,18 +865,18 @@ export class CarView {
     }
   }
 
-  /** Wheel diameter in inches for a size factor on this car and one axle's wheel (for the garage readout). */
+  /** Wheel diameter in inches for a size factor on this car and one axle's wheel (for the garage readout, less WHEEL_READOUT_OFFSET). */
   wheelInches(size: number, axle: 0 | 1 = 0): number {
     const p = this.wheelProfiles[axle];
     const scale = this.car.wheelRadius / (p.outer || 1);
-    return (2 * beadForSize(p, size) * scale) / 0.0254;
+    return (2 * beadForSize(p, size) * scale) / 0.0254 - WHEEL_READOUT_OFFSET;
   }
 
   /** Inverse of wheelInches: the wheel size that gives this wheel diameter (in) on this car and one axle's wheel. */
   wheelSizeForInches(inches: number, axle: 0 | 1 = 0): number {
     const p = this.wheelProfiles[axle];
     const scale = this.car.wheelRadius / (p.outer || 1);
-    return sizeForBead(p, (inches * 0.0254) / 2 / scale);
+    return sizeForBead(p, ((inches + WHEEL_READOUT_OFFSET) * 0.0254) / 2 / scale);
   }
 
   /**
@@ -888,7 +890,7 @@ export class CarView {
     const { lipEdge, barrelBack } = fit.face;
     const sb = spokeBackOf(fit);
     const w = lipEdge === 0 && barrelBack === 0 ? fit.tireMax - fit.tireMin : lipEdge - sb + (sb - fit.back) * width;
-    return (w * scale) / 0.0254;
+    return (w * scale) / 0.0254 - WHEEL_READOUT_OFFSET;
   }
 
   /** Inverse of wheelWidthInches: the width factor that gives this wheel width (in) on this car and one axle's wheel (clamped to the slider range). */
@@ -899,7 +901,7 @@ export class CarView {
     const barrel = sb - fit.back;
     const [lo, hi] = STANCE_LIMITS.wheelWidth;
     if (barrel <= 0) return 1;
-    const w = ((inches * 0.0254) / scale - (fit.face.lipEdge - sb)) / barrel;
+    const w = (((inches + WHEEL_READOUT_OFFSET) * 0.0254) / scale - (fit.face.lipEdge - sb)) / barrel;
     return Math.max(lo, Math.min(hi, w));
   }
 
