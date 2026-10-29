@@ -151,41 +151,72 @@ export function showSplash(parent: HTMLElement): Splash {
 
   // The fill is a window sliding in from the left over a bar sliding the other way, so the bar's gradient stays
   // put; both are transforms run by the compositor, so the fill keeps gliding while the game's boot holds the main thread.
+  // That is also why the fill is never read back from the page: during a long boot step the main thread's animation
+  // clock is frozen, so a computed style is where the bar stood before the stall, behind what the compositor shows,
+  // and restarting from it kicked the bar backwards. The curve is kept here instead, as the very samples the
+  // compositor interpolates linearly, and read at performance.now() (the document timeline's clock).
   let loaded = 0;
   let fillAnims: Animation[] = [];
+  /** The current step's curve: its start (performance.now() ms), sample times (s) and fill fractions. */
+  let curve = { start: 0, t: [0], p: [0] };
   const at = (p: number) => [{ transform: `translateX(${(p - 1) * 100}%)` }, { transform: `translateX(${(1 - p) * 100}%)` }];
-  const shown = () => {
-    const w = fill.offsetWidth;
-    return w ? 1 + new DOMMatrix(getComputedStyle(fill).transform).m41 / w : 0;
+  /** Where the fill is at `now` and how fast it is moving (1/s), exactly as the keyframes play it. */
+  const sample = (now: number) => {
+    const { t, p } = curve;
+    const s = (now - curve.start) / 1000;
+    let i = 1;
+    while (i < t.length - 1 && t[i] < s) i++;
+    if (s >= t[t.length - 1]) return { p: p[p.length - 1], v: 0 };
+    const v = (p[i] - p[i - 1]) / (t[i] - t[i - 1]);
+    return { p: p[i - 1] + v * Math.max(0, s - t[i - 1]), v: s < 0 ? 0 : v };
   };
   const progress = (f: number) => {
     if (f <= loaded) return;
     loaded = Math.min(1, f);
-    const p0 = shown();
-    const to = Math.max(p0, loaded);
+    const now = performance.now();
+    const cur = sample(now);
+    const p0 = cur.p;
     for (const a of fillAnims) a.cancel();
     if (reduced) {
-      [fill.style.transform, bar.style.transform] = at(to).map((k) => k.transform);
+      [fill.style.transform, bar.style.transform] = at(Math.max(p0, loaded)).map((k) => k.transform);
       return;
     }
-    // Two exponential approaches, each normalized to land exactly at the end: onto the step, and the slow creep beyond it.
     const last = loaded >= 1;
     const dur = last ? SPLASH.ruleFinish : SPLASH.ruleCreepFor;
     const rise = last ? SPLASH.ruleFinish / 4 : SPLASH.ruleRise;
+    // The step aims at least as far as the fill would coast at its current speed, so a step it has already
+    // passed glides on instead of stopping dead.
+    const to = last ? 1 : Math.min(1, Math.max(loaded, p0 + cur.v * rise));
     const creep = last ? 0 : (1 - to) * SPLASH.ruleCreep;
-    const ease = (t: number, tau: number) => (1 - Math.exp(-t / tau)) / (1 - Math.exp(-dur / tau));
+    const creepNorm = 1 - Math.exp(-dur / SPLASH.ruleCreepTau);
+    // A critically damped approach onto the step that starts at the fill's current speed (less what the creep
+    // adds), so the bar never jerks; with that speed capped at (to - p0) / rise it never overshoots, so it only moves
+    // forward. The residual at `dur` is faded out linearly so it lands exactly on `to`, plus the slow creep beyond it.
+    const d = to - p0;
+    const v0 = Math.min(Math.max(0, cur.v - creep / (SPLASH.ruleCreepTau * creepNorm)), d / rise);
+    const b = v0 - d / rise;
+    const g = (t: number) => (b * t - d) * Math.exp(-t / rise);
+    const t: number[] = [];
+    const p: number[] = [];
     const fillKeys: Keyframe[] = [];
     const barKeys: Keyframe[] = [];
     for (let i = 0; i <= SPLASH.ruleSamples; i++) {
       const u = (i / SPLASH.ruleSamples) ** 2;
-      const t = u * dur;
-      const p = p0 + (to - p0) * ease(t, rise) + creep * (last ? 0 : ease(t, SPLASH.ruleCreepTau));
-      const [fk, bk] = at(p);
+      const ti = u * dur;
+      const pi = to + g(ti) - (g(dur) * ti) / dur + (creep * (1 - Math.exp(-ti / SPLASH.ruleCreepTau))) / creepNorm;
+      t.push(ti);
+      p.push(pi);
+      const [fk, bk] = at(pi);
       fillKeys.push({ ...fk, offset: u });
       barKeys.push({ ...bk, offset: u });
     }
-    const timing: KeyframeAnimationOptions = { duration: dur * 1000, fill: 'forwards' };
+    curve = { start: now, t, p };
+    // Pinned to now: a new animation otherwise starts on the next frame, which a long boot step can hold back for
+    // seconds while the old one plays on, and would then start from behind it. `both` holds the first keyframe until
+    // the frozen main-thread clock catches up to the start.
+    const timing: KeyframeAnimationOptions = { duration: dur * 1000, fill: 'both' };
     fillAnims = [fill.animate(fillKeys, timing), bar.animate(barKeys, timing)];
+    for (const a of fillAnims) a.startTime = now;
   };
   let from = '';
   let markPlayed!: () => void;
