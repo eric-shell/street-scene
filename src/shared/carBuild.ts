@@ -65,7 +65,7 @@ export const VINYL_SHAPES = ['stripe', 'twinStripe', 'flame', 'tribal', 'sponsor
 export type VinylShape = (typeof VINYL_SHAPES)[number];
 
 /** Underglow patterns; the underglow shader reads the index, so carView's mode tests follow this order. */
-export const GLOW_PATTERNS = ['steady', 'pulse', 'strobe', 'alternate', 'rainbow', 'chase'] as const;
+export const GLOW_PATTERNS = ['steady', 'pulse', 'strobe', 'alternate', 'chase', 'rainbow'] as const;
 export type GlowPattern = (typeof GLOW_PATTERNS)[number];
 /** Patterns builds from before saved: 'breathe' was a slower pulse (the Speed slider spans both), 'wave' the rainbow. */
 const GLOW_RENAMES: Record<string, GlowPattern> = { breathe: 'pulse', wave: 'rainbow' };

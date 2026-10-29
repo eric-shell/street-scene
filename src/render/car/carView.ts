@@ -369,7 +369,7 @@ export class CarView {
           if (mode > 2.5 && mode < 3.5) {
             // alternate: whole car switches between the two colors
             c = mix(color1, color2, step(0.5, fract(time * 0.5)));
-          } else if (mode > 4.5) {
+          } else if (mode > 3.5 && mode < 4.5) {
             // chase: the two colors run around the car
             float a = atan(vPos.x, vPos.y) / 6.2831853 + 0.5;
             c = mix(color1, color2, smoothstep(0.35, 0.65, fract(a * 2.0 - time * 0.6)));
@@ -975,7 +975,7 @@ export class CarView {
     u.color1.value.copy(c1);
     u.color2.value.set(g.color2);
     u.intensity.value = 1.5 * g.brightness * k * this.airFade;
-    // The shader picks the pattern by its index in GLOW_PATTERNS (3 alternate, 5 chase).
+    // The shader picks the pattern by its index in GLOW_PATTERNS (3 alternate, 4 chase).
     u.mode.value = GLOW_PATTERNS.indexOf(g.pattern);
     u.time.value = t;
     this.underglow.scale.set(g.size, 1, g.size);
