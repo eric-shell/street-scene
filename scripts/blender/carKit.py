@@ -1271,6 +1271,45 @@ def side_lip(body, target, y0, y1, top, thick=0.013, proud=0.02, tuck=0.04, cham
     return secs
 
 
+def spat(target, front, rear, base, height=0.15, rake=0.05, curl=(0.015, 0.045), curl_height=0.04, thick=0.006,
+         stations=6, rows=4, material='Black'):
+    """A splitter spat (end plate) as race cars run them: a flat plate standing on a splitter's outer
+    end, straight from `front` to `rear` ((x, y) plan points, outward by the sign of x) from `base` z up
+    `height` m, its outline a parallelogram (the top set back `rake` m, so the bottom front leads), its
+    bottom `curl_height` m curling outward into a lip `curl` (front, rear) m wide, a quarter round
+    growing toward the back. Aero: it fences the high pressure on the splitter's top from spilling
+    round the end. After the user's photo; `end_plate`, a plate following the splitter's curve with
+    its top curled out, was the wrong reading. Carries authored normals."""
+    f, r = Vector(front), Vector(rear)
+    along = (r - f).normalized()
+    n = Vector((along.y, -along.x))
+    if n.x * f.x < 0:
+        n = -n
+    secs = []
+    for k in range(stations):
+        s = k / (stations - 1)
+        p = f.lerp(r, s)
+        cw = curl[0] + (curl[1] - curl[0]) * s
+        prof = []
+        for j in range(rows + 1):
+            a = (math.pi / 2) * j / rows
+            prof.append((cw * (1 - math.sin(a)), curl_height * (1 - math.cos(a))))
+        prof.append((0.0, height))
+
+        def at(o, z):
+            q = p + n * o + along * (rake * z / height)
+            return Vector((q.x, q.y, base + z))
+
+        outer = [at(o, z) for o, z in prof]
+        inner = [at(o - thick, z) for o, z in prof]
+        secs.append([tuple(v) for v in outer] + [tuple(v) for v in reversed(inner)])
+    carry = stash_normals(target)
+    sweep(target, secs, material)
+    if carry:
+        restore_normals(target)
+    return secs
+
+
 def end_plate(target, edge, base, heights, thick=0.006, curl=0.025, curl_height=0.035, rows=6, material='Black'):
     """A splitter end plate (spat): a vertical plate standing on a splitter's outer edge, `edge` the
     edge's plan points front to back ((x, y), outward to +x or -x by their sign), from `base` z up by
