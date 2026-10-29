@@ -118,7 +118,10 @@ DONORS = {
         # covers.
         'recolor': [(lambda c, n, m: m == 'Black' and POPUP(c) and c.y > -1.74 and c.z > 0.765 and abs(n.z) > 0.5, 'Paint'),
                     (lambda c, n, m: m == 'Chrome' and 0.48 < abs(c.x) < 0.7 and -1.75 < c.y < -1.69 and 0.63 < c.z < 0.79, 'HeadLight'),
-                    (lambda c, n, m: m == 'Lens' and POPUP(c) and c.y > -1.7, 'HeadLight')],
+                    (lambda c, n, m: m == 'Lens' and POPUP(c) and c.y > -1.7, 'HeadLight'),
+                    # The bulb of each bumper lamp's inner (clear) round lamp, behind its lens (the
+                    # lens ends at y -1.895); the outer one sits behind the amber indicator, unlit.
+                    (lambda c, n, m: m == 'Lens' and math.hypot(abs(c.x) - 0.5735, c.z - 0.4715) < 0.013 and -1.893 < c.y < -1.865, 'HeadLight')],
         # The third brake light: the donor's four red blocks in the black pocket mid tail bar give
         # way to one thin strip arched along its top edge (6 mm under it), lit only under braking,
         # as on the car.
