@@ -1265,6 +1265,593 @@ def barycentric(p, a, b, c):
     return [x / t for x in ws]
 
 
+# ----- repairs on a shipped body ---------------------------------------------
+# Hand edits on `<cid>.Body` once its parts are cut from it (a reimport through ship_donor would drop
+# them; docs/carDonors.md, "Repairs on a shipped body"). Each samples the shading skin
+# (`donor:<cid>.Skin`, its `src_normal` corners) and goes through stash_normals / restore_normals,
+# so every face it does not touch keeps its authored normals.
+
+def _skin_trees(skin):
+    """The skin triangulated: (bmesh, src_normal layer, {material: (BVHTree, faces)}). Free the bmesh."""
+    sbm = bmesh.new()
+    sbm.from_mesh(skin.data)
+    bmesh.ops.triangulate(sbm, faces=sbm.faces[:])
+    sbm.faces.ensure_lookup_table()
+    names = [m.name.split('.')[0] for m in skin.data.materials]
+    by = {}
+    for f in sbm.faces:
+        by.setdefault(names[f.material_index], []).append(f)
+    co = [v.co for v in sbm.verts]
+    trees = {n: (BVHTree.FromPolygons(co, [[v.index for v in f.verts] for f in fs]), fs) for n, fs in by.items()}
+    return sbm, sbm.loops.layers.float_vector['src_normal'], trees
+
+
+def _skin_normal(f, sn, loc):
+    """The skin's authored normal at `loc` on its triangle `f`."""
+    a, b, c = (l.vert.co for l in f.loops)
+    n = sum((l[sn] * w for l, w in zip(f.loops, barycentric(loc, a, b, c))), Vector())
+    return n.normalized() if n.length > 1e-6 else None
+
+
+def reshade(o, skin, pred, inset=0.002, skip=('Glass', 'Lens', 'ClearLens')):
+    """shade_from_source with a fixed inset, on the faces for which pred(center, normal, material) holds:
+    each corner takes the skin's normal `inset` m in from the corner (at most a quarter of the way to the
+    face's centre), from skin faces of its own material. shade_from_source samples a quarter of the way in,
+    which on a long collapse triangle lands centimetres from the corner, so two triangles sharing a corner
+    disagree and read as facets (the Wendt Strom's hood lip and mirror panels). Returns the faces done."""
+    sbm, ssn, trees = _skin_trees(skin)
+    stash_normals(o)
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector['src_normal']
+    done = 0
+    for f in bm.faces:
+        m = names[f.material_index]
+        c = f.calc_center_median()
+        if m in skip or m not in trees or not pred(c, f.normal, m):
+            continue
+        t, fs = trees[m]
+        for l in f.loops:
+            d = c - l.vert.co
+            q = l.vert.co + d.normalized() * min(inset, d.length * 0.25) if d.length > 1e-9 else l.vert.co
+            loc, _, i, _ = t.find_nearest(q)
+            n = _skin_normal(fs[i], ssn, loc) if loc is not None else None
+            if n is not None and n.dot(f.normal) > 0.2:
+                l[sn] = n
+        done += 1
+    bm.to_mesh(me)
+    bm.free()
+    sbm.free()
+    restore_normals(o)
+    return done
+
+
+def densify_on_skin(o, skin, pred, max_edge=0.02, passes=4):
+    """Split every edge longer than `max_edge` on the faces for which pred(center, normal, material) holds
+    and put each new vertex on the skin (its nearest point among skin faces of the vertex's material, when
+    within 1 cm): vertices where the collapse spanned a curve with one flat triangle (the Wendt Strom's
+    mirror panels: a 15 cm2 triangle across the panel's rounded rim). Shading after it is reshade()'s job.
+    Only the vertices the split returns move: BMVert wrappers do not hash stably, and a set difference of
+    bm.verts once snapped 2,500 vertices all over the body. Returns the vertices added."""
+    sbm, _, trees = _skin_trees(skin)
+    carry = stash_normals(o)
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    added = 0
+    for _ in range(passes):
+        region = {f for f in bm.faces if pred(f.calc_center_median(), f.normal, names[f.material_index])}
+        long_e = [e for e in bm.edges if e.calc_length() > max_edge and any(f in region for f in e.link_faces)]
+        if not long_e:
+            break
+        ret = bmesh.ops.subdivide_edges(bm, edges=long_e, cuts=1, use_grid_fill=False)
+        for v in [g for g in ret['geom_split'] if isinstance(g, bmesh.types.BMVert)]:
+            mats = {names[f.material_index] for f in v.link_faces}
+            t = trees.get(next(iter(mats))) if len(mats) == 1 else None
+            if t is not None:
+                loc = t[0].find_nearest(v.co)[0]
+                if loc is not None and (loc - v.co).length < 0.01:
+                    v.co = loc
+            added += 1
+        bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4])
+    bm.to_mesh(me)
+    bm.free()
+    sbm.free()
+    if carry:
+        restore_normals(o)
+    return added
+
+
+def skin_islands(skin, box, max_faces=5000):
+    """Face indices of the skin's small islands (under `max_faces`) with a face centred in box(center):
+    details the donor models apart from the shell (mirrors), whole and with the source's normals."""
+    sbm = bmesh.new()
+    sbm.from_mesh(skin.data)
+    sbm.faces.ensure_lookup_table()
+    seen, out = set(), set()
+    for f in sbm.faces:
+        if f.index in seen or not box(f.calc_center_median()):
+            continue
+        stack, comp = [f], []
+        seen.add(f.index)
+        while stack:
+            g = stack.pop()
+            comp.append(g.index)
+            for e in g.edges:
+                for h in e.link_faces:
+                    if h.index not in seen:
+                        seen.add(h.index)
+                        stack.append(h)
+        if len(comp) < max_faces:
+            out |= set(comp)
+    sbm.free()
+    return out
+
+
+def swap_islands(o, skin, box, near=0.015):
+    """Replace a body's reduced copy of the skin's small islands in box(center) (skin_islands) with the
+    islands themselves: the body's faces in the box nearer the islands than the shell round them go, and
+    so do faces within `near` of the islands that lie more than 3 mm off both (what the collapse welded
+    between them); the islands come in verbatim with their src_normal corners. The Wendt Strom's mirrors,
+    reduced with a box of the door round them (recipe `details`), had their bases welded into the door in
+    jagged black wedges; the skin's own (1,551 and 1,554 faces) replaced them. Returns (removed, added)."""
+    isl = skin_islands(skin, box)
+    sbm = bmesh.new()
+    sbm.from_mesh(skin.data)
+    sbm.faces.ensure_lookup_table()
+    co = [v.co.copy() for v in sbm.verts]
+    t_isl = BVHTree.FromPolygons(co, [[v.index for v in sbm.faces[i].verts] for i in isl])
+    t_shell = BVHTree.FromPolygons(co, [[v.index for v in f.verts] for f in sbm.faces if f.index not in isl and box(f.calc_center_median())])
+    stash_normals(o)
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector['src_normal']
+    kill = []
+    for f in bm.faces:
+        c = f.calc_center_median()
+        if not box(c):
+            continue
+        di = t_isl.find_nearest(c)[3]
+        h = t_shell.find_nearest(c)
+        ds = h[3] if h[0] is not None else 9
+        if di < ds or (di < near and ds > 0.003):
+            kill.append(f)
+    bmesh.ops.delete(bm, geom=kill, context='FACES')
+    ssn = sbm.loops.layers.float_vector['src_normal']
+    snames = [m.name.split('.')[0] for m in skin.data.materials]
+    vmap = {}
+    for i in sorted(isl):
+        sf = sbm.faces[i]
+        vs = []
+        for v in sf.verts:
+            if v.index not in vmap:
+                vmap[v.index] = bm.verts.new(v.co)
+            vs.append(vmap[v.index])
+        f = bm.faces.new(vs)
+        f.material_index = names.index(snames[sf.material_index])
+        f.smooth = True
+        for l, sl in zip(f.loops, sf.loops):
+            l[sn] = sl[ssn]
+    sbm.free()
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    bm.to_mesh(me)
+    bm.free()
+    restore_normals(o)
+    return len(kill), len(isl)
+
+
+def _inside_2d(p, poly):
+    c = False
+    for i in range(len(poly)):
+        a, b = poly[i], poly[i - 1]
+        if (a.y > p.y) != (b.y > p.y) and p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x:
+            c = not c
+    return c
+
+
+def _seg_dist(p, a, b):
+    ab = b - a
+    t = max(0.0, min(1.0, (p - a).dot(ab) / (ab.dot(ab) or 1e-12)))
+    return (a + ab * t - p).length
+
+
+def reskin_lip(o, skin, ay, az, xr, th_top=95.0, dx=0.02, dth=10.0, under=None, crease_z=None, center_fill=0.03,
+               fair=None):
+    """Rebuild a hood's leading lip (a roll along x over a grille) as a fresh triangulation on the skin.
+    A point of the lip is (x, theta): the ray from the axis (x, ay, az) at theta degrees up from straight
+    ahead. The lip's Paint and Black faces within |x| < xr and theta < th_top (and the flat underside
+    under it, normal down, within 5 mm of az) go; what is left of the body round them is one open chain
+    over the top from one crease end to the other. That chain, a crease row at crease_z (the lip's bottom
+    edge) and a grid every `dx` m and `dth` degrees are triangulated in (x, theta) (delaunay_2d_cdt) and
+    lifted onto the skin's Paint, each vertex with the skin's normal at itself; an underside strip runs
+    back from the crease to y `under`. Within `center_fill` of x 0 under 8 degrees the lip is taken from
+    x = center_fill (the badge mount on the Wendt Strom's skin). `fair` = (ranges, th0, th1) fairs the lower
+    lip across the car: below th0 degrees the ray length is an even polynomial in x (1, x2, x4) fitted to
+    the skin over the |x| `ranges` [(x0, x1), ...], with its own normals, blended into the skin by th1.
+    The collapse left the Wendt Strom's lip in long triangles shaded from points 25 % in from their
+    corners, a badge recess with nothing in it, and the grille piece's strip standing up to 2 cm proud of
+    it; rebuilt on the skin alone, its crease wobbled 3 to 5 mm in plan where the donor's lip bulges round
+    the badge surround (x 0.08 to 0.22, below 40 degrees), which read as a moustache under the hood
+    (`fair=([(0.03, 0.08), (0.22, 0.37)], 35, 50)`). Returns (faces removed, faces made)."""
+    import collections
+    import numpy as np
+    from mathutils.geometry import delaunay_2d_cdt
+    sbm, ssn, trees = _skin_trees(skin)
+    paint_tree, paint_faces = trees['Paint']
+    crease_z = az - 0.0008 if crease_z is None else crease_z
+    axis = lambda x: Vector((x, ay, az))
+    ray = lambda th: Vector((0, -math.cos(math.radians(th)), math.sin(math.radians(th))))
+
+    def theta_r(p):
+        rel = p - axis(p.x)
+        return math.degrees(math.atan2(rel.z, -rel.y)), rel.length
+
+    def skin_sample(x, th):
+        if abs(x) < center_fill and th < 8:
+            p, n = skin_sample(math.copysign(center_fill, x) if x else center_fill, th)
+            k = abs(x) / center_fill
+            return Vector((x, p.y, p.z)), Vector((n.x * k, n.y, n.z)).normalized()
+        d = ray(th)
+        loc, _, i, _ = paint_tree.ray_cast(axis(x) + d * 0.4, -d, 0.6)
+        if loc is None:
+            return None, None
+        return loc, _skin_normal(paint_faces[i], ssn, loc)
+
+    fits = {}
+
+    def fit(th):
+        """Coefficients of r(x) = c0 + c1 x2 + c2 x4 at theta, from the skin over the fair ranges."""
+        key = round(th, 3)
+        if key not in fits:
+            xs = [x0 + (x1 - x0) * i / 10 for x0, x1 in fair[0] for i in range(11)]
+            pts = [(x, (skin_sample(x, th)[0] - axis(x)).length) for x in xs]
+            X = np.array([p[0] for p in pts]); Y = np.array([p[1] for p in pts])
+            fits[key] = np.linalg.lstsq(np.vstack([np.ones_like(X), X ** 2, X ** 4]).T, Y, rcond=None)[0]
+        return fits[key]
+
+    def fair_sample(x, th):
+        c = fit(th)
+        r = c[0] + c[1] * x * x + c[2] * x ** 4
+        r_x = 2 * c[1] * x + 4 * c[2] * x ** 3
+        h = 0.5
+        ca, cb = fit(th + h), fit(th - h)
+        r_t = ((ca[0] + ca[1] * x * x + ca[2] * x ** 4) - (cb[0] + cb[1] * x * x + cb[2] * x ** 4)) / math.radians(2 * h)
+        d = ray(th)
+        t = math.radians(th)
+        dp = Vector((0, math.sin(t), math.cos(t)))
+        n = (dp * r + d * r_t).cross(Vector((1, 0, 0)) + d * r_x).normalized()
+        if n.dot(d) < 0:
+            n = -n
+        return axis(x) + d * r, n
+
+    def sample(x, th):
+        w = 0.0 if fair is None else 1 - _sstep((th - fair[1]) / (fair[2] - fair[1]))
+        if w <= 0:
+            return skin_sample(x, th)
+        p, n = fair_sample(x, th)
+        if w >= 1:
+            return p, n
+        ps, ns = skin_sample(x, th)
+        if ps is None:
+            return p, n
+        return p.lerp(ps, 1 - w), n.lerp(ns, 1 - w).normalized()
+
+    def crease(x):
+        p, n = sample(x, 1.0)
+        return Vector((p.x, p.y, crease_z)), n
+
+    stash_normals(o)
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    paint_i = names.index('Paint')
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector['src_normal']
+    R = set()
+    for f in bm.faces:
+        m = names[f.material_index]
+        c = f.calc_center_median()
+        if m not in ('Paint', 'Black') or abs(c.x) >= xr or not (ay - 0.11 < c.y < ay + 0.09 and az - 0.005 < c.z < az + 0.115):
+            continue
+        if m == 'Paint' and f.normal.z < -0.7 and az - 0.003 < c.z < az + 0.005 and c.y < ay + 0.01:
+            R.add(f)
+            continue
+        th, r = theta_r(c)
+        if not (-3 < th < th_top):
+            continue
+        p, _ = sample(c.x, th)
+        if p is None:
+            continue
+        rs = (p - axis(c.x)).length
+        tol = 0.025 if abs(c.x) < 0.05 or th > 0 else 0.012
+        if abs(r - rs) < tol or (abs(c.x) < 0.05 and r < rs):
+            R.add(f)
+    adj = collections.defaultdict(list)
+    for e in bm.edges:
+        if any(f in R for f in e.link_faces) and any(f not in R for f in e.link_faces):
+            a, b = e.verts
+            adj[a].append(b)
+            adj[b].append(a)
+    s = max((v for v in adj if len(adj[v]) == 1), key=lambda v: v.co.x)
+    ch, seen, cur = [s], {s}, s
+    while True:
+        nx = [w for w in adj[cur] if w not in seen]
+        if not nx:
+            break
+        cur = nx[0]
+        seen.add(cur)
+        ch.append(cur)
+    # the chain's end edges lying along the crease row itself (both ends at the outermost x) are left open
+    while len(ch) > 2 and abs(theta_r(ch[1].co)[0] - theta_r(ch[0].co)[0]) < 1 and abs(ch[1].co.x) < abs(ch[0].co.x):
+        ch.pop(0)
+    while len(ch) > 2 and abs(theta_r(ch[-2].co)[0] - theta_r(ch[-1].co)[0]) < 1 and abs(ch[-2].co.x) < abs(ch[-1].co.x):
+        ch.pop()
+    x0, x1 = ch[-1].co.x, ch[0].co.x
+    uv = lambda x, th: Vector((x, math.radians(th) * 0.055))
+    nb = int(round((x1 - x0) / dx))
+    bottom = [x0 + (x1 - x0) * i / nb for i in range(1, nb)]
+    th_b = theta_r(ch[0].co)[0]
+    poly = [uv(v.co.x, theta_r(v.co)[0]) for v in ch] + [uv(x, th_b) for x in bottom]
+    order = list(range(len(poly)))
+    if sum(poly[i - 1].x * poly[i].y - poly[i].x * poly[i - 1].y for i in range(len(poly))) < 0:
+        order.reverse()
+    k = int(math.ceil(abs(x0) / dx))
+    interior = []
+    for i in range(2 * k + 1):
+        x = -k * dx + i * dx
+        th = th_b + dth
+        while th < th_top + 20:
+            q = uv(x, th)
+            if _inside_2d(q, poly) and min(_seg_dist(q, poly[j - 1], poly[j]) for j in range(len(poly))) > 0.4 * dx:
+                interior.append((x, th))
+            th += dth
+    _, _, ofaces, orig_v, _, _ = delaunay_2d_cdt(poly + [uv(x, th) for x, th in interior], [], [order], 1, 1e-6)
+    nch, nbt = len(ch), len(bottom)
+    normal_at, verts3, crease_row = {}, [], []
+    for ov in orig_v:
+        if not ov:
+            raise RuntimeError('reskin_lip: the triangulation added a vertex')
+        src = ov[0]
+        if src < nch:
+            v = ch[src]
+        else:
+            p, n = crease(bottom[src - nch]) if src < nch + nbt else sample(*interior[src - nch - nbt])
+            v = bm.verts.new(p)
+            normal_at[v] = n
+            if src < nch + nbt:
+                crease_row.append(v)
+        verts3.append(v)
+    for v in ch:
+        th, _ = theta_r(v.co)
+        normal_at[v] = (sample(v.co.x, th) if th > 0.5 else crease(v.co.x))[1]
+    bmesh.ops.delete(bm, geom=list(R), context='FACES')
+    made = 0
+    for fc in ofaces:
+        vs = [verts3[i] for i in fc]
+        if (vs[1].co - vs[0].co).cross(vs[2].co - vs[0].co).dot(sum((normal_at[v] for v in vs), Vector())) < 0:
+            vs.reverse()
+        f = bm.faces.new(vs)
+        f.material_index = paint_i
+        f.smooth = True
+        for l in f.loops:
+            l[sn] = normal_at[l.vert]
+        made += 1
+    # a black panel behind the lip whose top stands above the crease shows through once the lip is faired
+    # back (the Wendt Strom's grille back panel, its top at z 0.690 behind the donor's bulge): sink it
+    for f in bm.faces:
+        if names[f.material_index] == 'Black':
+            for v in f.verts:
+                if abs(v.co.x) < xr + 0.015 and v.co.y < ay - 0.04 and crease_z - 0.0006 < v.co.z < az + 0.02:
+                    v.co.z = crease_z - 0.0006
+    if under is not None:
+        row = sorted(crease_row + [ch[0], ch[-1]], key=lambda v: v.co.x)
+        back = [bm.verts.new((v.co.x, under, crease_z)) for v in row]
+        for i in range(len(row) - 1):
+            f = bm.faces.new([row[i], back[i], back[i + 1], row[i + 1]])
+            if f.normal.z > 0:
+                f.normal_flip()
+            f.material_index = paint_i
+            f.smooth = True
+            for l in f.loops:
+                l[sn] = Vector((0, 0, -1))
+            made += 1
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    bm.to_mesh(me)
+    bm.free()
+    sbm.free()
+    restore_normals(o)
+    return len(R), made
+
+
+def grille_ledge(o, front, z_front, z_back, tuck=0.004, x_step=0.03, sliver_box=None):
+    """A flat painted ledge under a grille, from a bumper's top edge back under the grille's black panel:
+    `front` is [(x, y)] for x >= 0 along the bumper's top edge (mirrored), z_front there, rising to z_back
+    `tuck` m behind the panel's face (found by rays along +y at z_back - 0.3 mm, through anything not
+    Black; past |x| 0.35 the panel's lean carries on). Faces of `sliver_box(center)` (Paint) go first.
+    The Wendt Strom's donor has the ledge (z 0.5834 to 0.590), cut away with everything the grille piece's
+    box held, which left a jagged hole under the bottom bar. Returns (faces removed, faces made)."""
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    paint_i = names.index('Paint')
+    tree = BVHTree.FromObject(o, bpy.context.evaluated_depsgraph_get())
+
+    def front_y(x):
+        x = abs(x)
+        for (xa, ya), (xb, yb) in zip(front, front[1:]):
+            if xa <= x <= xb:
+                return ya + (yb - ya) * (x - xa) / (xb - xa)
+        return front[-1][1]
+
+    def back_y(x):
+        ax = min(abs(x), 0.35)
+        q = Vector((ax, -3, z_back - 0.0003))
+        for _ in range(8):
+            h = tree.ray_cast(q, Vector((0, 1, 0)), 2)
+            if h[0] is None:
+                break
+            if names[me.polygons[h[2]].material_index] == 'Black':
+                return h[0].y + tuck + (abs(x) - ax) * 0.152
+            q = h[0] + Vector((0, 1e-4, 0))
+        raise RuntimeError(f'grille_ledge: no black panel at x {ax}')
+    xe = front[-1][0]
+    xs = sorted(set([round(s * x, 4) for x, _ in front for s in (1, -1)] + [round(-xe + i * x_step, 4) for i in range(int(2 * xe / x_step) + 1) if -xe + i * x_step < xe]))
+    backs = [back_y(x) for x in xs]
+    stash_normals(o)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector['src_normal']
+    gone = [f for f in bm.faces if sliver_box and names[f.material_index] == 'Paint' and sliver_box(f.calc_center_median())]
+    bmesh.ops.delete(bm, geom=gone, context='FACES')
+    fr = [bm.verts.new((x, front_y(x), z_front)) for x in xs]
+    bk = [bm.verts.new((x, y, z_back)) for x, y in zip(xs, backs)]
+    for f in bm.faces:
+        f.tag = False
+    made = []
+    for i in range(len(xs) - 1):
+        f = bm.faces.new([fr[i], fr[i + 1], bk[i + 1], bk[i]])
+        if f.normal.z < 0:
+            f.normal_flip()
+        f.material_index = paint_i
+        f.smooth = True
+        f.tag = True
+        made.append(f)
+    bm.normal_update()
+    for f in made:
+        for l in f.loops:
+            l[sn] = sum((g.normal for g in l.vert.link_faces if g.tag), Vector()).normalized()
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    bm.to_mesh(me)
+    bm.free()
+    restore_normals(o)
+    return len(gone), len(made)
+
+
+def mend_top_edge(o, front, z_top, cut, step=0.02):
+    """Re-triangulate a stretch of a bumper's top edge: the Paint faces of cut(center) go, and what is left
+    below them (one open chain from the edge's last vertex on one side round to the other) is closed by a
+    straight top edge at z_top along `front` ([(x, y)] for x >= 0, mirrored) and triangulated in (x, z).
+    New corners take the normals of the faces left round them, the top edge's lerped across from the
+    chain's two ends. On the Wendt Strom the badge mount's base left two overlapping layers of faces, one
+    folded face and a 9 mm dip in the edge at x 0 (`cut` |x| < 0.1, y < -2.07, z > 0.565 with a corner
+    above 0.572); every front bumper part copied it. Returns (faces removed, faces made)."""
+    import collections
+    from mathutils.geometry import delaunay_2d_cdt
+
+    def front_y(x):
+        x = abs(x)
+        for (xa, ya), (xb, yb) in zip(front, front[1:]):
+            if xa <= x <= xb:
+                return ya + (yb - ya) * (x - xa) / (xb - xa)
+        return front[-1][1]
+    stash_normals(o)
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    paint_i = names.index('Paint')
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector['src_normal']
+    R = [f for f in bm.faces if f.material_index == paint_i and cut(f)]
+    for f in bm.faces:
+        f.tag = False
+    for f in R:
+        f.tag = True
+    # the chain: edges of the cut faces shared with faces that stay (the rest is the old top edge)
+    keep_e = [e for e in bm.edges if any(f.tag for f in e.link_faces) and any(not f.tag for f in e.link_faces)]
+    adj = collections.defaultdict(list)
+    for e in keep_e:
+        a, b = e.verts
+        adj[a].append(b)
+        adj[b].append(a)
+    ends = [v for v in adj if len(adj[v]) == 1]
+    if len(ends) != 2:
+        raise RuntimeError(f'mend_top_edge: {len(ends)} chain ends')
+    s = min(ends, key=lambda v: v.co.x)
+    ch, seen, cur = [s], {s}, s
+    while True:
+        nx = [w for w in adj[cur] if w not in seen]
+        if not nx:
+            break
+        cur = nx[0]
+        seen.add(cur)
+        ch.append(cur)
+
+    def corner_normal(v):
+        n = sum((l[sn] for l in v.link_loops if not l.face.tag), Vector())
+        return n.normalized() if n.length > 1e-6 else Vector((0, -0.83, 0.55)).normalized()
+    nrm = {v: corner_normal(v) for v in ch}
+    xl, xr = ch[0].co.x, ch[-1].co.x
+    k = max(1, int(round((xr - xl) / step)))
+    top = [xr - (xr - xl) * i / k for i in range(1, k)]    # right to left, closing the chain
+    pts = [Vector((v.co.x, v.co.z)) for v in ch] + [Vector((x, z_top)) for x in top]
+    order = list(range(len(pts)))
+    if sum(pts[i - 1].x * pts[i].y - pts[i].x * pts[i - 1].y for i in range(len(pts))) < 0:
+        order.reverse()
+    _, _, ofaces, orig_v, _, _ = delaunay_2d_cdt(pts, [], [order], 1, 1e-7)
+    verts = []
+    nl, nr = nrm[ch[0]], nrm[ch[-1]]
+    for ov in orig_v:
+        i = ov[0]
+        if i < len(ch):
+            verts.append(ch[i])
+        else:
+            x = top[i - len(ch)]
+            v = bm.verts.new((x, front_y(x), z_top))
+            nrm[v] = nl.lerp(nr, (x - xl) / (xr - xl)).normalized()
+            verts.append(v)
+    bmesh.ops.delete(bm, geom=R, context='FACES')
+    made = 0
+    for fc in ofaces:
+        vs = [verts[i] for i in fc]
+        if (vs[1].co - vs[0].co).cross(vs[2].co - vs[0].co).dot(sum((nrm[v] for v in vs), Vector())) < 0:
+            vs.reverse()
+        f = bm.faces.new(vs)
+        f.material_index = paint_i
+        f.smooth = True
+        for l in f.loops:
+            l[sn] = nrm[l.vert]
+        made += 1
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    bm.to_mesh(me)
+    bm.free()
+    restore_normals(o)
+    snap_top_edge(o, front, z_top)
+    return len(R), made
+
+
+def snap_top_edge(o, front, z_top, margin=0.01):
+    """Put a bumper's open top edge on the line `front` ([(x, y)] for x >= 0, mirrored), no lower than
+    0.6 mm under z_top, up to `margin` short of the line's end (the corners turning back stay), so a ledge
+    built on the same line meets it everywhere: the Wendt Strom's edge vertex at x 0.162 stood 4 mm ahead
+    of the line and 2 mm low, a gap in front of the ledge. Vertex moves only; returns how many moved."""
+    def front_y(x):
+        x = abs(x)
+        for (xa, ya), (xb, yb) in zip(front, front[1:]):
+            if xa <= x <= xb:
+                return ya + (yb - ya) * (x - xa) / (xb - xa)
+        return front[-1][1]
+    carry = stash_normals(o)
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    moved = 0
+    for v in bm.verts:
+        if abs(v.co.x) < front[-1][0] - margin and v.co.y < front[-1][1] + 0.02 and z_top - 0.004 < v.co.z < z_top + 0.001 \
+                and any(len(e.link_faces) == 1 for e in v.link_edges):
+            y, z = front_y(v.co.x), max(v.co.z, z_top - 0.0006)
+            if abs(y - v.co.y) + abs(z - v.co.z) > 1e-5:
+                v.co.y, v.co.z = y, z
+                moved += 1
+    bm.to_mesh(o.data)
+    bm.free()
+    if carry:
+        restore_normals(o)
+    return moved
+
+
 GRILLE_UV = 3.0   # m of car space per UV unit on Grille faces: the game's rib texture repeats against this
 
 
