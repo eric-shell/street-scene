@@ -129,6 +129,8 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   }
   m.HeadLight = new THREE.MeshStandardMaterial({ name: 'HeadLight', color: 0xffffff, emissive: 0xeaf2ff, emissiveIntensity: LAMP_GLOW.head });
   m.TailLight = new THREE.MeshStandardMaterial({ name: 'TailLight', color: 0x330000, emissive: 0xff1a2a, emissiveIntensity: LAMP_GLOW.tail });
+  // The third brake light: a dark red lens until the pedal lights it (setBrake).
+  m.BrakeLight = new THREE.MeshStandardMaterial({ name: 'BrakeLight', color: 0x3a0006, roughness: 0.2, emissive: 0xff1a2a, emissiveIntensity: 0 });
   // The unlit lenses: amber indicators and markers, red reflectors, and the clear covers over the main lamps
   // (see-through, so the reflectors and bulbs behind read as the lamp's detail, the way the window glass shows the cabin).
   m.Light = new THREE.MeshPhysicalMaterial({ name: 'Light', color: 0xc8700f, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
@@ -273,6 +275,7 @@ export const LAMP_GLOW = { head: 1.3, tail: 1.4, brake: 4.5 } as const;
 export function setBrake(m: CarMaterialSet, braking: boolean, heat = braking ? 1 : 0, lamps = 1): void {
   const tl = m.TailLight as THREE.MeshStandardMaterial;
   tl.emissiveIntensity = (braking ? LAMP_GLOW.brake : LAMP_GLOW.tail) * lamps;
+  (m.BrakeLight as THREE.MeshStandardMaterial).emissiveIntensity = braking ? LAMP_GLOW.brake * lamps : 0;
   (m.Rotor as THREE.MeshStandardMaterial).emissiveIntensity = BRAKE.glow * heat * heat;
 }
 

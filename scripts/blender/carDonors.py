@@ -115,11 +115,14 @@ DONORS = {
         # lens lies a few mm under the lid, and the lamps' collapse pushed it through in black
         # patches: it is paint (the bezel's top lip, ahead of the lens, stays black). The pop-ups'
         # chrome reflector and the round bulb in front of it are what glow, behind their clear
-        # covers; the red strip across the middle of the tail bar is a reflector, not a lamp.
+        # covers.
         'recolor': [(lambda c, n, m: m == 'Black' and POPUP(c) and c.y > -1.74 and c.z > 0.765 and abs(n.z) > 0.5, 'Paint'),
                     (lambda c, n, m: m == 'Chrome' and 0.48 < abs(c.x) < 0.7 and -1.75 < c.y < -1.69 and 0.63 < c.z < 0.79, 'HeadLight'),
-                    (lambda c, n, m: m == 'Lens' and POPUP(c) and c.y > -1.7, 'HeadLight'),
-                    (lambda c, n, m: m == 'TailLight' and abs(c.x) < 0.25, 'Reflector')],
+                    (lambda c, n, m: m == 'Lens' and POPUP(c) and c.y > -1.7, 'HeadLight')],
+        # The third brake light: the donor's four red blocks in the black pocket mid tail bar give
+        # way to one thin strip arched along its top edge (6 mm under it), lit only under braking,
+        # as on the car.
+        'strips': [([(0, 2.095, 0.848), (0.04, 2.094, 0.846), (0.08, 2.093, 0.844), (0.12, 2.092, 0.842), (0.16, 2.09, 0.838)], 0.01, 'BrakeLight')],
         # The pop-ups are reduced with the lamps, at their tighter error: in the shell's collapse
         # their lids and housings went to a few coarse facets.
         'lamps': [lambda c, n, m: POPUP(c)],
@@ -138,6 +141,7 @@ DONORS = {
         # crosses above the cowl, and its right corner. Then the top of the cabin's mirror mount, which
         # stood through the roof. By hand on the shipped file on 2026-10-29.
         'cull': [lambda c, n, m: m == 'Black' and abs(c.x) < 0.5 and -0.78 < c.y < -0.665 and 0.8 < c.z < 0.87,
+                 lambda c, n, m: m == 'TailLight' and abs(c.x) < 0.25 and c.y > 2.0,
                  lambda c, n, m: m == 'Black' and 0.39 < c.x < 0.68 and -0.67 < c.y < -0.47 and 0.8 < c.z < 0.85,
                  lambda c, n, m: m == 'Interior' and abs(c.x) < 0.035 and -0.1 < c.y < -0.03 and c.z > 1.15,
                  lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y < -1.89 and 0.55 < c.z < 0.63,
@@ -1269,6 +1273,33 @@ def back_panels(o, panels, material='Black'):
     me.update()
 
 
+def lamp_strip(o, points, height, material):
+    """A thin lamp strip along a curve, mirrored across x = 0: `points` (x, y, z) from the middle
+    out, z the strip's top edge, `height` m tall, its faces turned out of the nearer end. A recipe
+    `strips` entry `(points, height, material)`: a simple lamp in place of a fussy one (the RX-7's
+    third brake light, along the top of the tail bar's black pocket)."""
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+    mi = mat_index(o, material)
+    path = [(-x, y, z) for x, y, z in reversed(points) if x > 0] + list(points)
+    top = [bm.verts.new(p) for p in path]
+    bottom = [bm.verts.new((x, y, z - height)) for x, y, z in path]
+    out = 1 if path[0][1] > 0 else -1
+    for i in range(len(path) - 1):
+        f = bm.faces.new([bottom[i], bottom[i + 1], top[i + 1], top[i]])
+        f.material_index = mi
+        f[own] = 1
+        f.smooth = False
+        f.normal_update()
+        if f.normal.y * out < 0:
+            f.normal_flip()
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
 def _delete_indices(o, pred):
     """Delete the faces for which pred(polygon) is true (delete_faces by index or anything else of the face)."""
     me = o.data
@@ -1380,6 +1411,8 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     recolored, quads = grille_surface(low, full['wheelbase'] / 2)
     if DONORS[cid].get('backPanels'):
         back_panels(low, DONORS[cid]['backPanels'])
+    for points, height, material in DONORS[cid].get('strips', ()):
+        lamp_strip(low, points, height, material)
     turned = shade_from_source(low, skin)
     if cabin.data.polygons:
         _collapse(cabin, interior)

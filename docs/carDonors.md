@@ -67,6 +67,7 @@ A recipe adds only what that donor needs:
 | `debadge` | `False` skips the badge island passes: for a donor whose badges are materials of their own (drop them in `materials`) and whose grilles are meshes of thousands of small flat cells, which the passes take for badges and press flat (the R33's: 2,423 islands) |
 | `bridges` | boxes `(lo, hi)` across a gap in the grille's bars: a `cull` or a badge mount cut them where it sat. The faces centered in the box go, then each bar end on the box's left face is lofted to its match on the right (same material, nearest z), so the bar runs across in one piece (the Golf's two bars, in front of the black panel behind them) |
 | `rawNames` | the donor's materials are `Material.001`, `Material.002`: the `.001` suffix is the name, so classification must not strip it (the Runabout's) |
+| `strips` | `(points, height, material)`: a thin lamp strip along a curve, mirrored across the middle, added after the reduction (the RX-7's third brake light in place of the donor's four blocks) |
 | `backPanels` | boxes `(x0, x1, y, z0, z1)`: a flat black quad facing the nose behind an opening the pipeline's own grille quads miss (a lower intake with a crossbar in it), added after the reduction |
 
 An unclassified material stops the run with its name, so nothing ships by accident. Look at the import's materials first: one listing with face counts and bounds per material says which is which.
