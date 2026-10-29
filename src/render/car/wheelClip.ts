@@ -14,7 +14,16 @@
  * body that lip height carries on, so a tire pushed out past the fender (offset, camber, lock) is cut
  * at the fender's line and reads as the wheel tucking under it.
  *
- * Cost: four texel fetches per wheel fragment, no extra pass or draw call; measuring rasterizes the body's
+ * A stanced build (lowered, the wheel pushed out past the fender on a stretched tire) puts the tire's
+ * shoulder up into the fender's lip while the wheel's lip sits a hair under it. The cut alone then
+ * opened a hole: the shoulder gone, the lip and the barrel under the tread lit as if in the open, so the
+ * fender read as slicing between tire and wheel. So every wheel fragment is also judged by the tire's
+ * crown over it (its position pushed out radially to the tire's outer radius, `uArchR`) and darkens
+ * toward `CLIP.shade.floor` as that crown goes up into the body: the lip, the sidewall and whatever shows
+ * through the cut sink into the arch's shadow under the fender's edge, the way a tucked wheel does, and
+ * nothing of the geometry moves. A stock stance never reaches the shade.
+ *
+ * Cost: eight texel fetches per wheel fragment, no extra pass or draw call; measuring rasterizes the body's
  * triangles into four small grids twice (lowest and highest surface; a few milliseconds, only when the
  * body or its parts change).
  */
@@ -31,40 +40,62 @@ const CLIP = {
   padZ: 0.2,
   /** Height stored where no body is over a spot (m): never clips. */
   open: 1e4,
+  /** The shade under the fender: full once the tire's crown over a fragment is `depth` (m) up into the body, dimming the lit colour to `floor`. */
+  shade: { depth: 0.03, floor: 0.05 },
 } as const;
 
 const VERT_HEAD = /* glsl */ `
 uniform mat4 uWorldToBody;
+uniform float uArchR;
 varying vec3 vArchPos;
+varying vec3 vArchEnv;
 `;
+// The fragment in body space, and the tire's crown over it: the same spot pushed out radially (the mesh's axle is x)
+// to the tire's outer radius; a fragment on the tread, or any mesh without a radius, is its own crown.
 const VERT_BODY = /* glsl */ `
 vArchPos = (uWorldToBody * modelMatrix * vec4(transformed, 1.0)).xyz;
+{
+  float archR = length(transformed.yz);
+  vec3 crown = transformed + vec3(0.0, transformed.yz / max(archR, 1e-4)) * max(uArchR - archR, 0.0);
+  vArchEnv = (uWorldToBody * modelMatrix * vec4(crown, 1.0)).xyz;
+}
 `;
 const FRAG_HEAD = /* glsl */ `
 uniform sampler2D uArchMap;
 uniform vec4 uArchBox[4];
 uniform float uArchMidZ;
 varying vec3 vArchPos;
+varying vec3 vArchEnv;
+float archShade = 1.0;
+// The body's height over a spot of one wheel's field (open where the spot is off the field), bilinear between the
+// cell centers (by hand: float textures need not filter), so the cut is a smooth line, not steps.
+float archHeight(vec2 p, int wheel) {
+  vec4 box = uArchBox[wheel];
+  vec2 cell = (p - box.xy) / box.zw;
+  if (cell.x < 0.0 || cell.y < 0.0 || cell.x >= ${CLIP.nx}.0 || cell.y >= ${CLIP.nz}.0) return ${CLIP.open.toFixed(1)};
+  vec2 g = clamp(cell - 0.5, vec2(0.0), vec2(${CLIP.nx - 1}.0, ${CLIP.nz - 1}.0));
+  ivec2 c0 = ivec2(min(floor(g), vec2(${CLIP.nx - 2}.0, ${CLIP.nz - 2}.0)));
+  vec2 f = g - vec2(c0);
+  c0.y += wheel * ${CLIP.nz};
+  float h00 = texelFetch(uArchMap, c0, 0).r;
+  float h10 = texelFetch(uArchMap, c0 + ivec2(1, 0), 0).r;
+  float h01 = texelFetch(uArchMap, c0 + ivec2(0, 1), 0).r;
+  float h11 = texelFetch(uArchMap, c0 + ivec2(1, 1), 0).r;
+  return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
+}
 `;
-// Which wheel's field by the quadrant of car space (FL, FR, RL, RR: +x is left, +z forward), then the cell under the fragment.
+// Which wheel's field by the quadrant of car space (FL, FR, RL, RR: +x is left, +z forward); cut what is above the
+// body, shade what the tire's crown over it has carried up into the body.
 const FRAG_BODY = /* glsl */ `
 {
   int wheel = (vArchPos.z > uArchMidZ ? 0 : 2) + (vArchPos.x > 0.0 ? 0 : 1);
-  vec4 box = uArchBox[wheel];
-  vec2 cell = (vArchPos.xz - box.xy) / box.zw;
-  if (cell.x >= 0.0 && cell.y >= 0.0 && cell.x < ${CLIP.nx}.0 && cell.y < ${CLIP.nz}.0) {
-    // Bilinear between the cell centers (by hand: float textures need not filter), so the cut is a smooth line, not steps.
-    vec2 g = clamp(cell - 0.5, vec2(0.0), vec2(${CLIP.nx - 1}.0, ${CLIP.nz - 1}.0));
-    ivec2 c0 = ivec2(min(floor(g), vec2(${CLIP.nx - 2}.0, ${CLIP.nz - 2}.0)));
-    vec2 f = g - vec2(c0);
-    c0.y += wheel * ${CLIP.nz};
-    float h00 = texelFetch(uArchMap, c0, 0).r;
-    float h10 = texelFetch(uArchMap, c0 + ivec2(1, 0), 0).r;
-    float h01 = texelFetch(uArchMap, c0 + ivec2(0, 1), 0).r;
-    float h11 = texelFetch(uArchMap, c0 + ivec2(1, 1), 0).r;
-    if (vArchPos.y > mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y)) discard;
-  }
+  if (vArchPos.y > archHeight(vArchPos.xz, wheel)) discard;
+  archShade = mix(1.0, ${CLIP.shade.floor.toFixed(3)}, smoothstep(0.0, ${CLIP.shade.depth.toFixed(3)}, vArchEnv.y - archHeight(vArchEnv.xz, wheel)));
 }
+`;
+const FRAG_SHADE = /* glsl */ `
+#include <opaque_fragment>
+gl_FragColor.rgb *= archShade;
 `;
 
 const TRI = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
@@ -82,10 +113,10 @@ export class WheelClip {
     uArchBox: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
     uArchMidZ: { value: 0 },
     uWorldToBody: { value: new THREE.Matrix4() },
+    uArchR: { value: 0 },
   };
   /** Per wheel, the height of the ground in car space (m): body surfaces below it are not over the wheel. */
   private readonly floor: number[] = [];
-  private readonly beforeRender: () => void;
 
   constructor(car: ManifestCar, private readonly body: THREE.Object3D) {
     this.map.magFilter = this.map.minFilter = THREE.NearestFilter;
@@ -99,12 +130,6 @@ export class WheelClip {
       this.floor[i] = y - car.wheelRadius;
     }
     this.uniforms.uArchMidZ.value = (car.wheels.FL[2] + car.wheels.RL[2]) / 2;
-    // Body and wheels are posed separately (and the garage lift moves the whole car after update), so the
-    // matrix is taken as the wheels draw, when the scene's world matrices are current.
-    const toBody = this.uniforms.uWorldToBody.value;
-    this.beforeRender = () => {
-      toBody.copy(this.body.matrixWorld).invert();
-    };
   }
 
   /**
@@ -219,14 +244,23 @@ export class WheelClip {
         .replace('#include <project_vertex>', `#include <project_vertex>\n${VERT_BODY}`);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>\n${FRAG_HEAD}`)
-        .replace('#include <clipping_planes_fragment>', `${FRAG_BODY}\n#include <clipping_planes_fragment>`);
+        .replace('#include <clipping_planes_fragment>', `${FRAG_BODY}\n#include <clipping_planes_fragment>`)
+        .replace('#include <opaque_fragment>', FRAG_SHADE);
     };
     mat.needsUpdate = true;
   }
 
-  /** A wheel mesh drawn with a clipped material: keeps the body's matrix current for it. */
-  watch(mesh: THREE.Mesh): void {
-    mesh.onBeforeRender = this.beforeRender;
+  /**
+   * A wheel mesh drawn with a clipped material: keeps the body's matrix and the tire's outer radius (`tireR`, in
+   * the mesh's own units) current for it. Body and wheels are posed separately (and the garage lift moves the
+   * whole car after update), so the matrix is taken as the wheels draw, when the scene's world matrices are current.
+   */
+  watch(mesh: THREE.Mesh, tireR: number): void {
+    const { uWorldToBody, uArchR } = this.uniforms;
+    mesh.onBeforeRender = () => {
+      uWorldToBody.value.copy(this.body.matrixWorld).invert();
+      uArchR.value = tireR;
+    };
   }
 
   dispose(): void {

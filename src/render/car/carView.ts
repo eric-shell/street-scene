@@ -757,7 +757,7 @@ export class CarView {
       this.wheelSpins[i].add(holder);
       this.wheelModels[i] = holder;
       holder.traverse((o) => {
-        if ((o as THREE.Mesh).isMesh) this.clip.watch(o as THREE.Mesh);
+        if ((o as THREE.Mesh).isMesh) this.clip.watch(o as THREE.Mesh, profile.outer);
       });
     }
     this.bakeBrakes(axle);
