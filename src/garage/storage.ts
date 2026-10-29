@@ -4,7 +4,7 @@
  * fits in a URL parameter (?build=...). Imported builds are always validated. A player with no saved garage
  * starts on a random street build (randomBuild), drawn again on every page load until they keep one.
  */
-import { AXLES, CarBuild, DEFAULT_BUILD_NAME, GLOW_PATTERNS, defaultBuild, validateBuild, type AxleStance, type LugFinish, type PaintFinish } from '../shared/carBuild';
+import { AXLES, CHROME_COLOR, CarBuild, DEFAULT_BUILD_NAME, GLOW_PATTERNS, defaultBuild, validateBuild, type AxleStance, type PaintFinish, type WheelTrim } from '../shared/carBuild';
 import { loadJson, saveJson } from '../shared/store';
 import { DEFAULT_CAR_ID } from '../sim/tuning';
 import { defaultLaunchRpm } from '../sim/build';
@@ -72,7 +72,7 @@ export function randomBuild(name = DEFAULT_BUILD_NAME): CarBuild {
   v.wheels.rearPaint = { ...v.wheels.paint };
   v.wheels.lip = { mode: 'stock', color: '#c9ced8', finish: 'metallic' };
   v.wheels.cap = { mode: 'face', color: '#c9ced8', finish: 'metallic' };
-  v.wheels.lugNuts = pick<LugFinish>(['chrome', 'black']);
+  v.wheels.lugNuts = pick<WheelTrim>([{ mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, { mode: 'paint', color: '#111214', finish: 'chrome' }]);
   v.calipers = Math.random() < 0.25 ? { ...v.paint, match: true } : { color: pick(PRESETS.calipers), finish: pick<PaintFinish>(['gloss', 'candy', 'metallic']), match: false };
   v.tint.darkness = between(0.45, 0.85);
   const glow = pick(PRESETS.glow);

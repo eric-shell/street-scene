@@ -5,7 +5,7 @@
  * lines the build card and the Tune tab share. Plain DOM built with the kit's
  * helpers; the garage partials beside this file style them.
  */
-import { CarBuild, PAINT_FINISHES, Paint, AccentPaint } from '../shared/carBuild';
+import { CHROME_COLOR, CarBuild, PAINT_FINISHES, Paint, AccentPaint, WheelFinish } from '../shared/carBuild';
 import { SETUP_SLIDERS } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
 import type { SpecBadge } from '../shared/carSpec';
@@ -108,40 +108,79 @@ export function colorPicker(value: string, presets: readonly string[], onInput: 
 }
 
 /**
- * Every paint's controls (body, wheels, calipers): its color over its finish, edited in place, then onChange.
- * An accent (wheels, calipers) gets a Match body toggle beside any `tools`: matched, it wears the body's paint
- * and shows that instead of its controls; unmatched, it starts from the body's paint, so nothing jumps.
+ * Another paint a surface can wear instead of its own (the body's, the wheel's, the center cap's, the lip as the
+ * wheel ships it): a toggle in the picker's row. At most one of a picker's matches is on.
  */
-export function paintPicker(paint: Paint | AccentPaint, presets: readonly string[], onChange: () => void, accent?: { body: Paint; tools?: Node[] }): HTMLElement {
+export interface PaintMatch {
+  /** The toggle's short label ("Match body"). */
+  label: string;
+  ico?: IconNode;
+  /** What the surface wears while on, named in the note that replaces the controls ("Body paint"). */
+  wears: () => { name: string; paint: Paint<WheelFinish> };
+  on: () => boolean;
+  /** Turn it on (any other match goes off) or off (the surface takes back a paint of its own). */
+  set: (on: boolean) => void;
+}
+
+/** Match body for an accent (wheels, calipers): matched, it follows the body; unmatched, it starts from the body's paint, so nothing jumps. */
+export function matchBody<F extends WheelFinish>(a: AccentPaint<F>, body: Paint): PaintMatch {
+  return {
+    label: 'Match body',
+    wears: () => ({ name: 'Body paint', paint: body }),
+    on: () => a.match,
+    set: (on) => {
+      a.match = on;
+      if (!on) Object.assign(a, { color: body.color, finish: body.finish });
+    },
+  };
+}
+
+/**
+ * Every paint's controls (body, wheels and their trims, calipers): its color over its finish, edited in place, then
+ * onChange. `matches` (Match body, Match wheel...) sit in a row above: while one is on, the surface wears that paint
+ * and the picker shows it instead of its controls. `finishes` defaults to the paint finishes; a wheel surface adds
+ * chrome, which starts from plain chrome's color (a color pick then tints it).
+ */
+export function paintPicker<F extends WheelFinish>(paint: Paint<F>, presets: readonly string[], onChange: () => void, opts: { matches?: PaintMatch[]; finishes?: readonly F[] } = {}): HTMLElement {
   const root = h('div', { class: 'garage-paint' });
-  const a = accent && 'match' in paint ? paint : null;
+  const matches = opts.matches ?? [];
+  const finishes = opts.finishes ?? (PAINT_FINISHES as readonly WheelFinish[] as readonly F[]);
   const draw = () => {
-    const tools: Node[] = [...(accent?.tools ?? [])];
-    if (accent && a) {
-      tools.push(
-        toggle(Paintbrush, 'Match body', a.match, a.match ? 'Wearing the body paint' : 'Wear the body paint', () => {
-          a.match = !a.match;
-          if (!a.match) Object.assign(a, { color: accent.body.color, finish: accent.body.finish });
-          onChange();
-          draw();
-        }),
-      );
-    }
+    const active = matches.find((m) => m.on());
+    const worn = active?.wears();
     root.replaceChildren(
-      ...(tools.length ? [h('div', { class: 'row' }, ...tools)] : []),
-      ...(accent && a?.match
-        ? [h('div', { class: 'muted garage-note' }, h('span', { class: 'garage-dot', style: `background:${accent.body.color}` }), `Body paint · ${capital(accent.body.finish)}`)]
+      ...(matches.length
+        ? [
+            h(
+              'div',
+              { class: 'row' },
+              ...matches.map((m) => {
+                const name = m.wears().name.toLowerCase();
+                return toggle(m.ico ?? Paintbrush, m.label, m === active, m === active ? `Wearing the ${name}` : `Wear the ${name}`, () => {
+                  m.set(m !== active);
+                  onChange();
+                  draw();
+                });
+              }),
+            ),
+          ]
+        : []),
+      ...(worn
+        ? [h('div', { class: 'muted garage-note' }, h('span', { class: 'garage-dot', style: `background:${worn.paint.color}` }), `${worn.name} · ${capital(worn.paint.finish)}`)]
         : [
             colorPicker(paint.color, presets, (c) => {
               paint.color = c;
               onChange();
             }),
             segmented(
-              PAINT_FINISHES.map((f) => ({ value: f, label: capital(f) })),
+              finishes.map((f) => ({ value: f, label: capital(f) })),
               paint.finish,
               (f) => {
+                const toChrome = f === 'chrome' && paint.finish !== 'chrome';
                 paint.finish = f;
+                if (toChrome) paint.color = CHROME_COLOR;
                 onChange();
+                if (toChrome) draw();
               },
             ),
           ]),

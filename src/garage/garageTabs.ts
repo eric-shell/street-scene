@@ -7,18 +7,18 @@
  * `changed`, which refits the car live; Save is the screen's.
  */
 import { Link2, Link2Off } from 'lucide';
-import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/car/carAssets';
+import { CarAssetLibrary, MANIFEST, manifestCar, partById, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { AXLES, Axle, AxleStance, CarBuild, GLOW_PATTERNS, LUG_FINISHES, LugFinish, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
+import { AXLES, Axle, AxleStance, CHROME_COLOR, CarBuild, GLOW_PATTERNS, Paint, STANCE_LIMITS, TireShape, VinylShape, WHEEL_FINISHES, WheelFinish, WheelTrim, WheelTrimMode } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges } from '../shared/carSpec';
 import { h, segmented, toast } from '../ui/kit/dom';
-import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, Paintbrush, Sparkles, IconNode } from '../ui/kit/icons';
+import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, Paintbrush, RotateCcw, Sparkles, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { GaragePrefs, saveGaragePrefs } from './storage';
-import { capital, choiceList, cm, color, colorPicker, field, paintPicker, percent, PRESETS, section, slider, statLines, toggle } from './garageWidgets';
+import { capital, choiceList, cm, color, colorPicker, field, matchBody, paintPicker, percent, PRESETS, section, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
 import { renderVinyls } from './garageVinyls';
 import { setupSlider } from './setupSliders';
 import { wheelPicker } from './wheelPicker';
@@ -311,25 +311,38 @@ export function renderTabContent(host: TabHost): void {
           ),
         );
       } else {
+        // The paint and every trim offer chrome and Match body; a trim can also wear this axle's wheel paint (and
+        // the lip as the wheel ships it, the lug nuts the center cap). The trims are per build, both axles.
+        const paint = rear ? w.rearPaint : w.paint;
+        const face = () => (paint.match ? v.paint : paint);
+        const stockChrome = partById(rear ? (w.rearPart ?? front) : front)?.lip === 'chrome';
+        const capWears = () => (w.cap.mode === 'body' ? v.paint : w.cap.mode === 'paint' ? w.cap : face());
         host.body.append(
           section(
             title('paint'),
             paintPicker(
-              rear ? w.rearPaint : w.paint,
+              paint,
               PRESETS.wheels,
               () => {
                 if (linked) w.rearPaint = { ...w.paint };
                 host.changed();
               },
-              { body: v.paint },
+              { matches: [matchBody(paint, v.paint)], finishes: WHEEL_FINISHES },
             ),
           ),
-          // The lip and the center cap are per build, both axles: the paint picker shows only while the mode is 'paint'.
-          trimSection(host, 'Lip', w.lip, [{ value: 'stock', label: 'Stock' }, { value: 'face', label: 'Face' }, { value: 'chrome', label: 'Chrome' }, { value: 'paint', label: 'Paint' }]),
-          trimSection(host, 'Center cap', w.cap, [{ value: 'face', label: 'Face' }, { value: 'chrome', label: 'Chrome' }, { value: 'paint', label: 'Paint' }]),
-          lugSection(host, w),
+          trimSection(host, 'Lip', w.lip, [
+            trimMatch(w.lip, 'stock', 'Stock', 'Stock lip', () => (stockChrome ? { color: CHROME_COLOR, finish: 'chrome' } : face()), RotateCcw),
+            trimMatch(w.lip, 'face', 'Match wheel', 'Wheel paint', face),
+            trimMatch(w.lip, 'body', 'Match body', 'Body paint', () => v.paint),
+          ]),
+          trimSection(host, 'Center cap', w.cap, [trimMatch(w.cap, 'face', 'Match wheel', 'Wheel paint', face), trimMatch(w.cap, 'body', 'Match body', 'Body paint', () => v.paint)]),
+          trimSection(host, 'Lug nuts', w.lugNuts, [
+            trimMatch(w.lugNuts, 'cap', 'Match cap', 'Center cap', capWears),
+            trimMatch(w.lugNuts, 'face', 'Match wheel', 'Wheel paint', face),
+            trimMatch(w.lugNuts, 'body', 'Match body', 'Body paint', () => v.paint),
+          ]),
           // One caliper paint for all four corners, whatever the axle switch says.
-          section('Calipers', paintPicker(v.calipers, PRESETS.calipers, () => host.changed(), { body: v.paint })),
+          section('Calipers', paintPicker(v.calipers, PRESETS.calipers, () => host.changed(), { matches: [matchBody(v.calipers, v.paint)] })),
         );
       }
       break;
@@ -529,30 +542,25 @@ function renderPerformance(host: TabHost): void {
   host.body.append(h('div', { class: 'muted garage-note' }, 'Position 3 on every slider is the stock car. Visual parts never change performance.'));
 }
 
-/** A wheel trim section (lip or center cap): the mode, and its own paint while the mode is 'paint'. Both axles. */
-function trimSection(host: TabHost, name: string, trim: WheelTrim, modes: { value: WheelTrimMode; label: string }[]): HTMLElement {
-  return section(
-    name,
-    segmented(modes, trim.mode, (m) => {
-      trim.mode = m;
-      host.changed();
-      host.renderTab();
-    }),
-    ...(trim.mode === 'paint' ? [paintPicker(trim, PRESETS.wheels, () => host.changed())] : []),
-    h('div', { class: 'muted garage-note' }, 'Both axles.'),
-  );
+/** A wheel trim section (lip, center cap, lug nuts; render/car/lugNuts.ts draws the nuts): the wheel paint picker over the trim, with its matches. Both axles. */
+function trimSection(host: TabHost, name: string, trim: WheelTrim, matches: PaintMatch[]): HTMLElement {
+  return section(name, paintPicker(trim, PRESETS.wheels, () => host.changed(), { matches, finishes: WHEEL_FINISHES }), h('div', { class: 'muted garage-note' }, 'Both axles.'));
 }
 
-const LUG_LABELS: Record<LugFinish, string> = { chrome: 'Chrome', black: 'Black', gold: 'Gold', red: 'Red', blue: 'Blue', cap: 'Cap' };
-
-/** The lug nuts' finish (render/car/lugNuts.ts draws the nuts on wheels that ship a lug circle): one pick, both axles; 'Cap' wears the center cap's finish. */
-function lugSection(host: TabHost, w: CarBuild['visual']['wheels']): HTMLElement {
-  return section(
-    'Lug nuts',
-    segmented(LUG_FINISHES.map((value) => ({ value, label: LUG_LABELS[value] })), w.lugNuts, (f) => {
-      w.lugNuts = f;
-      host.changed();
-    }),
-    h('div', { class: 'muted garage-note' }, 'Both axles.'),
-  );
+/** A trim's match: on, the trim wears `mode`'s paint; off, it takes that paint as its own, so nothing jumps. */
+function trimMatch(trim: WheelTrim, mode: WheelTrimMode, label: string, name: string, wears: () => Paint<WheelFinish>, ico?: IconNode): PaintMatch {
+  return {
+    label,
+    ico,
+    wears: () => ({ name, paint: wears() }),
+    on: () => trim.mode === mode,
+    set: (on) => {
+      if (on) {
+        trim.mode = mode;
+        return;
+      }
+      const p = wears();
+      Object.assign(trim, { mode: 'paint', color: p.color, finish: p.finish });
+    },
+  };
 }

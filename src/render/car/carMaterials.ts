@@ -2,11 +2,11 @@
  * Runtime materials for the shared material vocabulary. Any mesh whose source
  * material is named e.g. "Paint" gets the player's paint, so new parts pick up
  * paint, trim and glass tint automatically. Lamp colors are fixed, not a build choice.
- * The body, the wheels and the calipers are all paints (a color and a finish, applyPaint).
+ * The body, the wheels and their trims and the calipers are all paints (a color and a finish, applyPaint).
  */
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
-import type { AccentPaint, LugFinish, Paint, PaintFinish, VisualBuild, WheelTrim } from '../../shared/carBuild';
+import { CHROME_COLOR, type AccentPaint, type Paint, type PaintFinish, type VisualBuild, type WheelFinish, type WheelTrim } from '../../shared/carBuild';
 import { BRAKE, caliperLogoTexture, rotorTexture } from './brakes';
 import { TIRE_BUMP, acquireTireTexture, releaseTireTexture, tireShader } from './tireTread';
 
@@ -19,16 +19,10 @@ export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: T
 /** Each painted material's environment reflection strength (the boost createCarMaterials gives it); candy raises it. */
 const PAINT_ENV = { Paint: 1.9, Rim: 1.8, RimLip: 1.8, RimCap: 1.8, Caliper: 1.2 } as const;
 
-/** The polished look of the Chrome material (createCarMaterials), which a chrome lip or cap wears. */
+/** The polished look of the Chrome material (createCarMaterials), which a chrome finish wears in its own color. */
 const CHROME = { color: 0xdedede, env: 2.2, surface: { metalness: 1, roughness: 0.12, clearcoat: 0, clearcoatRoughness: 0, iridescence: 0, sheen: 0, specularIntensity: 1 } } as const;
-
-/** The painted lug nut finishes (chrome polishes like the Chrome material; 'cap' wears the axle's center cap). */
-const LUG_LOOK: Record<Exclude<LugFinish, 'chrome' | 'cap'>, { color: number; metalness: number; roughness: number }> = {
-  black: { color: 0x111214, metalness: 0.6, roughness: 0.25 },
-  gold: { color: 0xd4a537, metalness: 1, roughness: 0.22 },
-  red: { color: 0xc0182c, metalness: 1, roughness: 0.22 },
-  blue: { color: 0x2563d6, metalness: 1, roughness: 0.22 },
-};
+/** Plain chrome as a paint: what a stock polished lip wears. */
+const CHROME_PAINT: Paint<WheelFinish> = { color: CHROME_COLOR, finish: 'chrome' };
 
 /** Car space meters per UV unit on Grille faces (GRILLE_UV in scripts/blender/carDonors.py). */
 const GRILLE_UV_SPAN = 3;
@@ -174,69 +168,56 @@ const FINISH: Record<PaintFinish, Partial<THREE.MeshPhysicalMaterialParameters>>
 
 const WHITE = new THREE.Color(1, 1, 1);
 
-/** Paint a physical material: the finish's surface, then the color (a candy finish tints its reflections). */
-function applyPaint(mat: THREE.MeshPhysicalMaterial, p: Paint, env: number): void {
+/**
+ * Paint a physical material: the finish's surface, then the color (a candy finish tints its reflections, a chrome
+ * one is the Chrome material's polish in the paint's color).
+ */
+function applyPaint(mat: THREE.MeshPhysicalMaterial, p: Paint<WheelFinish>, env: number): void {
+  mat.color.set(p.color);
+  mat.specularColor.set(0xffffff);
+  if (p.finish === 'chrome') {
+    mat.setValues(CHROME.surface);
+    mat.envMapIntensity = CHROME.env;
+    mat.needsUpdate = true;
+    return;
+  }
   mat.setValues(FINISH[p.finish]);
   mat.iridescenceThicknessRange = [180, 760];
   mat.sheenColor.set(0xffffff);
-  mat.color.set(p.color);
   if (p.finish === 'candy') {
     // Deep clearcoat over a tinted base: darker base, colored reflections.
     mat.specularColor.copy(mat.color).lerp(WHITE, 0.25);
     mat.color.multiplyScalar(0.55);
     mat.envMapIntensity = env * (2.5 / 1.9);
   } else {
-    mat.specularColor.set(0xffffff);
     mat.envMapIntensity = env;
   }
   mat.needsUpdate = true;
 }
 
-/** Polish a physical material like the Chrome material. */
-function applyChrome(mat: THREE.MeshPhysicalMaterial): void {
-  mat.setValues(CHROME.surface);
-  mat.specularColor.set(0xffffff);
-  mat.color.set(CHROME.color);
-  mat.envMapIntensity = CHROME.env;
-  mat.needsUpdate = true;
-}
-
 /**
  * Dress the materials in a build. `stockLips`: each axle's wheel as its catalog entry ships the lip (front, rear):
- * polished or in the face's paint; a lip or cap trim resolves per axle ('face' wears that axle's wheel paint, 'stock'
- * the lip as shipped). `envScale` scales the painted surfaces' environment reflections (1 the night street's; the
+ * polished or in the face's paint; the lip, cap and lug nuts resolve per axle ('face' wears that axle's wheel paint,
+ * 'stock' the lip as shipped). `envScale` scales the painted surfaces' environment reflections (1 the night street's; the
  * garage turns it down with its lights, since the paint's own map still holds them lit).
  */
 export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, stockLips: readonly ['chrome' | 'rim', 'chrome' | 'rim'], braking = false, envScale = 1): void {
   // A matched accent wears the body's paint.
-  const accent = (p: AccentPaint): Paint => (p.match ? v.paint : p);
+  const accent = <F extends WheelFinish>(p: AccentPaint<F>): Paint<WheelFinish> => (p.match ? v.paint : p);
   applyPaint(m.Paint as THREE.MeshPhysicalMaterial, v.paint, PAINT_ENV.Paint * envScale);
   applyPaint(m.Rim as THREE.MeshPhysicalMaterial, accent(v.wheels.paint), PAINT_ENV.Rim * envScale);
   applyPaint(m.RimRear as THREE.MeshPhysicalMaterial, accent(v.wheels.rearPaint), PAINT_ENV.Rim * envScale);
-  const trim = (mat: THREE.Material, t: WheelTrim, face: Paint, stock: 'chrome' | 'rim', isCap: boolean): void => {
-    const pm = mat as THREE.MeshPhysicalMaterial;
-    const mode = t.mode === 'stock' ? (isCap || stock === 'rim' ? 'face' : 'chrome') : t.mode;
-    if (mode === 'chrome') applyChrome(pm);
-    else applyPaint(pm, mode === 'paint' ? t : face, PAINT_ENV.Rim * envScale);
+  // A trim resolves per axle: its own paint, the body's, that axle's face or cap, or the lip as the wheel ships it.
+  const wears = (t: WheelTrim, face: Paint<WheelFinish>, cap: Paint<WheelFinish>, stock: 'chrome' | 'rim'): Paint<WheelFinish> =>
+    t.mode === 'paint' ? t : t.mode === 'body' ? v.paint : t.mode === 'cap' ? cap : t.mode === 'stock' && stock === 'chrome' ? CHROME_PAINT : face;
+  const axle = (face: Paint<WheelFinish>, stock: 'chrome' | 'rim', lip: THREE.Material, capMat: THREE.Material, lug: THREE.Material): void => {
+    const cap = wears(v.wheels.cap, face, face, stock);
+    applyPaint(lip as THREE.MeshPhysicalMaterial, wears(v.wheels.lip, face, cap, stock), PAINT_ENV.Rim * envScale);
+    applyPaint(capMat as THREE.MeshPhysicalMaterial, cap, PAINT_ENV.Rim * envScale);
+    applyPaint(lug as THREE.MeshPhysicalMaterial, wears(v.wheels.lugNuts, face, cap, stock), PAINT_ENV.Rim * envScale);
   };
-  const faces = [accent(v.wheels.paint), accent(v.wheels.rearPaint)];
-  trim(m.RimLip, v.wheels.lip, faces[0], stockLips[0], false);
-  trim(m.RimLipRear, v.wheels.lip, faces[1], stockLips[1], false);
-  trim(m.RimCap, v.wheels.cap, faces[0], stockLips[0], true);
-  trim(m.RimCapRear, v.wheels.cap, faces[1], stockLips[1], true);
-  const lug = (mat: THREE.Material, face: Paint, stock: 'chrome' | 'rim'): void => {
-    const f = v.wheels.lugNuts;
-    if (f === 'cap') return trim(mat, v.wheels.cap, face, stock, true);
-    const pm = mat as THREE.MeshPhysicalMaterial;
-    if (f === 'chrome') return applyChrome(pm);
-    const look = LUG_LOOK[f];
-    pm.setValues({ ...CHROME.surface, metalness: look.metalness, roughness: look.roughness });
-    pm.color.set(look.color);
-    pm.envMapIntensity = PAINT_ENV.Rim * envScale;
-    pm.needsUpdate = true;
-  };
-  lug(m.Lug, faces[0], stockLips[0]);
-  lug(m.LugRear, faces[1], stockLips[1]);
+  axle(accent(v.wheels.paint), stockLips[0], m.RimLip, m.RimCap, m.Lug);
+  axle(accent(v.wheels.rearPaint), stockLips[1], m.RimLipRear, m.RimCapRear, m.LugRear);
   applyPaint(m.Caliper as THREE.MeshPhysicalMaterial, accent(v.calipers), PAINT_ENV.Caliper * envScale);
   (m.Trim as THREE.MeshStandardMaterial).color.set(v.trimColor);
   const glass = m.Glass as THREE.MeshPhysicalMaterial;

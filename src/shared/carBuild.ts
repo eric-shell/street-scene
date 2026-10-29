@@ -16,30 +16,47 @@ export const BUILD_NAME_MAX = 24;
 export const PAINT_FINISHES = ['gloss', 'metallic', 'matte', 'pearl', 'candy'] as const;
 export type PaintFinish = (typeof PAINT_FINISHES)[number];
 
-/** A painted surface: the body, each axle's wheels and the calipers all take a color and a finish. */
-export interface Paint {
+/**
+ * Every wheel surface (the faces, lips, center caps and lug nuts) also takes chrome: polished metal tinted by
+ * the paint's color, so CHROME_COLOR is plain chrome and a gold or black chrome is one color pick away.
+ */
+export const WHEEL_FINISHES = [...PAINT_FINISHES, 'chrome'] as const;
+export type WheelFinish = (typeof WHEEL_FINISHES)[number];
+/** Plain chrome's color (the Chrome material's, render/car/carMaterials.ts), the color a chrome finish starts from. */
+export const CHROME_COLOR = '#dedede';
+
+/** A painted surface: the body, each axle's wheels and their trims, and the calipers all take a color and a finish. */
+export interface Paint<F extends WheelFinish = PaintFinish> {
   color: string;
-  finish: PaintFinish;
+  finish: F;
 }
 
 /** An accent's paint (wheels, calipers): its own, or the body's while matched (it follows later body changes). */
-export interface AccentPaint extends Paint {
+export interface AccentPaint<F extends WheelFinish = PaintFinish> extends Paint<F> {
   match: boolean;
 }
 
-/** How a lip or center cap is finished: 'stock' as the wheel ships (the catalog's `lip`: polished, or the face's paint), 'face' the axle's wheel paint, 'chrome' polished metal, 'paint' its own color and finish. */
-export const WHEEL_TRIM_MODES = ['stock', 'face', 'chrome', 'paint'] as const;
+/**
+ * What a wheel trim (lip, center cap, lug nuts) wears: 'stock' as the wheel ships (the catalog's `lip`: polished,
+ * or the face's paint), 'face' the axle's wheel paint, 'cap' the axle's resolved center cap, 'body' the body paint
+ * (following later body changes), 'paint' its own color and finish. WHEEL_TRIMS says which each trim offers.
+ */
+export const WHEEL_TRIM_MODES = ['stock', 'face', 'cap', 'body', 'paint'] as const;
 export type WheelTrimMode = (typeof WHEEL_TRIM_MODES)[number];
 
-/** The house lug nuts' finish: a polish, a paint, or 'cap' (each axle's resolved center cap finish). */
-export const LUG_FINISHES = ['chrome', 'black', 'gold', 'red', 'blue', 'cap'] as const;
-export type LugFinish = (typeof LUG_FINISHES)[number];
+/** The wheel trims and the modes each offers (only a lip ships with a look of its own; the nuts can match the cap). */
+export const WHEEL_TRIMS = {
+  lip: ['stock', 'face', 'body', 'paint'],
+  cap: ['face', 'body', 'paint'],
+  lugNuts: ['cap', 'face', 'body', 'paint'],
+} as const satisfies Record<string, readonly WheelTrimMode[]>;
+export type WheelTrimName = keyof typeof WHEEL_TRIMS;
 
-/** A wheel's lip or center cap finish; color and finish apply in 'paint' mode. */
+/** A wheel trim's finish; color and finish apply in 'paint' mode (and seed it again when a match is turned off). */
 export interface WheelTrim {
   mode: WheelTrimMode;
   color: string;
-  finish: PaintFinish;
+  finish: WheelFinish;
 }
 
 export const VINYL_SHAPES = ['stripe', 'twinStripe', 'flame', 'tribal', 'sponsorA', 'sponsorB', 'sponsorC', 'number', 'star', 'chevron'] as const;
@@ -103,9 +120,9 @@ export interface VisualBuild {
   parts: Partial<Record<PartSlot, string | null>>;
   wheels: {
     /** Front wheel paint (legacy builds saved one `color` for all four; validation migrates it). */
-    paint: AccentPaint;
+    paint: AccentPaint<WheelFinish>;
     /** Rear wheel paint; matches the front unless the garage's wheel paint is unlinked. */
-    rearPaint: AccentPaint;
+    rearPaint: AccentPaint<WheelFinish>;
     /** Rear wheel part id; null wears the front's (parts.wheels), so a car change keeps them matched. */
     rearPart: string | null;
     /** Front tire shape. */
@@ -118,8 +135,8 @@ export interface VisualBuild {
     lip: WheelTrim;
     /** The wheels' center caps, both axles. */
     cap: WheelTrim;
-    /** The lug nuts' finish, both axles; a missing or bad value reads 'chrome'. */
-    lugNuts: LugFinish;
+    /** The house lug nuts, both axles (builds from before saved one of a few fixed finishes; validation migrates them). */
+    lugNuts: WheelTrim;
   };
   /** Brake caliper paint, all four corners. */
   calipers: AccentPaint;
@@ -154,7 +171,7 @@ export function defaultVisual(): VisualBuild {
     paint: { color: '#d11f3f', finish: 'metallic' },
     trimColor: '#15161a',
     parts: {},
-    wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'stock', color: '#c9ced8', finish: 'metallic' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: 'chrome' },
+    wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'stock', color: '#c9ced8', finish: 'metallic' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' } },
     calipers: { color: '#c41e3a', finish: 'gloss', match: false },
     decals: [],
     stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 } },
@@ -174,21 +191,34 @@ export function defaultBuild(carId = DEFAULT_CAR_ID): CarBuild {
 const PART_ID = /^[A-Za-z0-9_\-.]{1,64}$/;
 
 /** A paint from storage or a share code; anything missing or invalid takes the fallback's. */
-function validPaint(v: unknown, fallback: Paint): Paint {
+function validPaint<F extends WheelFinish>(v: unknown, fallback: Paint<F>, finishes: readonly F[]): Paint<F> {
   const o = obj(v);
-  return { color: hexColor(o.color, fallback.color), finish: oneOf(o.finish, PAINT_FINISHES, fallback.finish) };
+  return { color: hexColor(o.color, fallback.color), finish: oneOf(o.finish, finishes, fallback.finish) };
 }
 
-function validAccent(v: unknown, fallback: AccentPaint): AccentPaint {
+function validAccent<F extends WheelFinish>(v: unknown, fallback: AccentPaint<F>, finishes: readonly F[]): AccentPaint<F> {
   const o = obj(v);
-  return { ...validPaint(o, fallback), match: typeof o.match === 'boolean' ? o.match : fallback.match };
+  return { ...validPaint(o, fallback, finishes), match: typeof o.match === 'boolean' ? o.match : fallback.match };
 }
 
-/** A lip or cap trim; a cap cannot be 'stock' (it reads 'face'). */
-function validTrim(v: unknown, fallback: WheelTrim, cap: boolean): WheelTrim {
+/** The lug nuts' fixed finishes from before they took a paint, each as the chrome it was. */
+const LEGACY_LUGS: Record<string, WheelTrim> = {
+  chrome: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' },
+  black: { mode: 'paint', color: '#111214', finish: 'chrome' },
+  gold: { mode: 'paint', color: '#d4a537', finish: 'chrome' },
+  red: { mode: 'paint', color: '#c0182c', finish: 'chrome' },
+  blue: { mode: 'paint', color: '#2563d6', finish: 'chrome' },
+  cap: { mode: 'cap', color: CHROME_COLOR, finish: 'chrome' },
+};
+
+/**
+ * A wheel trim; a mode the trim does not offer reads the fallback's (a cap saved 'stock' reads 'face'). Builds
+ * from before chrome was a finish saved a 'chrome' mode: it is plain chrome in 'paint' mode now.
+ */
+function validTrim(v: unknown, fallback: WheelTrim, trim: WheelTrimName): WheelTrim {
   const o = obj(v);
-  const mode = oneOf(o.mode, WHEEL_TRIM_MODES, fallback.mode);
-  return { mode: cap && mode === 'stock' ? 'face' : mode, ...validPaint(o, fallback) };
+  if (o.mode === 'chrome') return { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' };
+  return { mode: oneOf<WheelTrimMode>(o.mode, WHEEL_TRIMS[trim], fallback.mode), ...validPaint(o, fallback, WHEEL_FINISHES) };
 }
 
 export function validateVisual(v: unknown): VisualBuild {
@@ -231,8 +261,9 @@ export function validateVisual(v: unknown): VisualBuild {
   }
   // Wheel paint: builds from before wheel finishes saved a color per axle (one for all four before
   // that); it keeps the default finish. A missing rear follows the front.
-  const wheelPaint = validAccent(wheels.paint, { ...d.wheels.paint, color: hexColor(wheels.color, d.wheels.paint.color) });
-  const rearPaint = validAccent(wheels.rearPaint, { ...wheelPaint, color: hexColor(wheels.rearColor, wheelPaint.color) });
+  const wheelPaint = validAccent(wheels.paint, { ...d.wheels.paint, color: hexColor(wheels.color, d.wheels.paint.color) }, WHEEL_FINISHES);
+  const rearPaint = validAccent(wheels.rearPaint, { ...wheelPaint, color: hexColor(wheels.rearColor, wheelPaint.color) }, WHEEL_FINISHES);
+  const lugNuts = typeof wheels.lugNuts === 'string' ? { ...(LEGACY_LUGS[wheels.lugNuts] ?? d.wheels.lugNuts) } : validTrim(wheels.lugNuts, d.wheels.lugNuts, 'lugNuts');
   // Stance per axle. Legacy builds (saves and share codes from before per axle stance) had
   // stance.camberFront / camberRear and one stance.rideHeight, stance.offset and wheels.size; they seed both axles.
   // The first set's mild stretch is the mild tire and its aggressive one the stretched tire; its meaty one, standard.
@@ -255,11 +286,11 @@ export function validateVisual(v: unknown): VisualBuild {
     };
   };
   return {
-    paint: validPaint(o.paint, d.paint),
+    paint: validPaint(o.paint, d.paint, PAINT_FINISHES),
     trimColor: hexColor(o.trimColor, d.trimColor),
     parts,
-    wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire), lettering: wheels.lettering === true, lip: validTrim(wheels.lip, d.wheels.lip, false), cap: validTrim(wheels.cap, d.wheels.cap, true), lugNuts: oneOf(wheels.lugNuts, LUG_FINISHES, 'chrome') },
-    calipers: validAccent(o.calipers, d.calipers),
+    wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire), lettering: wheels.lettering === true, lip: validTrim(wheels.lip, d.wheels.lip, 'lip'), cap: validTrim(wheels.cap, d.wheels.cap, 'cap'), lugNuts },
+    calipers: validAccent(o.calipers, d.calipers, PAINT_FINISHES),
     decals,
     stance: {
       front: axle(stance.front, stance.camberFront),
