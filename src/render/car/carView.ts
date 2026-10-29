@@ -756,16 +756,18 @@ export class CarView {
     const spokeBack = Number.isFinite(back) ? back : 0;
     const barrelBack = Math.min(spokeBack, Number.isFinite(rearmost) ? rearmost : spokeBack);
     // The offset shift: a multi-piece wheel's face goes from its stock offset to the car's target for this axle,
-    // as far as its lip and barrel allow. The catalog's offset is in the GLB's frame, so it moves with the bake's
-    // centering; the target is mm on the car, so it comes back through the wheel's scale.
+    // plus the wheel's own bias (a one-piece or a wheel shipped as modelled moves by its bias alone), as far as its
+    // lip and barrel allow. The catalog's offset is in the GLB's frame, so it moves with the bake's centering; the
+    // target and the bias are mm on the car, so they come back through the wheel's scale.
     const face = detectFaceFit(faceX, faceR, ringX, profile.bead);
     const part = partById(model.userData.partId as string);
     const target = this.car.targetOffset?.[axle === 0 ? 'front' : 'rear'];
-    let shift = 0;
-    if (part?.construction === 'multi' && part.offset !== undefined && target !== undefined) {
-      const scale = this.car.wheelRadius / (profile.outer || this.car.wheelRadius);
+    const scale = this.car.wheelRadius / (profile.outer || this.car.wheelRadius);
+    let shift = (part?.offsetBias ?? 0) / 1000 / scale;
+    if (part?.construction === 'multi' && part.offset !== undefined && target !== undefined) shift += target / 1000 / scale - (part.offset - center.x);
+    if (shift !== 0) {
       const [lo, hi] = faceRange(face);
-      shift = Math.min(hi, Math.max(lo, target / 1000 / scale - (part.offset - center.x)));
+      shift = Math.min(hi, Math.max(lo, shift));
     }
     this.widthFit[axle] = {
       spokeBack,

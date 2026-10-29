@@ -6,7 +6,8 @@
       "displayName": "Akane",
       "group": "Hiryu",
       "construction": "multi",
-      "offset": 0.10151,
+      "offset": 0.0987,
+      "offsetBias": 25,
       "lip": "chrome",
       "carId": "universal",
       "slot": "wheels",
@@ -19,7 +20,7 @@
         "Chrome",
         "Tire"
       ],
-      "tris": 8725,
+      "tris": 8877,
       "generated": true
     },
     {
@@ -436,6 +437,7 @@
       "group": "Kaito",
       "construction": "multi",
       "offset": 0.02856,
+      "offsetBias": 25,
       "lip": "chrome",
       "carId": "universal",
       "slot": "wheels",
@@ -485,7 +487,6 @@
       "displayName": "Hane",
       "group": "Suzaku",
       "construction": "multi",
-      "offset": 0.13186,
       "lip": "chrome",
       "lugs": {
         "count": 5,
@@ -791,6 +792,7 @@
       "group": "Mizuchi",
       "construction": "multi",
       "offset": -0.0206,
+      "offsetBias": 25,
       "lip": "chrome",
       "carId": "universal",
       "slot": "wheels",
@@ -866,6 +868,7 @@
       "displayName": "Iwa",
       "group": "Genbu",
       "construction": "single",
+      "offsetBias": 20,
       "lip": "rim",
       "lugs": {
         "count": 5,
@@ -2018,6 +2021,7 @@
       "group": "Mizuchi",
       "construction": "multi",
       "offset": -0.02438,
+      "offsetBias": 25,
       "lip": "chrome",
       "carId": "universal",
       "slot": "wheels",
@@ -2066,6 +2070,7 @@
       "displayName": "Shio",
       "group": "Mizuchi",
       "construction": "single",
+      "offsetBias": 20,
       "lip": "rim",
       "lugs": {
         "count": 5,

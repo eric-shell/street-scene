@@ -579,15 +579,15 @@ async function main(): Promise<void> {
     const exporter = join(ROOT, 'scripts/blender/exportCar.py');
     const stale = !existsSync(metaPath) || statSync(metaPath).mtimeMs < Math.max(statSync(wheelBlend).mtimeMs, statSync(exporter).mtimeMs);
     if (stale) execFileSync(blenderW, ['--background', wheelBlend, '--python', exporter, '--', out], { stdio: 'pipe' });
-    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { wheels: { name: string; displayName: string; group?: string; construction?: string; offset?: number | null; lip?: string; lugs?: WheelLugs | null }[] };
+    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { wheels: { name: string; displayName: string; group?: string; construction?: string; offset?: number | null; offsetBias?: number | null; lip?: string; lugs?: WheelLugs | null }[] };
     const section: string[] = ['## Wheel set', '', `Source: \`${relative(ROOT, wheelBlend)}\` (scripts/blender/carWheels.py).`, ''];
     for (const wh of meta.wheels) {
       const doc = await io.read(join(out, 'wheels', `wheel_${wh.name}.glb`));
       const id = `wheel_${wh.name}`;
       const w = await writeOptimized(io, doc, join(PUBLIC, `parts/${id}.glb`), 'Wheel');
       if (!isConstruction(wh.construction)) throw new Error(`wheel_${wh.name}: no construction on the wheel object (its recipe in carWheels.py states 'single' or 'multi'; rebuild it)`);
-      if (wh.construction === 'multi' && !Number.isFinite(wh.offset)) throw new Error(`wheel_${wh.name}: a multi-piece wheel with no stock offset (carWheels.py wheel_offset)`);
-      generated.push({ id, displayName: wh.displayName || wh.name, ...(wh.group ? { group: wh.group } : {}), construction: wh.construction, ...(wh.construction === 'multi' ? { offset: wh.offset as number } : {}), ...(wh.lip === 'chrome' || wh.lip === 'rim' ? { lip: wh.lip } : {}), ...(validLugs(wh.lugs) ? { lugs: wh.lugs } : {}), carId: 'universal', slot: 'wheels', file: `parts/${id}.glb`, hides: [], materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
+      // No offset on a multi-piece wheel means it ships as modelled (the recipe's `offset: 'fixed'`); the build side raises when it could not measure one.
+      generated.push({ id, displayName: wh.displayName || wh.name, ...(wh.group ? { group: wh.group } : {}), construction: wh.construction, ...(Number.isFinite(wh.offset) ? { offset: wh.offset as number } : {}), ...(Number.isFinite(wh.offsetBias) ? { offsetBias: wh.offsetBias as number } : {}), ...(wh.lip === 'chrome' || wh.lip === 'rim' ? { lip: wh.lip } : {}), ...(validLugs(wh.lugs) ? { lugs: wh.lugs } : {}), carId: 'universal', slot: 'wheels', file: `parts/${id}.glb`, hides: [], materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
       section.push(`- \`${id}\` ${wh.displayName}: ${(w.bytes / 1024).toFixed(1)} KB, ${w.tris} tris.`);
     }
     inspectSections.push(section.join('\n') + '\n');

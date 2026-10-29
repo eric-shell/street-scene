@@ -8,12 +8,15 @@
  * the garage. One wheel at a time, in the order asked (the picker asks as
  * tiles scroll into view), so loading 44 GLBs never lands in one frame. The
  * images are data URLs kept for the session: a garage opened again shows
- * them at once.
+ * them at once. Each face is drawn where the car on show sets it (the car's
+ * front offset target and the wheel's own bias, docs/carWheels.md, Offset),
+ * so a tile shows the wheel as it will be fitted, not the GLB's stock dish.
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { CarAssetLibrary } from '../render/car/carAssets';
 import { lugsGeometry } from '../render/car/lugNuts';
+import { WidthFit, detectFaceFit, detectProfile, faceRange, remapWheel } from '../render/car/wheelFit';
 import type { PartEntry } from '../shared/parts';
 
 /** The thumbnail's size (px, square; the tile shows it at about half for a sharp image on 2x screens) and its view. */
@@ -29,8 +32,42 @@ const THUMB = {
   fill: 1.12,
 } as const;
 
-/** The finished images by wheel id, kept for the session; a failed draw is dropped so a later garage tries again. */
+/** The finished images by wheel id and offset target, kept for the session; a failed draw is dropped so a later garage tries again. */
 const done = new Map<string, Promise<string | null>>();
+
+/** One mesh of the wheel unpacked to plain float positions and normals in the GLB's own frame (its node transforms baked in). */
+interface Unpacked {
+  pos: Float32Array;
+  nrm: Float32Array | null;
+  material: THREE.Material;
+  tire: boolean;
+  ring: boolean;
+}
+
+function unpack(mesh: THREE.Mesh): Unpacked {
+  const geo = mesh.geometry;
+  const p = geo.getAttribute('position');
+  const n = geo.getAttribute('normal');
+  const pos = new Float32Array(p.count * 3);
+  const nrm = n ? new Float32Array(p.count * 3) : null;
+  const m = mesh.matrixWorld;
+  const nm = new THREE.Matrix3().getNormalMatrix(m);
+  const v = new THREE.Vector3();
+  for (let k = 0; k < p.count; k++) {
+    v.set(p.getX(k), p.getY(k), p.getZ(k)).applyMatrix4(m);
+    pos[k * 3] = v.x;
+    pos[k * 3 + 1] = v.y;
+    pos[k * 3 + 2] = v.z;
+    if (nrm && n) {
+      v.set(n.getX(k), n.getY(k), n.getZ(k)).applyMatrix3(nm).normalize();
+      nrm[k * 3] = v.x;
+      nrm[k * 3 + 1] = v.y;
+      nrm[k * 3 + 2] = v.z;
+    }
+  }
+  const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+  return { pos, nrm, material: mat, tire: mat.name === 'Tire', ring: mat.name === 'RimLip' };
+}
 
 export class WheelThumbs {
   private renderer: THREE.WebGLRenderer | null = null;
@@ -50,17 +87,22 @@ export class WheelThumbs {
 
   constructor(private readonly assets: CarAssetLibrary) {}
 
-  /** The wheel's thumbnail as a data URL, or null when its GLB is missing or the garage closed first. */
-  thumb(entry: PartEntry): Promise<string | null> {
-    let p = done.get(entry.id);
+  /**
+   * The wheel's thumbnail as a data URL, or null when its GLB is missing or the garage closed first. `target` is
+   * the car's front offset target (mm), so the tile shows the face where that car sets it (docs/carWheels.md,
+   * Offset); the wheel's own bias applies either way.
+   */
+  thumb(entry: PartEntry, target?: number): Promise<string | null> {
+    const key = `${entry.id}|${target ?? ''}`;
+    let p = done.get(key);
     if (!p) {
-      const next = this.queue.then(() => this.draw(entry)).catch(() => null);
+      const next = this.queue.then(() => this.draw(entry, target)).catch(() => null);
       this.queue = next;
       p = next.then((url) => {
-        if (!url) done.delete(entry.id);
+        if (!url) done.delete(key);
         return url;
       });
-      done.set(entry.id, p);
+      done.set(key, p);
     }
     return p;
   }
@@ -88,38 +130,85 @@ export class WheelThumbs {
     return r;
   }
 
-  private async draw(entry: PartEntry): Promise<string | null> {
+  private async draw(entry: PartEntry, target?: number): Promise<string | null> {
     if (this.disposed) return null;
     const model = await this.assets.part(entry);
     if (!model || this.disposed) return null;
     const r = this.setup();
-    // The clone shares the cached GLB's geometry: only its materials are swapped, and nothing of it is disposed.
+    // The wheel is rebuilt as plain meshes in the GLB's frame (wheel space: the center at the origin, the axle
+    // along X, the face toward +X), the way the car view bakes it, so its face can be moved to the offset the
+    // car sets without touching the cached GLB's geometry. The cap is the face's finish; the lip is polished or
+    // the face's, as the wheel ships it.
+    model.updateMatrixWorld(true);
+    const parts: Unpacked[] = [];
     model.traverse((o) => {
-      if (o instanceof THREE.Mesh) {
-        // The cap is the face's finish; the lip is polished or the face's, as the wheel ships it.
-        const pick = (m: THREE.Material) => this.materials[m.name === 'RimCap' ? 'Rim' : m.name === 'RimLip' ? (entry.lip === 'chrome' ? 'Chrome' : 'Rim') : m.name] ?? this.materials.Rim;
-        o.material = Array.isArray(o.material) ? o.material.map(pick) : pick(o.material);
-      }
+      if (o instanceof THREE.Mesh) parts.push(unpack(o));
     });
-    // Wheel space: the center at the origin, the axle along X, the face toward +X.
+    // The house lug nuts, chrome, on the lug circle the catalog measured (the model is in the same space); they ride with the face.
+    const lugs = entry.lugs ? lugsGeometry(entry.lugs) : null;
+    const shift = this.faceShift(entry, parts, target);
+    const shown = new THREE.Group();
+    const geos: THREE.BufferGeometry[] = [];
+    const add = (pos: Float32Array, nrm: Float32Array | null, material: THREE.Material, tire: boolean, rigid: boolean) => {
+      const geo = new THREE.BufferGeometry();
+      const p = Float32Array.from(pos);
+      const n = nrm ? Float32Array.from(nrm) : null;
+      if (shift.fit) remapWheel(pos, nrm, p, n, shift.profile, 1, 1, shift.fit, tire, rigid);
+      geo.setAttribute('position', new THREE.BufferAttribute(p, 3));
+      if (n) geo.setAttribute('normal', new THREE.BufferAttribute(n, 3));
+      geos.push(geo);
+      shown.add(new THREE.Mesh(geo, material));
+    };
+    for (const part of parts) {
+      const name = part.material.name;
+      const material = this.materials[name === 'RimCap' ? 'Rim' : name === 'RimLip' ? (entry.lip === 'chrome' ? 'Chrome' : 'Rim') : name] ?? this.materials.Rim;
+      add(part.pos, part.nrm, material, part.tire, false);
+    }
+    if (lugs) {
+      add(lugs.getAttribute('position').array as Float32Array, (lugs.getAttribute('normal')?.array as Float32Array | undefined) ?? null, this.materials.Chrome, false, true);
+      lugs.dispose();
+    }
     // Framed on the tire's radius, not the bounding sphere: the sphere counts the width too and leaves the wheel small.
-    const box = new THREE.Box3().setFromObject(model);
+    const box = new THREE.Box3().setFromObject(shown);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const dist = ((Math.max(size.y, size.z) / 2) * THUMB.fill) / Math.sin(((THUMB.fov / 2) * Math.PI) / 180);
     const c = Math.cos(THUMB.pitch);
     this.camera.position.set(Math.cos(THUMB.yaw) * c, Math.sin(THUMB.pitch), Math.sin(THUMB.yaw) * c).multiplyScalar(dist).add(center);
     this.camera.lookAt(center);
-    // The house lug nuts, chrome, on the lug circle the catalog measured (the model is in the same space).
-    const lugGeo = entry.lugs ? lugsGeometry(entry.lugs) : null;
-    if (lugGeo) model.add(new THREE.Mesh(lugGeo, this.materials.Chrome));
-    this.scene.add(model);
+    this.scene.add(shown);
     r.render(this.scene, this.camera);
     // Read in the same task as the draw: the drawing buffer is not kept past it.
     const url = r.domElement.toDataURL('image/png');
-    this.scene.remove(model);
-    lugGeo?.dispose();
+    this.scene.remove(shown);
+    for (const g of geos) g.dispose();
     return url;
+  }
+
+  /**
+   * The face's move for the tile (docs/carWheels.md, Offset), as the car view works it out per axle: the wheel's
+   * bias, plus on a multi-piece wheel with a stock offset the car's front target less that offset, clamped to what
+   * the lip and barrel allow. The tile has no car, so mm are taken at the house wheel's scale (a 0.28 m tire; a
+   * car's own scale is within a tenth of it). No fit when nothing moves, so most tiles draw the GLB as is.
+   */
+  private faceShift(entry: PartEntry, parts: Unpacked[], target?: number): { fit: WidthFit | null; profile: { outer: number; bead: number } } {
+    let d = (entry.offsetBias ?? 0) / 1000;
+    if (entry.construction === 'multi' && entry.offset !== undefined && target !== undefined) d += target / 1000 - entry.offset;
+    if (d === 0) return { fit: null, profile: { outer: 1, bead: 1 } };
+    const tireR: number[] = [], faceR: number[] = [], faceX: number[] = [], ringX: number[] = [];
+    for (const part of parts) {
+      for (let i = 0; i < part.pos.length; i += 3) {
+        const r = Math.hypot(part.pos[i + 1], part.pos[i + 2]);
+        if (part.tire) tireR.push(r);
+        else if (part.ring) ringX.push(part.pos[i]), faceR.push(r);
+        else faceX.push(part.pos[i]), faceR.push(r);
+      }
+    }
+    const profile = detectProfile(tireR, faceR);
+    const face = detectFaceFit(faceX, faceR.slice(0, faceX.length), ringX, profile.bead);
+    const [lo, hi] = faceRange(face);
+    const shift = Math.min(hi, Math.max(lo, d));
+    return { fit: { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0, tirePull: 0, cover: 1, face, shift }, profile };
   }
 
   dispose(): void {

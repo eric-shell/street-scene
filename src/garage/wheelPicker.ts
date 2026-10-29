@@ -37,6 +37,8 @@ export interface WheelPickerOptions {
   /** The maker on show, or null for All. */
   maker: string | null;
   thumbs: WheelThumbs;
+  /** The car's front offset target (mm), so the tiles show each face where this car sets it. */
+  target?: number;
   onMaker(maker: string | null): void;
   onPick(id: string): void;
 }
@@ -89,7 +91,7 @@ export function wheelPicker(o: WheelPickerOptions): HTMLElement {
     );
     Object.assign(el, {
       load: () =>
-        void o.thumbs.thumb(p).then((url) => {
+        void o.thumbs.thumb(p, o.target).then((url) => {
           if (!url) return;
           img.src = url;
           el.classList.add('is-loaded');

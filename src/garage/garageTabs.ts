@@ -221,6 +221,7 @@ export function renderTabContent(host: TabHost): void {
           current: rear ? (w.rearPart ?? front) : front,
           maker: host.wheelMaker,
           thumbs: host.wheelThumbs,
+          target: manifestCar(b.carId).targetOffset?.front,
           onMaker: (m) => {
             host.wheelMaker = m;
             host.renderTab();

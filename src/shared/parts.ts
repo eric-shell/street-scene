@@ -75,9 +75,15 @@ export interface PartEntry {
   /**
    * Multi-piece wheels: the stock offset, m along the axle (+X outboard) from the tire's centerline to the lug
    * seat (the cap's front where a cap hides the nuts), so the wheel's ET at the house scale. The per-car offset
-   * targets move the face by their difference from it (render/car/wheelFit.ts, `FaceFit`). Missing on a one-piece.
+   * targets move the face by their difference from it (render/car/wheelFit.ts, `FaceFit`). Missing on a one-piece,
+   * and on a multi-piece wheel that ships as modelled on every car (a face proud of the lip by design).
    */
   offset?: number;
+  /**
+   * Wheels: mm on the car (+ outboard) the face moves past the car's target (a flush face reads deeper than its
+   * seat says), or from stock on a one-piece wheel or one without `offset`, which is then its only move.
+   */
+  offsetBias?: number;
   /** Wheels: how the lip ships, polished ('chrome') or in the face's paint ('rim'); missing reads 'rim'. */
   lip?: 'chrome' | 'rim';
   /** Wheels: the lug circle the house lug nuts sit on; missing: no lug nuts (a solid face hides the hub). */

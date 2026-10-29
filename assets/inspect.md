@@ -126,7 +126,7 @@ Source: `assets/source/eshell/wendtStrom/wendtStrom.blend` (authored in car spac
 
 Source: `assets/source/eshell/wheels/wheels.blend` (scripts/blender/carWheels.py).
 
-- `wheel_akane` Akane: 180.6 KB, 8725 tris.
+- `wheel_akane` Akane: 189.5 KB, 8877 tris.
 - `wheel_akatsuki` Akatsuki: 213.5 KB, 9432 tris.
 - `wheel_ame` Ame: 218.4 KB, 10037 tris.
 - `wheel_aoi` Aoi: 204.1 KB, 10312 tris.

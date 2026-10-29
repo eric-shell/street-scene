@@ -53,7 +53,8 @@ async function main(): Promise<void> {
     const f = detectFaceFit(faceX, faceR, ringX, detectProfile(tireR, faceR).bead);
     const [lo, hi] = faceRange(f);
     const offset = w.offset ?? NaN;
-    console.log(`${w.id.slice(6).padEnd(10)} ${mm(offset).padStart(6)}  ${mm(f.back)}..${mm(f.front)}  ${mm(f.lipEdge - f.front).slice(1)} ${mm(f.back - f.barrelBack).padStart(6)}  ${mm(offset + lo)}..${mm(offset + hi)}`);
+    const reach = Number.isFinite(offset) ? `${mm(offset + lo)}..${mm(offset + hi)}` : '  fixed (as modelled)';
+    console.log(`${w.id.slice(6).padEnd(10)} ${(Number.isFinite(offset) ? mm(offset) : 'fixed').padStart(6)}  ${mm(f.back)}..${mm(f.front)}  ${mm(f.lipEdge - f.front).slice(1)} ${mm(f.back - f.barrelBack).padStart(6)}  ${reach}${w.offsetBias ? `  bias ${w.offsetBias > 0 ? '+' : ''}${w.offsetBias}` : ''}`);
   }
   console.log(`${picked.length} multi-piece wheels`);
 }

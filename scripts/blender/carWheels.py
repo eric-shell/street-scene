@@ -90,6 +90,7 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
 # `chunks` True for a scan cut into chunks that each run from the hub to the lip: its islands are no parts (the ring ones are barrel
 # scraps, the narrow and flat ones pieces of spoke), so all but the hub's join the face and the lip is turned out of it as on a one-piece.
 # `keep` a regex of names the junk words would drop that are the wheel (the 57DR's spokes sit under a node named DISK).
+# `offset` 'fixed' ships the wheel as modelled whatever the car's target (hane); `bias` (mm on the car, + outboard) moves the face that much past the target, or from stock on a one-piece (see `wheel_offset`).
 # `lugs` 0 when no lug circle shows (a cap or a solid face hides it), or (count, r over the lip) for the circle to take where the innermost is a decoration, with an optional dict as a third item (see `fit_lugs`): `phase` (deg) for two circles at one radius, `seat` (m) to seat the nuts on a ring of that radius where the hole's floor is not the seat. `x` (m) sets the seat outright (kazakiri, momiji).
 _J = {'author': 'jonver87', 'license': 'CC Attribution'}
 WHEELS = {
@@ -106,7 +107,8 @@ WHEELS = {
     'shinobi': {'name': 'Work Zistance W5S', 'construction': 'multi', 'uid': '8a80d5dd27384671bb1beef04234f3db', 'maker': 'Work', **_J},
     'tsurugi': {'name': 'Work Schwert SC2', 'construction': 'multi', 'uid': '054f59d1321e41aebeffa272d4b7f863', 'maker': 'Work', **_J},
     'kaze': {'name': 'Work Equip 02', 'construction': 'single', 'uid': '57f0fcea45df47188bc8531a012d3357', 'maker': 'Work', **_J},
-    'hagane': {'name': 'Work Euroline DH', 'construction': 'multi', 'uid': 'eab967f5fcab4581bd427ddf6b79da52', 'maker': 'Work', **_J},
+    'hagane': {'name': 'Work Euroline DH', 'construction': 'multi', 'uid': 'eab967f5fcab4581bd427ddf6b79da52', 'maker': 'Work',
+              'bias': 25, **_J},   # the user, 2026-10-28: a flush face (seat at its front) reads deep at the car's target; 25 mm more out
     'kagero': {'name': 'Work Import Label AL4', 'construction': 'single', 'uid': '593aed74677d49ff953e068debce4b87', 'maker': 'Work', **_J},
     'gekko': {'name': 'Work LS Chiarezza SUV', 'construction': 'multi', 'uid': '3134884d8ecf45c9817cf5e1d231734b', 'maker': 'Work', **_J,
               'bolts': 0},   # its rivets sit in pairs in the windows: the histogram read three bolts; multi-piece all the same, the rivets stay on the face
@@ -120,16 +122,19 @@ WHEELS = {
     'taki': {'name': 'Rotiform AVS', 'construction': 'single', 'uid': 'cdb62e8166e64cf58fafed97348733b1', 'maker': 'Rotiform', **_J},
     'minato': {'name': 'Rotiform KB1', 'construction': 'single', 'uid': 'c6c9212941fd4a3182566141ea2caa10', 'maker': 'Rotiform', **_J},
     'kiri': {'name': 'Rotiform USF', 'construction': 'single', 'uid': 'af96ede3c79849e0967017c7af56e1c4', 'maker': 'Rotiform', **_J},
-    'shio': {'name': 'Rotiform MLW', 'construction': 'single', 'uid': '7dbcd9ba45dc4ff3b53b2eb3822ec5bc', 'maker': 'Rotiform', **_J},
+    'shio': {'name': 'Rotiform MLW', 'construction': 'single', 'uid': '7dbcd9ba45dc4ff3b53b2eb3822ec5bc', 'maker': 'Rotiform',
+              'bias': 20, **_J},   # the user, 2026-10-28: the face out 20 mm (a one-piece: this is its only move)
     'ame': {'name': 'Rotiform OZR', 'construction': 'single', 'uid': '72e5ee8f6e6b46799c00f732f414d41f', 'maker': 'Rotiform', **_J,
             'face': -1},   # its center nut and logo cap sit on this side; the normal vote showed the hub's back
     'yuki': {'name': 'Rotiform BM1', 'construction': 'multi', 'uid': 'abb6a1de9bd54492baff6843cad8a429', 'maker': 'Rotiform', **_J,
              'normals': 'geometry',   # the authored normals left big shading triangles over the collapsed flat face plate
              'face': -1},   # the normal vote showed the barrel, the lip bolts at its far end
-    'shigure': {'name': 'Rotiform WRO', 'construction': 'multi', 'uid': 'd64d8d4fab944a77a6fba680551a7e67', 'maker': 'Rotiform', **_J},
+    'shigure': {'name': 'Rotiform WRO', 'construction': 'multi', 'uid': 'd64d8d4fab944a77a6fba680551a7e67', 'maker': 'Rotiform',
+              'bias': 25, **_J},   # the user, 2026-10-28: a flush face reads deep at the car's target; 25 mm more out
     'umi': {'name': 'Rotiform CCV', 'construction': 'multi', 'uid': '827bfe4138d447c28888c6c22a47609b', 'maker': 'Rotiform', **_J,
             'face': -1},   # the normal vote showed the barrel, the lip bolts at its far end
-    'hyo': {'name': 'Rotiform LHR', 'construction': 'multi', 'uid': '89a4f55b4d164153863a8f1350aa7786', 'maker': 'Rotiform', **_J},
+    'hyo': {'name': 'Rotiform LHR', 'construction': 'multi', 'uid': '89a4f55b4d164153863a8f1350aa7786', 'maker': 'Rotiform',
+              'bias': 25, **_J},   # the user, 2026-10-28: a flush face reads deep at the car's target; 25 mm more out
     'tsuyu': {'name': 'Rotiform LSR', 'construction': 'multi', 'uid': '1fe207f311bb4b50b0cf4d3fbbe549b2', 'maker': 'Rotiform', **_J},
     'kori': {'name': 'Rotiform KLU', 'construction': 'multi', 'uid': '641a37e731194b3e8fdd18e6a9b1e6d9', 'maker': 'Rotiform', **_J},
     'mio': {'name': 'Rotiform SNA', 'construction': 'single', 'uid': '20dad53c5f1947cf92f113f3c2e7c2fe', 'maker': 'Rotiform', **_J,
@@ -151,12 +156,14 @@ WHEELS = {
     'homura': {'name': 'SSR Koenig', 'construction': 'multi', 'uid': '391ab57dc25a4aa69771fbb9114f3d40', 'maker': 'SSR', **_J,
               'cap_edge': 0.179},   # the cap is the KS plate (r 26.5 mm, 5 mm down) in its bezel of ten screws, ringed by a groove at 37 mm; the hub pad round it (one island with it, to 59 mm) is the wheel's. `cap_disc: 0.29` had painted the whole pad and more (2026-10-28)
     'hane': {'name': 'BBS E52', 'construction': 'multi', 'uid': '8168cc3dce114b19b617c17fea0ab364', 'maker': 'BBS', **_J,
+             'offset': 'fixed',   # the user, 2026-10-28: the dome proud of the lip is the design (an old school European style), so it ships as modelled
              'normals': 'geometry',   # its mesh's authored normals lean sideways: the face shaded dark
              'face': -1},   # the normal vote showed the hub's back, with its five stud holes
     # By hand after wheel() (2026-10-28): its Rim face sat 5.6 mm off the axle and was moved onto it (+0.0056 y,
     # -0.0001 z; the face protrudes past the lip on purpose, a euro face); the house cap widened to 0.173 of the
     # lip with its skirt sunk to x 0.132; then fit_lugs found its 5 lugs (r 0.056 m) and set `lugs`.
     'iwa': {'name': 'Volk Rays 21C', 'construction': 'single', 'uid': 'd053af8f24bc4a5dbaf9d21f31ae25da', 'maker': 'Volk', **_J,
+            'bias': 20,   # the user, 2026-10-28: the face out 20 mm (a one-piece: this is its only move)
             'face': -1},   # the normal vote showed the plain backs of the spokes
     'kiseki': {'name': 'Enkei Nt03+m Wheels', 'construction': 'single', 'uid': '6d31c56557b945a5abd4015884461dc4', 'maker': 'Enkei',
                'author': 'flathat3d', 'license': 'CC Attribution',
@@ -256,6 +263,8 @@ WHEELS = {
     'kogane': {'name': 'BBS LM Gold Wheels', 'construction': 'multi', 'uid': '3aac505aa9484d088204fabef6a8a4c2', 'maker': 'BBS', 'author': 'zxargon', 'license': 'CC Attribution'},
     'namida': {'name': 'S13 Teardrops Rims', 'construction': 'single', 'uid': 'f8fe25efca84448994f449ef9d894d54', 'maker': 'Fifteen52', 'author': 'Once_a_goat_death', 'license': 'CC Attribution'},
     'akane': {'name': 'SSR Hasemi Prot-S', 'construction': 'multi', 'uid': '581e5099da7a4620b11c3fc424c507de', 'maker': 'SSR', 'author': 'techtackofficial', 'license': 'CC Attribution',
+              'bias': 25,   # the user, 2026-10-28: a flush face reads deep at the car's target; 25 mm more out
+              'cap_max': 0.15,   # the donor's lug mesh (nuts and their plate, out to r 39 mm) reaches the center, so clean_cap took it as the cap and turned an 87 mm cylinder over the nuts (the user, 2026-10-28); the cap is the 23 mm center piece alone
               'face': 1},   # its center cap and lip bolts face +X; the normal vote showed the spokes' backs deep in the barrel
     'tsukimi': {'name': 'Rotiform CVT', 'construction': 'multi', 'uid': 'ed962ed287cf4430a5af531accef5221', 'maker': 'Rotiform', 'author': 'niev', 'license': 'CC Attribution',
                  'drop': r'Nipel'},   # the valve stem
@@ -1675,7 +1684,7 @@ def wheel(name, root):
     lugs = fit_lugs(o, R0.get('lugs'))
     o['lip'] = lip
     o['construction'] = R0['construction']
-    wheel_offset(o)
+    wheel_offset(o, R0)
     o['displayName'] = name.capitalize()
     o['group'] = GROUPS[R0['maker']]
     print(f'wheel_{name}: {R0["name"]} ({R0["author"]}); islands {kinds}; face {"+" if sign > 0 else "-"}X, scaled x{k:.3f}, '
@@ -1684,14 +1693,21 @@ def wheel(name, root):
     return o
 
 
-def wheel_offset(o):
+def wheel_offset(o, R=None):
     """A multi-piece wheel's stock offset (m, +X outboard; the catalog's `offset`, the number the game's per-car
     targets move the face against): the lug seat where a circle was fitted (the nuts sit there, so it is what the
     eye reads against the lip), else the center cap's front (it covers the nuts). The reference is the house
-    tire's centerline at x 0, so it is the wheel's ET at the house scale. Set on the object; returns it."""
-    if 'offset' in o.keys():
-        del o['offset']
-    if o.get('construction') != 'multi':
+    tire's centerline at x 0, so it is the wheel's ET at the house scale. The recipe's `offset: 'fixed'` writes
+    none, so the wheel ships as modelled on every car (hane: a dome proud of the lip is the design); its `bias`
+    (mm on the car, + outboard) is written as `offsetBias` on any wheel, one-piece included, and moves the face
+    that much beyond the car's target (or from stock, on a one-piece). Set on the object; returns the offset."""
+    R = R or WHEELS[o.name.split('wheel_', 1)[1]]
+    for k in ('offset', 'offsetBias'):
+        if k in o.keys():
+            del o[k]
+    if R.get('bias'):
+        o['offsetBias'] = R['bias']
+    if o.get('construction') != 'multi' or R.get('offset') == 'fixed':
         return None
     me = o.data
     if 'lugs' in o.keys():
