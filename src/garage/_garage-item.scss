@@ -2,7 +2,7 @@
    the menu's, its edge and a wash of the tab's hue on hover; the picked one lit from the left edge in the hue,
    its label bolder. Focus is the yellow ring inside the cut. Car tiles (--car) put their spec tags on a row of
    their own under the name; "More models soon" (--soon) looks like a car tile but is inert, its cuts dashed
-   like its edges. */
+   like its edges. A tile the Model tab's makers filter hides is gone. */
 @use '../ui/styles/abstracts/mixins';
 .garage-item {
   @include mixins.chamfer;
@@ -19,6 +19,10 @@
   @include mixins.plate(var(--surface), var(--radius-sm));
   cursor: pointer;
   transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+  /* A car the Model tab's makers filter leaves out. */
+  &[hidden] {
+    display: none;
+  }
   &__sub {
     font-size: 12px;
     font-weight: 500;

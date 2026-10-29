@@ -14,8 +14,8 @@ import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning'
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges } from '../shared/carSpec';
-import { cycler, h, onOffSwitch, segmented, toast } from '../ui/kit/dom';
-import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, Paintbrush, Sparkles, IconNode } from '../ui/kit/icons';
+import { cycler, h, multiSelect, onOffSwitch, segmented, toast } from '../ui/kit/dom';
+import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, ListFilter, Paintbrush, Sparkles, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { GaragePrefs, saveGaragePrefs } from './storage';
 import { capital, choiceList, cm, colorPicker, field, matchBody, mm, note, paintPicker, percent, revealable, rowName, section, sectionWith, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
@@ -38,6 +38,9 @@ export const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'neon', label: 'Neon', icon: Sparkles },
   { id: 'tint', label: 'Tint', icon: Eye },
 ];
+
+/** A car's maker: the first word of its name (Wendt Strom R6 is a Wendt). */
+const carMaker = (displayName: string) => displayName.split(' ')[0];
 
 /** Model author shown under a car's name, by manifest `source`. */
 export const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan', eshell: 'eshell' };
@@ -79,6 +82,8 @@ export interface TabHost {
   wheelAxle: Axle;
   /** The wheel makers the Wheels tab's picker shows (empty: all of them). */
   wheelMakers: string[];
+  /** The car makers the Model tab lists (empty: all of them). */
+  carMakers: string[];
   /** The wheel picker's thumbnails, drawn once per wheel. */
   readonly wheelThumbs: WheelThumbs;
   /** The vinyl layer picked in the Vinyls tab (-1 for none). */
@@ -164,7 +169,8 @@ export function renderTabContent(host: TabHost): void {
     case 'model': {
       // Only real, imported cars; a disabled tile at the end promises more.
       const imported = MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id) && host.availability[c.id] !== false);
-      const cars = imported.length ? imported : MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id));
+      // Alphabetical by maker and model: each fictional maker sorts where its real one would.
+      const cars = [...(imported.length ? imported : MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id)))].sort((a, z) => a.displayName.localeCompare(z.displayName));
       const list = choiceList(
         cars.map((c) => ({ value: c.id, label: c.displayName, sub: AUTHORS[c.source], tags: specBadges(c.engine, getBaseTuning(c.id).drivetrain.layout) })),
         b.carId,
@@ -182,10 +188,26 @@ export function renderTabContent(host: TabHost): void {
           void host.changed().then(() => host.scene.blip());
         },
       );
+      // The makers filter, as the Wheels tab's: it hides the other makers' tiles in place, so its menu stays open
+      // for the next maker. Makers alphabetical, the one of the car fitted dotted.
+      const tiles = [...list.children] as HTMLElement[];
+      const makers = [...new Set(cars.map((c) => carMaker(c.displayName)))].sort((a, z) => a.localeCompare(z));
+      const filter = (m: readonly string[]) => tiles.forEach((t, i) => (t.hidden = m.length > 0 && !m.includes(carMaker(cars[i].displayName))));
+      filter(host.carMakers);
+      const pick = multiSelect(
+        makers.map((m) => ({ value: m, label: m, count: cars.filter((c) => carMaker(c.displayName) === m).length, mark: m === carMaker(manifestCar(b.carId).displayName) })),
+        host.carMakers,
+        'All makers',
+        (m) => {
+          filter(m);
+          host.carMakers = m;
+        },
+        ListFilter,
+      );
       const soon = h('div', { class: 'garage-item garage-item--soon', 'aria-disabled': 'true', title: 'More models coming soon' }, h('span', { class: 'garage-item__label' }, 'More models soon'), h('span', { class: 'garage-item__sub muted' }, 'Coming soon'));
       soon.addEventListener('click', () => toast('More cars are on the way', Car));
       list.append(soon);
-      host.body.append(section('Model', list, note('A new car starts from its stock body; the wheels stay.')));
+      host.body.append(section('Model', pick, list, note('A new car starts from its stock body; the wheels stay.')));
       break;
     }
     case 'stance': {

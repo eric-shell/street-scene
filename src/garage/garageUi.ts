@@ -129,6 +129,8 @@ export class GarageScreen implements TabHost {
   wheelAxle: Axle = 'front';
   /** The makers the wheel picker shows (empty: all of them). */
   wheelMakers: string[] = [];
+  /** The makers the Model tab lists (empty: all of them). */
+  carMakers: string[] = [];
   /** The tab the body was last rendered for, so a re-render within it can fade in what a toggle brought back. */
   private renderedTab: Tab | null = null;
   readonly wheelThumbs: WheelThumbs;
