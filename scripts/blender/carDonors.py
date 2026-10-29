@@ -14,6 +14,7 @@ and the differences in construction found (docs/carDesign.md, "Donor models").
     reduce_donor('brandtKombi', BUDGET)           # decimated copy -> donor:brandtKombi.Low
     donor_report(list(DONORS))                   # one table: size, scale check, triangles, materials, stations
     compare_donors(list(DONORS), OUT)            # side / front / rear sheets, same framing for every car
+    lamp_islands('brandtKombi', (0.4, -2.1, 0.3), (0.8, -1.7, 0.6))   # the lamp pieces in a box: material, faces, center, bounds
     edit_diff('brandtKombi', 'myEdits')          # a hand-edited copy of .Low against it: what to put in the recipe
     ship_donor('brandtKombi', WORK)              # .Low into brandtKombi.Body, a working copy for saveCar.py
 
@@ -1476,6 +1477,45 @@ def lamp_disc(o, center, radius, material, segments=24):
     bm.to_mesh(me)
     bm.free()
     me.update()
+
+
+def lamp_islands(cid, lo, hi, mats=None, which='Full'):
+    """The pieces of `donor:<cid>.<which>` centered in the box lo..hi (Blender space; both sides
+    when lo.x >= 0, mirrored), one line each: material, faces, center, bounds, front (its least y,
+    or greatest at the tail). Islands are split by material, so a lens, its reflector and its bulb
+    print apart: the list a lamp's recipe is written from (docs/carDonors.md, Lamps). `mats`
+    limits it to those materials. Sides are listed apart: donors are often a few mm off mirror."""
+    me = bpy.data.objects[f'donor:{cid}.{which}'].data
+    names = [m.name.split('.')[0] for m in me.materials]
+    lo, hi = Vector(lo), Vector(hi)
+    boxes = [(lo, hi)] + ([(Vector((-hi.x, lo.y, lo.z)), Vector((-lo.x, hi.y, hi.z)))] if lo.x >= 0 else [])
+    inside = lambda q: any(all(a[i] <= q[i] <= b[i] for i in range(3)) for a, b in boxes)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.faces.ensure_lookup_table()
+    seen, rows = set(), []
+    for f in bm.faces:
+        if f.index in seen or (mats and names[f.material_index] not in mats) or not inside(f.calc_center_median()):
+            continue
+        stack, comp = [f], []
+        seen.add(f.index)
+        while stack:
+            g = stack.pop()
+            comp.append(g)
+            for e in g.edges:
+                for h in e.link_faces:
+                    if h.index not in seen and h.material_index == f.material_index:
+                        seen.add(h.index)
+                        stack.append(h)
+        pts = [v.co for g in comp for v in g.verts]
+        a = Vector([min(q[i] for q in pts) for i in range(3)])
+        b = Vector([max(q[i] for q in pts) for i in range(3)])
+        rows.append((names[f.material_index], len(comp), (a + b) / 2, a, b))
+    bm.free()
+    for m, n, c, a, b in sorted(rows, key=lambda r: (r[2].x > 0, r[2].y, r[2].x)):
+        front = a.y if c.y < 0 else b.y
+        print(f'{m:10s} {n:6d} faces  center {fmt(c)}  {fmt(a)}..{fmt(b)}  front y {front:.3f}')
+    return rows
 
 
 def _clusters(points, reach=0.05):

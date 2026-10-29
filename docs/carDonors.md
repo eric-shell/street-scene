@@ -60,7 +60,7 @@ Only the big lamps glow in the game; everything else is an unlit lens. A donor w
 | Red reflectors and markers, a red strip that is not a brake light | `Reflector` | no; red |
 | Housings, bezels, buckets | `Black` (or `Paint` where the car is body colour) | no |
 
-1. List the import's lamp pieces: each lamp material's islands with face count and bounds (a few lines of `bmesh` over `donor:<cid>.Full`). Lamps come in a few dozen islands: the cover (thousands of faces), the reflectors (`Chrome`, a hundred or so), the bulbs (small closed islands just behind a lens), the amber and red lenses.
+1. List the import's lamp pieces: `lamp_islands(cid, lo, hi)` prints every piece centered in a box round one lamp (and its mirror), split by material, with face count, center, bounds and front. Lamps come in a few dozen islands: the cover (thousands of faces), the reflectors (`Chrome`, a hundred or so), the bulbs (small closed islands just behind a lens), the amber and red lenses.
 2. Look at the lamps in the shared colours (`tint_materials()`, which tints `Lens` cyan), from the front and rear at 0.5 to 0.8 m: a temporary empty at the lamp makes a good `look` target with `distance`.
 3. Decide with a photo of the real car which pieces glow and where the black goes; the photo, not the donor's material names, says which (the RX-7's pop-ups are body colour on the top and sides with a black bezel; its third brake light is one thin strip). Ask the user for a photo when it is not obvious.
 4. Map by material first (`materials`), then by geometry (`recolor`): a bulb sits a few mm behind its lens, so a depth band picks it (`-1.893 < c.y < -1.865` on the RX-7's bumper lamps, where the lens ends at -1.895: print the faces' y along the lamp's axis to find the gap). A reflector behind a clear cover is `Chrome` turned `HeadLight` by box.
@@ -74,6 +74,9 @@ The pipeline then does the rest:
 Two traps seen on the RX-7:
 - **Layers a few mm apart fold through each other** at the lamps' error (13 mm): the pop-up bucket's ceiling came through the lid in black patches. Recolour the hidden layer to the colour of the one over it, and keep anything seen from the front (the bezel's lip) as it was: `c.y` past the lens is a good split.
 - **A fussy lamp is better replaced than kept**: four red blocks in a black pocket became one `strips` entry, a thin `BrakeLight` strip on a mirrored curve measured off the pocket's top edge (rays from behind at a few x, 6 mm under the edge, 1 cm tall).
+- **A small round lamp is rebuilt, never collapsed** (the wheels' rule): the shell's first collapse to 60,000 left the RX-7's bumper lamps (688 faces each) at 52, and the lamp pass 8- and 10-sided, unlike side to side. `cull` the round lamp's pieces (lens, reflector, bulb) and add a `discs` entry per lamp: center and radius from `lamp_islands` (the lens's bounds), the depth just in front of its own bezel and behind the cover (cast rays along y at the center and at 0.03 m out to find both). Give each side its own numbers: the RX-7's left lamps sit 5 mm further out than the right ones' mirror, and their bezel lip 14 mm further forward. Check from straight on that the circles are whole and alike.
+
+Check a donor's lamps side by side, both sides, straight on and at a three-quarter: an asymmetric donor or the collapse shows there first.
 
 Names are matched without Blender's `.001` suffix, so several donors can sit in one session.
 
