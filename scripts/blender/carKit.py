@@ -1124,6 +1124,12 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
     for _ in range(smooth):
         ZU = [ZU[0]] + [ZU[i - 1] * 0.25 + ZU[i] * 0.5 + ZU[i + 1] * 0.25 for i in range(1, len(ZU) - 1)] + [ZU[-1]]
     ZU[0], ZU[-1] = ZU[1], ZU[-2]
+    # The nose keeps its first, accepted rules (the corner rules below made the wrap under the grille
+    # worse): its own smoothed line and position, the panel from the sheet's edge.
+    ZT0, OL0 = list(zout), list(over_low)
+    for _ in range(smooth):
+        ZT0 = [ZT0[0]] + [ZT0[i - 1] * 0.25 + ZT0[i] * 0.5 + ZT0[i + 1] * 0.25 for i in range(1, len(ZT0) - 1)] + [ZT0[-1]]
+        OL0 = [OL0[0]] + [OL0[i - 1] * 0.25 + OL0[i] * 0.5 + OL0[i + 1] * 0.25 for i in range(1, len(OL0) - 1)] + [OL0[-1]]
     # Round the corners (past `dam_side_from`) the line is taken as the highest within two stations
     # either side: the crease there runs level, and single low readings left notches of paint.
     zout = [max(zout[max(i - 2, 0):i + 3]) if abs(A[i]) >= dam_side_from else z for i, z in enumerate(zout)]
@@ -1159,8 +1165,12 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
                 # the donor's uneven strip crossed the panel, ragged round the corners.
                 # From the bumper's own edge, not the sheet's (smoothed, and straightened under a spat:
                 # measured from it the panel sank into the face there), 3 mm proud of the face.
-                edge = Vector((e.x, e.y, 0)) + n3 * (over_low[i] + 0.003)
-                zu = ZT[i] + 0.001
+                if abs(A[i]) >= dam_side_from:
+                    edge = Vector((e.x, e.y, 0)) + n3 * (over_low[i] + 0.003)
+                    zu = ZT[i] + 0.001
+                else:
+                    edge = front - n3 * (ext[i] - OL0[i] - 0.001)
+                    zu = ZT0[i] + 0.001
             else:
                 edge = front - n3 * ext[i]
                 zu = ZU[i] + 0.003
