@@ -132,7 +132,7 @@
         "Chrome",
         "Strap"
       ],
-      "tris": 6361,
+      "tris": 6313,
       "generated": true
     },
     {
@@ -158,7 +158,7 @@
       "materialSlots": [
         "Black"
       ],
-      "tris": 476,
+      "tris": 380,
       "generated": true
     },
     {
