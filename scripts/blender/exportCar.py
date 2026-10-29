@@ -145,7 +145,7 @@ def export_wheels(wheels, out_dir, meta):
         n = short(o.name).replace("wheel_", "")
         # Wheels keep their own shading: lathed rings and hex heads were built with it.
         export([o], os.path.join(out_dir, "wheels", f"wheel_{n}.glb"), reshade=False)
-        meta["wheels"].append({"name": n, "displayName": o.get("displayName", ""), "group": o.get("group", ""), "lip": o.get("lip", ""), "lugs": json.loads(o["lugs"]) if "lugs" in o else None, "tris": tris(o)})
+        meta["wheels"].append({"name": n, "displayName": o.get("displayName", ""), "group": o.get("group", ""), "construction": o.get("construction", ""), "offset": o.get("offset"), "lip": o.get("lip", ""), "lugs": json.loads(o["lugs"]) if "lugs" in o else None, "tris": tris(o)})
 
 
 def collection(suffix):

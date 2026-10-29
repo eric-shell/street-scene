@@ -24,7 +24,9 @@ import { Document, PropertyType } from '@gltf-transform/core';
 import { EXTMeshoptCompression } from '@gltf-transform/extensions';
 import { cloneDocument, dedup, meshopt, prune, weld } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
-import { MATERIAL_NAMES, PartEntry, PartsCatalog, WheelLugs, partFileName } from '../src/shared/parts';
+import { MATERIAL_NAMES, PartEntry, PartsCatalog, WHEEL_CONSTRUCTIONS, WheelConstruction, WheelLugs, partFileName } from '../src/shared/parts';
+
+const isConstruction = (c: string | undefined): c is WheelConstruction => (WHEEL_CONSTRUCTIONS as readonly string[]).includes(c ?? '');
 
 /** A wheel's lug circle as the Blender export carries it: an object whose numbers are all finite and whose count is at least 1. */
 const validLugs = (l: WheelLugs | null | undefined): l is WheelLugs => !!l && typeof l === 'object' && l.count >= 1 && [l.count, l.r, l.phase, l.x, l.size].every((n) => Number.isFinite(n));
@@ -577,13 +579,15 @@ async function main(): Promise<void> {
     const exporter = join(ROOT, 'scripts/blender/exportCar.py');
     const stale = !existsSync(metaPath) || statSync(metaPath).mtimeMs < Math.max(statSync(wheelBlend).mtimeMs, statSync(exporter).mtimeMs);
     if (stale) execFileSync(blenderW, ['--background', wheelBlend, '--python', exporter, '--', out], { stdio: 'pipe' });
-    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { wheels: { name: string; displayName: string; group?: string; lip?: string; lugs?: WheelLugs | null }[] };
+    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { wheels: { name: string; displayName: string; group?: string; construction?: string; offset?: number | null; lip?: string; lugs?: WheelLugs | null }[] };
     const section: string[] = ['## Wheel set', '', `Source: \`${relative(ROOT, wheelBlend)}\` (scripts/blender/carWheels.py).`, ''];
     for (const wh of meta.wheels) {
       const doc = await io.read(join(out, 'wheels', `wheel_${wh.name}.glb`));
       const id = `wheel_${wh.name}`;
       const w = await writeOptimized(io, doc, join(PUBLIC, `parts/${id}.glb`), 'Wheel');
-      generated.push({ id, displayName: wh.displayName || wh.name, ...(wh.group ? { group: wh.group } : {}), ...(wh.lip === 'chrome' || wh.lip === 'rim' ? { lip: wh.lip } : {}), ...(validLugs(wh.lugs) ? { lugs: wh.lugs } : {}), carId: 'universal', slot: 'wheels', file: `parts/${id}.glb`, hides: [], materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
+      if (!isConstruction(wh.construction)) throw new Error(`wheel_${wh.name}: no construction on the wheel object (its recipe in carWheels.py states 'single' or 'multi'; rebuild it)`);
+      if (wh.construction === 'multi' && !Number.isFinite(wh.offset)) throw new Error(`wheel_${wh.name}: a multi-piece wheel with no stock offset (carWheels.py wheel_offset)`);
+      generated.push({ id, displayName: wh.displayName || wh.name, ...(wh.group ? { group: wh.group } : {}), construction: wh.construction, ...(wh.construction === 'multi' ? { offset: wh.offset as number } : {}), ...(wh.lip === 'chrome' || wh.lip === 'rim' ? { lip: wh.lip } : {}), ...(validLugs(wh.lugs) ? { lugs: wh.lugs } : {}), carId: 'universal', slot: 'wheels', file: `parts/${id}.glb`, hides: [], materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
       section.push(`- \`${id}\` ${wh.displayName}: ${(w.bytes / 1024).toFixed(1)} KB, ${w.tris} tris.`);
     }
     inspectSections.push(section.join('\n') + '\n');

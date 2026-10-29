@@ -73,9 +73,10 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
           'Vossen-x-Work': 'Seiryu'}   # a Vossen collaboration, listed with Vossen
 
 # Most donors are jonver87's (CC BY 4.0): clean showpiece models without tires, each piece its own
-# mesh. Recipe fields: `maker` the donor's real maker (a key of GROUPS), `face` 1 / -1 forces the
+# mesh. Recipe fields: `construction` 'single' / 'multi' (one-piece or multi-piece, stated on every wheel: the
+# stock lip finish reads it, and the offset tooling acts on multi-piece wheels only), `maker` the donor's real maker (a key of GROUPS), `face` 1 / -1 forces the
 # face direction when the normal vote gets it wrong, `lip` 'chrome' / 'rim' overrides the ring's
-# finish (chrome on a multi-piece wheel: six or more lip bolts, or 2P / 3P in the title; the wheel colour on a one-piece), `drop` a regex of
+# finish (chrome on a multi-piece wheel, the wheel colour on a one-piece), `drop` a regex of
 # material or object names to drop, `bolts` 0 to keep no bolt circle, `normals` 'geometry' to
 # shade the face from its own shape when the donor's normals are wrong, `dark` a luminance (0-1):
 # faces whose base colour texture is darker go (a tire welded to the wheel in one textured mesh).
@@ -92,202 +93,198 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
 # `lugs` 0 when no lug circle shows (a cap or a solid face hides it), or (count, r over the lip) for the circle to take where the innermost is a decoration, with an optional dict as a third item (see `fit_lugs`): `phase` (deg) for two circles at one radius, `seat` (m) to seat the nuts on a ring of that radius where the hole's floor is not the seat. `x` (m) sets the seat outright (kazakiri, momiji).
 _J = {'author': 'jonver87', 'license': 'CC Attribution'}
 WHEELS = {
-    'kumo': {'name': 'Work VS-TX', 'uid': '31c76095a0754cb1b08591d63973a2c2', 'maker': 'Work', **_J},
-    'yari': {'name': 'Work Equip 03', 'uid': '13c021b58f2b4c42ac747feb5457750b', 'maker': 'Work', **_J},
-    'tsume': {'name': 'Work Equip 40', 'uid': 'ac9b1a3ffbd8400a9b364d0596fdcc56', 'maker': 'Work', **_J,
+    'kumo': {'name': 'Work VS-TX', 'construction': 'multi', 'uid': '31c76095a0754cb1b08591d63973a2c2', 'maker': 'Work', **_J},
+    'yari': {'name': 'Work Equip 03', 'construction': 'multi', 'uid': '13c021b58f2b4c42ac747feb5457750b', 'maker': 'Work', **_J},
+    'tsume': {'name': 'Work Equip 40', 'construction': 'multi', 'uid': 'ac9b1a3ffbd8400a9b364d0596fdcc56', 'maker': 'Work', **_J,
               'lugs': (4, 0.237)},   # a dual drilled hub (4x100 and 4x114.3): the four holes at r 49 mm on the diagonals, in pockets 9 mm deep between the spokes and the cap (the 100 mm set), not the four countersunk holes on the spokes at r 57 mm (114.3) or the crescents at r 41 mm; the nut seats on the pocket's floor (x 31.6 mm)
-    'hari': {'name': 'Work Emitz', 'uid': '0dd4b490ee624aeda867cd5ccfe530e6', 'maker': 'Work', **_J,
+    'hari': {'name': 'Work Emitz', 'construction': 'multi', 'uid': '0dd4b490ee624aeda867cd5ccfe530e6', 'maker': 'Work', **_J,
              'cap_edge': 0.186},   # the cap is the badge glass (r 31 mm) in its gold hex and flange (38.6 mm); the cap_001 island round it, out to 64.7 mm, is the wheel's grey bowl: RimCap ran to 62.7 mm (2026-10-28)
-    'kasumi': {'name': 'Work VS-KF', 'uid': 'f762ae9a968d4971a9c4c61922310e44', 'maker': 'Work', **_J},
-    'raiden': {'name': 'Work VS-XV', 'uid': 'bb47f6dd1ab6406289c59e3c0a86be38', 'maker': 'Work', **_J},
-    'ryusei': {'name': 'Work VS-XX', 'uid': '6a1c8ab8df444530a2a0ac93487cf3bd', 'maker': 'Work', **_J,
+    'kasumi': {'name': 'Work VS-KF', 'construction': 'multi', 'uid': 'f762ae9a968d4971a9c4c61922310e44', 'maker': 'Work', **_J},
+    'raiden': {'name': 'Work VS-XV', 'construction': 'multi', 'uid': 'bb47f6dd1ab6406289c59e3c0a86be38', 'maker': 'Work', **_J},
+    'ryusei': {'name': 'Work VS-XX', 'construction': 'multi', 'uid': '6a1c8ab8df444530a2a0ac93487cf3bd', 'maker': 'Work', **_J,
                'face': -1},   # its badge sits behind the hub's center, so the badge rule turned it round
-    'shinobi': {'name': 'Work Zistance W5S', 'uid': '8a80d5dd27384671bb1beef04234f3db', 'maker': 'Work', **_J},
-    'tsurugi': {'name': 'Work Schwert SC2', 'uid': '054f59d1321e41aebeffa272d4b7f863', 'maker': 'Work', **_J},
-    'kaze': {'name': 'Work Equip 02', 'uid': '57f0fcea45df47188bc8531a012d3357', 'maker': 'Work', **_J},
-    'hagane': {'name': 'Work Euroline DH', 'uid': 'eab967f5fcab4581bd427ddf6b79da52', 'maker': 'Work', **_J},
-    'kagero': {'name': 'Work Import Label AL4', 'uid': '593aed74677d49ff953e068debce4b87', 'maker': 'Work', **_J},
-    'gekko': {'name': 'Work LS Chiarezza SUV', 'uid': '3134884d8ecf45c9817cf5e1d231734b', 'maker': 'Work', **_J,
-              'bolts': 0,   # its rivets sit in pairs in the windows: the histogram read three bolts
-              'lip': 'chrome'},   # multi-piece all the same: the rivets stay on the face
-    'nami': {'name': 'Rotiform ZMO', 'uid': '4193e4cd0fdc481688e3a437e4e5d130', 'maker': 'Rotiform', **_J},
-    'shizuku': {'name': 'Rotiform Aerodisc', 'uid': 'ccaf76b4b4514d1e9b6351a628e75817', 'maker': 'Rotiform', **_J,
+    'shinobi': {'name': 'Work Zistance W5S', 'construction': 'multi', 'uid': '8a80d5dd27384671bb1beef04234f3db', 'maker': 'Work', **_J},
+    'tsurugi': {'name': 'Work Schwert SC2', 'construction': 'multi', 'uid': '054f59d1321e41aebeffa272d4b7f863', 'maker': 'Work', **_J},
+    'kaze': {'name': 'Work Equip 02', 'construction': 'single', 'uid': '57f0fcea45df47188bc8531a012d3357', 'maker': 'Work', **_J},
+    'hagane': {'name': 'Work Euroline DH', 'construction': 'multi', 'uid': 'eab967f5fcab4581bd427ddf6b79da52', 'maker': 'Work', **_J},
+    'kagero': {'name': 'Work Import Label AL4', 'construction': 'single', 'uid': '593aed74677d49ff953e068debce4b87', 'maker': 'Work', **_J},
+    'gekko': {'name': 'Work LS Chiarezza SUV', 'construction': 'multi', 'uid': '3134884d8ecf45c9817cf5e1d231734b', 'maker': 'Work', **_J,
+              'bolts': 0},   # its rivets sit in pairs in the windows: the histogram read three bolts; multi-piece all the same, the rivets stay on the face
+    'nami': {'name': 'Rotiform ZMO', 'construction': 'multi', 'uid': '4193e4cd0fdc481688e3a437e4e5d130', 'maker': 'Rotiform', **_J},
+    'shizuku': {'name': 'Rotiform Aerodisc', 'construction': 'single', 'uid': 'ccaf76b4b4514d1e9b6351a628e75817', 'maker': 'Rotiform', **_J,
                 'cap_fill': True},   # its center nut is a ring round a logo plate: filled, or the turned cap leaves the bore open
-    'uzu': {'name': 'Rotiform VCE', 'uid': '05783beda2a74aa8981fb374e9088b4f', 'maker': 'Rotiform', **_J,
+    'uzu': {'name': 'Rotiform VCE', 'construction': 'single', 'uid': '05783beda2a74aa8981fb374e9088b4f', 'maker': 'Rotiform', **_J,
             'face': -1},   # the normal vote showed the plain back of the fins
-    'kawa': {'name': 'Rotiform SIX', 'uid': '35d0043f1c774ddfaa7c3983eb3bc8c0', 'maker': 'Rotiform', **_J,
+    'kawa': {'name': 'Rotiform SIX', 'construction': 'multi', 'uid': '35d0043f1c774ddfaa7c3983eb3bc8c0', 'maker': 'Rotiform', **_J,
              'face': -1},   # the normal vote showed the plain backs of the spokes
-    'taki': {'name': 'Rotiform AVS', 'uid': 'cdb62e8166e64cf58fafed97348733b1', 'maker': 'Rotiform', **_J},
-    'minato': {'name': 'Rotiform KB1', 'uid': 'c6c9212941fd4a3182566141ea2caa10', 'maker': 'Rotiform', **_J},
-    'kiri': {'name': 'Rotiform USF', 'uid': 'af96ede3c79849e0967017c7af56e1c4', 'maker': 'Rotiform', **_J},
-    'shio': {'name': 'Rotiform MLW', 'uid': '7dbcd9ba45dc4ff3b53b2eb3822ec5bc', 'maker': 'Rotiform', **_J},
-    'ame': {'name': 'Rotiform OZR', 'uid': '72e5ee8f6e6b46799c00f732f414d41f', 'maker': 'Rotiform', **_J,
+    'taki': {'name': 'Rotiform AVS', 'construction': 'single', 'uid': 'cdb62e8166e64cf58fafed97348733b1', 'maker': 'Rotiform', **_J},
+    'minato': {'name': 'Rotiform KB1', 'construction': 'single', 'uid': 'c6c9212941fd4a3182566141ea2caa10', 'maker': 'Rotiform', **_J},
+    'kiri': {'name': 'Rotiform USF', 'construction': 'single', 'uid': 'af96ede3c79849e0967017c7af56e1c4', 'maker': 'Rotiform', **_J},
+    'shio': {'name': 'Rotiform MLW', 'construction': 'single', 'uid': '7dbcd9ba45dc4ff3b53b2eb3822ec5bc', 'maker': 'Rotiform', **_J},
+    'ame': {'name': 'Rotiform OZR', 'construction': 'single', 'uid': '72e5ee8f6e6b46799c00f732f414d41f', 'maker': 'Rotiform', **_J,
             'face': -1},   # its center nut and logo cap sit on this side; the normal vote showed the hub's back
-    'yuki': {'name': 'Rotiform BM1', 'uid': 'abb6a1de9bd54492baff6843cad8a429', 'maker': 'Rotiform', **_J,
+    'yuki': {'name': 'Rotiform BM1', 'construction': 'multi', 'uid': 'abb6a1de9bd54492baff6843cad8a429', 'maker': 'Rotiform', **_J,
              'normals': 'geometry',   # the authored normals left big shading triangles over the collapsed flat face plate
              'face': -1},   # the normal vote showed the barrel, the lip bolts at its far end
-    'shigure': {'name': 'Rotiform WRO', 'uid': 'd64d8d4fab944a77a6fba680551a7e67', 'maker': 'Rotiform', **_J},
-    'umi': {'name': 'Rotiform CCV', 'uid': '827bfe4138d447c28888c6c22a47609b', 'maker': 'Rotiform', **_J,
+    'shigure': {'name': 'Rotiform WRO', 'construction': 'multi', 'uid': 'd64d8d4fab944a77a6fba680551a7e67', 'maker': 'Rotiform', **_J},
+    'umi': {'name': 'Rotiform CCV', 'construction': 'multi', 'uid': '827bfe4138d447c28888c6c22a47609b', 'maker': 'Rotiform', **_J,
             'face': -1},   # the normal vote showed the barrel, the lip bolts at its far end
-    'hyo': {'name': 'Rotiform LHR', 'uid': '89a4f55b4d164153863a8f1350aa7786', 'maker': 'Rotiform', **_J},
-    'tsuyu': {'name': 'Rotiform LSR', 'uid': '1fe207f311bb4b50b0cf4d3fbbe549b2', 'maker': 'Rotiform', **_J},
-    'kori': {'name': 'Rotiform KLU', 'uid': '641a37e731194b3e8fdd18e6a9b1e6d9', 'maker': 'Rotiform', **_J},
-    'mio': {'name': 'Rotiform SNA', 'uid': '20dad53c5f1947cf92f113f3c2e7c2fe', 'maker': 'Rotiform', **_J,
+    'hyo': {'name': 'Rotiform LHR', 'construction': 'multi', 'uid': '89a4f55b4d164153863a8f1350aa7786', 'maker': 'Rotiform', **_J},
+    'tsuyu': {'name': 'Rotiform LSR', 'construction': 'multi', 'uid': '1fe207f311bb4b50b0cf4d3fbbe549b2', 'maker': 'Rotiform', **_J},
+    'kori': {'name': 'Rotiform KLU', 'construction': 'multi', 'uid': '641a37e731194b3e8fdd18e6a9b1e6d9', 'maker': 'Rotiform', **_J},
+    'mio': {'name': 'Rotiform SNA', 'construction': 'single', 'uid': '20dad53c5f1947cf92f113f3c2e7c2fe', 'maker': 'Rotiform', **_J,
             'turn': 0.6,   # the round flange its spokes stand on is part of the face: collapsed, it crumpled between the spoke tips
             'face': -1},   # the normal vote showed the plain backs of the spokes
-    'fubuki': {'name': 'Rotiform KPS', 'uid': 'c3ffecfad22d4a3a808123bac5187479', 'maker': 'Rotiform', **_J},
-    'seseragi': {'name': 'Rotiform PNT', 'uid': 'cee8b459137249e5bcfa8289d5c2759c', 'maker': 'Rotiform', **_J},
-    'aoi': {'name': 'Vossen LC104T', 'uid': 'aa0f85f015d741a5958dc70fea79d863', 'maker': 'Vossen', **_J},
-    'sora': {'name': 'Vossen LC109T', 'uid': '3fe9676878634ec183068252cb2d52fd', 'maker': 'Vossen', **_J,
+    'fubuki': {'name': 'Rotiform KPS', 'construction': 'single', 'uid': 'c3ffecfad22d4a3a808123bac5187479', 'maker': 'Rotiform', **_J},
+    'seseragi': {'name': 'Rotiform PNT', 'construction': 'multi', 'uid': 'cee8b459137249e5bcfa8289d5c2759c', 'maker': 'Rotiform', **_J},
+    'aoi': {'name': 'Vossen LC104T', 'construction': 'single', 'uid': 'aa0f85f015d741a5958dc70fea79d863', 'maker': 'Vossen', **_J},
+    'sora': {'name': 'Vossen LC109T', 'construction': 'single', 'uid': '3fe9676878634ec183068252cb2d52fd', 'maker': 'Vossen', **_J,
              'cap_fill': True},   # its cap is a ring round an open bore: filled, so the whole center takes the cap's paint
-    'hikari': {'name': 'Vossen VPS302', 'uid': 'ba0fafb1c9b545328948ad716a8b5747', 'maker': 'Vossen', **_J},
-    'kagami': {'name': 'Vossen VPS301', 'uid': '4bfa99c33ba94cd08dfcf3cd53d1cd2d', 'maker': 'Vossen', **_J},
-    'seiun': {'name': 'Vossen ERA3', 'uid': 'b5cffbf62f77419897de89413427d33d', 'maker': 'Vossen', **_J},
-    'getsuei': {'name': 'Vossen GNS-1', 'uid': '7e9cf35d7dfd4ab083febc646a19746a', 'maker': 'Vossen', **_J},
-    'kirameki': {'name': 'Vossen VPS 315T', 'uid': '9479e07055a14102ae8efb3b8658f9da', 'maker': 'Vossen', **_J},
-    'hisui': {'name': 'Vossen CG203', 'uid': '38b5f76123a0461cb82b8616b734ac5f', 'maker': 'Vossen', **_J},
-    'tora': {'name': 'HRE P200', 'uid': '7221bc7c423e401f83712d56e435a813', 'maker': 'HRE', **_J},
-    'tsuchi': {'name': 'Fifteen52 Rally Sport', 'uid': '1ed9ad4cbe5644ae831fe95bae84a0fc', 'maker': 'Fifteen52', **_J},
-    'homura': {'name': 'SSR Koenig', 'uid': '391ab57dc25a4aa69771fbb9114f3d40', 'maker': 'SSR', **_J,
+    'hikari': {'name': 'Vossen VPS302', 'construction': 'single', 'uid': 'ba0fafb1c9b545328948ad716a8b5747', 'maker': 'Vossen', **_J},
+    'kagami': {'name': 'Vossen VPS301', 'construction': 'single', 'uid': '4bfa99c33ba94cd08dfcf3cd53d1cd2d', 'maker': 'Vossen', **_J},
+    'seiun': {'name': 'Vossen ERA3', 'construction': 'multi', 'uid': 'b5cffbf62f77419897de89413427d33d', 'maker': 'Vossen', **_J},
+    'getsuei': {'name': 'Vossen GNS-1', 'construction': 'single', 'uid': '7e9cf35d7dfd4ab083febc646a19746a', 'maker': 'Vossen', **_J},
+    'kirameki': {'name': 'Vossen VPS 315T', 'construction': 'single', 'uid': '9479e07055a14102ae8efb3b8658f9da', 'maker': 'Vossen', **_J},
+    'hisui': {'name': 'Vossen CG203', 'construction': 'single', 'uid': '38b5f76123a0461cb82b8616b734ac5f', 'maker': 'Vossen', **_J},
+    'tora': {'name': 'HRE P200', 'construction': 'single', 'uid': '7221bc7c423e401f83712d56e435a813', 'maker': 'HRE', **_J},
+    'tsuchi': {'name': 'Fifteen52 Rally Sport', 'construction': 'single', 'uid': '1ed9ad4cbe5644ae831fe95bae84a0fc', 'maker': 'Fifteen52', **_J},
+    'homura': {'name': 'SSR Koenig', 'construction': 'multi', 'uid': '391ab57dc25a4aa69771fbb9114f3d40', 'maker': 'SSR', **_J,
               'cap_edge': 0.179},   # the cap is the KS plate (r 26.5 mm, 5 mm down) in its bezel of ten screws, ringed by a groove at 37 mm; the hub pad round it (one island with it, to 59 mm) is the wheel's. `cap_disc: 0.29` had painted the whole pad and more (2026-10-28)
-    'hane': {'name': 'BBS E52', 'uid': '8168cc3dce114b19b617c17fea0ab364', 'maker': 'BBS', **_J,
+    'hane': {'name': 'BBS E52', 'construction': 'multi', 'uid': '8168cc3dce114b19b617c17fea0ab364', 'maker': 'BBS', **_J,
              'normals': 'geometry',   # its mesh's authored normals lean sideways: the face shaded dark
              'face': -1},   # the normal vote showed the hub's back, with its five stud holes
     # By hand after wheel() (2026-10-28): its Rim face sat 5.6 mm off the axle and was moved onto it (+0.0056 y,
     # -0.0001 z; the face protrudes past the lip on purpose, a euro face); the house cap widened to 0.173 of the
     # lip with its skirt sunk to x 0.132; then fit_lugs found its 5 lugs (r 0.056 m) and set `lugs`.
-    'iwa': {'name': 'Volk Rays 21C', 'uid': 'd053af8f24bc4a5dbaf9d21f31ae25da', 'maker': 'Volk', **_J,
+    'iwa': {'name': 'Volk Rays 21C', 'construction': 'single', 'uid': 'd053af8f24bc4a5dbaf9d21f31ae25da', 'maker': 'Volk', **_J,
             'face': -1},   # the normal vote showed the plain backs of the spokes
-    'kiseki': {'name': 'Enkei Nt03+m Wheels', 'uid': '6d31c56557b945a5abd4015884461dc4', 'maker': 'Enkei',
+    'kiseki': {'name': 'Enkei Nt03+m Wheels', 'construction': 'single', 'uid': '6d31c56557b945a5abd4015884461dc4', 'maker': 'Enkei',
                'author': 'flathat3d', 'license': 'CC Attribution',
                'drop': r'CenterCaps|Nt03m_02',   # three stacked logo caps (the house cap fills the hub) and the lip lettering
                'normals': 'geometry',   # authored normals lean off the spokes: front normal 0.14
                'face': -1},   # the dropped caps and lettering sat on this side; the normal vote showed the hub's back
-    'hien': {'name': 'BBS CH-R + Goodyear Eagle F1 Supercar 3', 'uid': '2acc32fc79684a2c8b7df9faaa5a5c35', 'maker': 'BBS',
+    'hien': {'name': 'BBS CH-R + Goodyear Eagle F1 Supercar 3', 'construction': 'single', 'uid': '2acc32fc79684a2c8b7df9faaa5a5c35', 'maker': 'BBS',
                 'author': 'MozzarellaARC', 'license': 'CC Attribution',
                 'dark': 0.25,   # its tire is welded to the wheel in one textured mesh: tire 0.10, wheel 0.45
                 'face': -1},   # the normal vote showed the hub's back
     # 2026-10-28, fifty-six more: jonver87's again, plus portfoliorodrigues, alexanderlyreo and dermaks
-    'akatsuki': {'name': 'HRE TUSK', 'uid': '31734356b1b14312ad5c11f24c78fd57', 'maker': 'HRE', **_J},
-    'ayame': {'name': 'Advan A3A', 'uid': '502e2341d5c74cb9a312af876697523e', 'maker': 'Advan', **_J},
-    'botan': {'name': 'Velare VLR F1', 'uid': 'db3568387f4b43d1988f73874f43e90f', 'maker': 'Velare', **_J},
-    'chidori': {'name': 'Rotiform WRG', 'uid': '4bb6ed6ac0e246569b18e5c8929ffd7e', 'maker': 'Rotiform', **_J},
-    'daichi': {'name': 'Rotiform IHR', 'uid': '03027fcac92a476aba1a55c1cb148595', 'maker': 'Rotiform', **_J},
-    'enishi': {'name': 'Kyusha Shoes Meteor FF', 'uid': '79d3c95516dc4e3693ce0e1fcdaf7909', 'maker': 'Kyusha Shoes', **_J},
-    'fuyu': {'name': 'Brixton Forged TR06', 'uid': 'fb3ed2107cf949cba4922a8af22635fb', 'maker': 'Brixton Forged', **_J},
-    'genki': {'name': 'Avant Garde F450', 'uid': 'aaf0fb4891cd474e86df0eb2dc322e48', 'maker': 'Avant Garde', **_J},
-    'haruka': {'name': 'Avant Garde F142', 'uid': '0c5a53690d0d40adadf3ddaf0828c8b6', 'maker': 'Avant Garde', **_J},
-    'hasu': {'name': 'HRE FF04', 'uid': 'b0d7579597a542978a00cf19ec3c9d29', 'maker': 'HRE', **_J,
-             'lip': 'rim'},   # a one-piece: the bolt test found a circle of three heads, no lip bolt ring
-    'ibuki': {'name': 'Brixton Forged VL7', 'uid': '051fba725036489288a0ed6ded9a4abe', 'maker': 'Brixton Forged', **_J,
+    'akatsuki': {'name': 'HRE TUSK', 'construction': 'single', 'uid': '31734356b1b14312ad5c11f24c78fd57', 'maker': 'HRE', **_J},
+    'ayame': {'name': 'Advan A3A', 'construction': 'multi', 'uid': '502e2341d5c74cb9a312af876697523e', 'maker': 'Advan', **_J},
+    'botan': {'name': 'Velare VLR F1', 'construction': 'single', 'uid': 'db3568387f4b43d1988f73874f43e90f', 'maker': 'Velare', **_J},
+    'chidori': {'name': 'Rotiform WRG', 'construction': 'multi', 'uid': '4bb6ed6ac0e246569b18e5c8929ffd7e', 'maker': 'Rotiform', **_J},
+    'daichi': {'name': 'Rotiform IHR', 'construction': 'multi', 'uid': '03027fcac92a476aba1a55c1cb148595', 'maker': 'Rotiform', **_J},
+    'enishi': {'name': 'Kyusha Shoes Meteor FF', 'construction': 'single', 'uid': '79d3c95516dc4e3693ce0e1fcdaf7909', 'maker': 'Kyusha Shoes', **_J},
+    'fuyu': {'name': 'Brixton Forged TR06', 'construction': 'single', 'uid': 'fb3ed2107cf949cba4922a8af22635fb', 'maker': 'Brixton Forged', **_J},
+    'genki': {'name': 'Avant Garde F450', 'construction': 'multi', 'uid': 'aaf0fb4891cd474e86df0eb2dc322e48', 'maker': 'Avant Garde', **_J},
+    'haruka': {'name': 'Avant Garde F142', 'construction': 'multi', 'uid': '0c5a53690d0d40adadf3ddaf0828c8b6', 'maker': 'Avant Garde', **_J},
+    'hasu': {'name': 'HRE FF04', 'construction': 'single', 'uid': 'b0d7579597a542978a00cf19ec3c9d29', 'maker': 'HRE', **_J},   # a one-piece: the bolt test found a circle of three heads, no lip bolt ring
+    'ibuki': {'name': 'Brixton Forged VL7', 'construction': 'multi', 'uid': '051fba725036489288a0ed6ded9a4abe', 'maker': 'Brixton Forged', **_J,
              'face': -1},   # the normal vote put the lattice face 0.7 of the way down the barrel
-    'kaen': {'name': 'Brixton Forged PF6', 'uid': '60d3005ced7f42fa9100b0aa03979269', 'maker': 'Brixton Forged', **_J,
+    'kaen': {'name': 'Brixton Forged PF6', 'construction': 'single', 'uid': '60d3005ced7f42fa9100b0aa03979269', 'maker': 'Brixton Forged', **_J,
               'lugs': (5, 0.21)},   # the five round holes, not the slots' inner holes (innermost won): the nuts seat at the bottom of the hole
-    'kanade': {'name': 'HRE 522M', 'uid': '17dfb9313e3346d59021dbcca0142762', 'maker': 'HRE', **_J,
+    'kanade': {'name': 'HRE 522M', 'construction': 'single', 'uid': '17dfb9313e3346d59021dbcca0142762', 'maker': 'HRE', **_J,
               'pick': ('x', 0, 1)},   # the scene holds two wheels side by side: the one on +X
-    'karasu': {'name': 'Vossen VFS4', 'uid': '2a078ce1d2b3463cab9bc3179432bf1c', 'maker': 'Vossen', **_J},
-    'madoka': {'name': 'Vossen LC106', 'uid': 'bb90d9eb6f9c4bdc8fdc8340cfa693b6', 'maker': 'Vossen', **_J},
-    'mizore': {'name': 'Vossen LC108T', 'uid': '124076f7e61f43109c78f329bbb4ee8b', 'maker': 'Vossen', **_J},
-    'momiji': {'name': 'Vossen-x-Work VWS3', 'uid': 'bff5b9a09f0f42febac5fba5c2f2860c', 'maker': 'Vossen-x-Work', **_J,
+    'karasu': {'name': 'Vossen VFS4', 'construction': 'single', 'uid': '2a078ce1d2b3463cab9bc3179432bf1c', 'maker': 'Vossen', **_J},
+    'madoka': {'name': 'Vossen LC106', 'construction': 'single', 'uid': 'bb90d9eb6f9c4bdc8fdc8340cfa693b6', 'maker': 'Vossen', **_J},
+    'mizore': {'name': 'Vossen LC108T', 'construction': 'single', 'uid': '124076f7e61f43109c78f329bbb4ee8b', 'maker': 'Vossen', **_J},
+    'momiji': {'name': 'Vossen-x-Work VWS3', 'construction': 'multi', 'uid': 'bff5b9a09f0f42febac5fba5c2f2860c', 'maker': 'Vossen-x-Work', **_J,
               'face': -1,   # the spokes' concave fronts; face 1 showed the hub's mounting pad and stud holes (2026-10-28)
               'cap': 0.105,   # the real cap is the round logo disc in the hub's center (a recess 20.8 mm across its fan of faces, 3 mm deep, ringed by the hub's cone, the five nuts out at r 40 mm); 0.235 turned the whole hub pad round it, stud holes and all, as cap, and 0.101 missed the recess' fan (its rim vertices sit at 20.7 mm) (2026-10-28)
-              'lugs': (5, 0.194, {'x': -0.0229}),   # five through holes at r 40 mm on the hub's cone: with the nuts and the oversize cap gone the rays round a hole fall through to the barrel (the seat read -58 mm), so the nut sits where the cone is at the holes (x -22.9 mm)
-              'lip': 'chrome'},   # a Work 3-piece line, though the model carries no lip bolts
-    'nagi': {'name': 'Vossen VPS 310T', 'uid': '2128c0d05b98416c9de4f3eccf2605aa', 'maker': 'Vossen', **_J},
-    'natsu': {'name': 'Rotiform HVN', 'uid': 'c89560b091cf49e9b2cc4f0f38074d40', 'maker': 'Rotiform', **_J,
+              'lugs': (5, 0.194, {'x': -0.0229})},   # five through holes at r 40 mm on the hub's cone: with the nuts and the oversize cap gone the rays round a hole fall through to the barrel (the seat read -58 mm), so the nut sits where the cone is at the holes (x -22.9 mm)
+    'nagi': {'name': 'Vossen VPS 310T', 'construction': 'single', 'uid': '2128c0d05b98416c9de4f3eccf2605aa', 'maker': 'Vossen', **_J},
+    'natsu': {'name': 'Rotiform HVN', 'construction': 'multi', 'uid': 'c89560b091cf49e9b2cc4f0f38074d40', 'maker': 'Rotiform', **_J,
              'face': -1,   # face 1 showed the plate's plain back and the hub's mounting face (2026-10-28)
              'cap_edge': 0.186},   # the cap is the black hex and its flange (cap_black, 38.6 mm); the red ring round it (its own island, 35.8 to 60.9 mm, the face's material) is the hub: RimCap ran to 59 mm (2026-10-28)
-    'nokaze': {'name': 'Rotiform SEA', 'uid': '6dd27000a1cf433490be246b67868022', 'maker': 'Rotiform', **_J},
-    'ogi': {'name': 'Rotiform RSC', 'uid': '3be8e6543dc34551b71666f4c0d262a5', 'maker': 'Rotiform', **_J,
+    'nokaze': {'name': 'Rotiform SEA', 'construction': 'multi', 'uid': '6dd27000a1cf433490be246b67868022', 'maker': 'Rotiform', **_J},
+    'ogi': {'name': 'Rotiform RSC', 'construction': 'single', 'uid': '3be8e6543dc34551b71666f4c0d262a5', 'maker': 'Rotiform', **_J,
            'face': -1},   # the normal vote put the plate 0.73 of the way down the barrel
-    'rin': {'name': 'Vossen CG207', 'uid': '91a910d8ccb944e78b036ca01a2c4eba', 'maker': 'Vossen', **_J},
-    'sakura': {'name': 'Rotiform EMA', 'uid': '403b46a5f85a4ddfbff2de8eb1f7742e', 'maker': 'Rotiform', **_J,
+    'rin': {'name': 'Vossen CG207', 'construction': 'single', 'uid': '91a910d8ccb944e78b036ca01a2c4eba', 'maker': 'Vossen', **_J},
+    'sakura': {'name': 'Rotiform EMA', 'construction': 'single', 'uid': '403b46a5f85a4ddfbff2de8eb1f7742e', 'maker': 'Rotiform', **_J,
               'face': -1},   # the normal vote put the plate 0.85 of the way down the barrel
-    'sango': {'name': 'VIP MODULAR VXS410', 'uid': 'b97b8008fd614027864e59b6921d7919', 'maker': 'VIP Modular', **_J},
-    'sazanami': {'name': 'VIP MODULAR VX510', 'uid': '0079270fb2ed4635a276a945258d0cf1', 'maker': 'VIP Modular', **_J},
-    'shirube': {'name': 'Brixton Forged CM16', 'uid': 'c47c0b869f5f48f9bb5d629c8fbf3bcb', 'maker': 'Brixton Forged', **_J,
+    'sango': {'name': 'VIP MODULAR VXS410', 'construction': 'multi', 'uid': 'b97b8008fd614027864e59b6921d7919', 'maker': 'VIP Modular', **_J},
+    'sazanami': {'name': 'VIP MODULAR VX510', 'construction': 'multi', 'uid': '0079270fb2ed4635a276a945258d0cf1', 'maker': 'VIP Modular', **_J},
+    'shirube': {'name': 'Brixton Forged CM16', 'construction': 'multi', 'uid': 'c47c0b869f5f48f9bb5d629c8fbf3bcb', 'maker': 'Brixton Forged', **_J,
                'face': 1},   # the normal vote put the face 0.73 of the way down the barrel
-    'sumire': {'name': 'Vossen VFS2', 'uid': '671ea5f9079e4826a484e797f0b267b6', 'maker': 'Vossen', **_J,
+    'sumire': {'name': 'Vossen VFS2', 'construction': 'single', 'uid': '671ea5f9079e4826a484e797f0b267b6', 'maker': 'Vossen', **_J,
               'face': -1},   # the normal vote put the face 0.77 of the way down the barrel
-    'suzume': {'name': 'VOLK TE37SL 3spoke', 'uid': '1b03d5aa04bf404baa482de0f0ecec32', 'maker': 'Volk', **_J,
+    'suzume': {'name': 'VOLK TE37SL 3spoke', 'construction': 'single', 'uid': '1b03d5aa04bf404baa482de0f0ecec32', 'maker': 'Volk', **_J,
               'face': 1},   # the normal vote put the face 0.59 of the way down the barrel
-    'tamashii': {'name': 'RAYS TE037', 'uid': 'e4ca99c55cec42b5940107b5c5ead0f6', 'maker': 'Rays', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'tomoe': {'name': 'Volk Rays 21A', 'uid': 'd7c193d9873d4ab0b4df611fdb76a481', 'maker': 'Volk', **_J},
-    'tsubaki': {'name': 'VIP Modular VXS610', 'uid': '9960a18aee194a1680f9d72455115a17', 'maker': 'VIP Modular', **_J},
-    'tsutsuji': {'name': 'Enkei Riverge', 'uid': 'e6a0a56973f54bcbad02188ae6fe70f9', 'maker': 'Enkei', **_J,
+    'tamashii': {'name': 'RAYS TE037', 'construction': 'single', 'uid': 'e4ca99c55cec42b5940107b5c5ead0f6', 'maker': 'Rays', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'tomoe': {'name': 'Volk Rays 21A', 'construction': 'single', 'uid': 'd7c193d9873d4ab0b4df611fdb76a481', 'maker': 'Volk', **_J},
+    'tsubaki': {'name': 'VIP Modular VXS610', 'construction': 'multi', 'uid': '9960a18aee194a1680f9d72455115a17', 'maker': 'VIP Modular', **_J},
+    'tsutsuji': {'name': 'Enkei Riverge', 'construction': 'single', 'uid': 'e6a0a56973f54bcbad02188ae6fe70f9', 'maker': 'Enkei', **_J,
                 'face': -1},   # the normal vote put the spokes 0.56 down the barrel, 0.39 turned
-    'ukigumo': {'name': 'VOSSEN VFS1', 'uid': 'b5ecbbe9ce254c20941d9db6dc3be57b', 'maker': 'Vossen', **_J},
-    'usagi': {'name': 'Vossen HC-1', 'uid': 'a09cf8de7a8940fa9733c46198a46fd1', 'maker': 'Vossen', **_J},
-    'wakaba': {'name': 'fifteen52 Turbomac', 'uid': '0dbadec625c249eea309d95eb015c9f4', 'maker': 'Fifteen52', 'author': 'portfoliorodrigues', 'license': 'CC Attribution'},
-    'yamabuki': {'name': 'Work Meister S1 3P', 'uid': '7205c04f3cb24a7dbdaf6a304fb31f21', 'maker': 'Work', 'author': 'alexanderlyreo', 'license': 'CC Attribution'},   # its brake rotor and hat are welded into the one mesh, so the junk names miss them: deleted by hand after wheel() (the islands behind the spokes, x < 0.047 and r 0.055 to 0.12)
-    'yoake': {'name': 'WORK MEISTER CR01', 'uid': '9b2bb4a769de4c6098efe95001072841', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution',
+    'ukigumo': {'name': 'VOSSEN VFS1', 'construction': 'single', 'uid': 'b5ecbbe9ce254c20941d9db6dc3be57b', 'maker': 'Vossen', **_J},
+    'usagi': {'name': 'Vossen HC-1', 'construction': 'single', 'uid': 'a09cf8de7a8940fa9733c46198a46fd1', 'maker': 'Vossen', **_J},
+    'wakaba': {'name': 'fifteen52 Turbomac', 'construction': 'single', 'uid': '0dbadec625c249eea309d95eb015c9f4', 'maker': 'Fifteen52', 'author': 'portfoliorodrigues', 'license': 'CC Attribution'},
+    'yamabuki': {'name': 'Work Meister S1 3P', 'construction': 'multi', 'uid': '7205c04f3cb24a7dbdaf6a304fb31f21', 'maker': 'Work', 'author': 'alexanderlyreo', 'license': 'CC Attribution'},   # its brake rotor and hat are welded into the one mesh, so the junk names miss them: deleted by hand after wheel() (the islands behind the spokes, x < 0.047 and r 0.055 to 0.12)
+    'yoake': {'name': 'WORK MEISTER CR01', 'construction': 'multi', 'uid': '9b2bb4a769de4c6098efe95001072841', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution',
               'lugs': (5, 0.294, {'seat': 0.012})},   # the five stepped pockets (the donor's black nuts), not the plain holes between them (a hole beats a nut); the nut sits on the ledge above the stud tube and the donor's nut goes down to it
-    'yuzu': {'name': 'SSR Minerva', 'uid': '704b405602b74a788a0678fd39ac4e51', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
-             'lip': 'chrome'},   # multi-piece: its rivets are moulded into the face's rim, so no bolt circle is rebuilt
-    'zan': {'name': 'RAYS nismo LMGT1', 'uid': '6ed19c4728744e0b95246b5e125ea286', 'maker': 'Rays', 'author': 'dermaks', 'license': 'CC Attribution',
+    'yuzu': {'name': 'SSR Minerva', 'construction': 'multi', 'uid': '704b405602b74a788a0678fd39ac4e51', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},   # multi-piece: its rivets are moulded into the face's rim, so no bolt circle is rebuilt
+    'zan': {'name': 'RAYS nismo LMGT1', 'construction': 'multi', 'uid': '6ed19c4728744e0b95246b5e125ea286', 'maker': 'Rays', 'author': 'dermaks', 'license': 'CC Attribution',
             'lugs': (5, 0.23, {'phase': 36})},   # ten holes on one circle: the five stud holes (a plate at the mounting plane, in pockets) at 36 deg, not the five open bores between them at 0 deg, which have no seat
-    'hotaka': {'name': 'SSR Longchamp XR4', 'uid': '6b3cc8dc828b4e319d625ef3318a26ff', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'sagi': {'name': 'Budnik Tusk', 'uid': 'ab0c4c881d2d41f8a479273e81491978', 'maker': 'Budnik', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'uguisu': {'name': 'Weds Kranze Bazreia', 'uid': '9f55befda4a64aeea5d6fc3586e055ae', 'maker': 'Weds', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'yuhi': {'name': 'BRABUS MONOBLOCK M', 'uid': 'a27f7cb1c38240869275ed5319573826', 'maker': 'Brabus', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'asagi': {'name': 'Devil Japan IF', 'uid': '38821fe2a6b4417ab96e2f3948b65537', 'maker': 'Devil Japan', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'kasane': {'name': 'WORK Equip 05', 'uid': 'ea0c0c37faa0465ca38d1a3365fb9dfe', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'sazanka': {'name': 'KANSEI TANDEM', 'uid': '4d467ea742e94f6aa9ffa8f7f1a0a913', 'maker': 'Kansei', 'author': 'dermaks', 'license': 'CC Attribution',
+    'hotaka': {'name': 'SSR Longchamp XR4', 'construction': 'multi', 'uid': '6b3cc8dc828b4e319d625ef3318a26ff', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'sagi': {'name': 'Budnik Tusk', 'construction': 'single', 'uid': 'ab0c4c881d2d41f8a479273e81491978', 'maker': 'Budnik', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'uguisu': {'name': 'Weds Kranze Bazreia', 'construction': 'single', 'uid': '9f55befda4a64aeea5d6fc3586e055ae', 'maker': 'Weds', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'yuhi': {'name': 'BRABUS MONOBLOCK M', 'construction': 'single', 'uid': 'a27f7cb1c38240869275ed5319573826', 'maker': 'Brabus', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'asagi': {'name': 'Devil Japan IF', 'construction': 'multi', 'uid': '38821fe2a6b4417ab96e2f3948b65537', 'maker': 'Devil Japan', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'kasane': {'name': 'WORK Equip 05', 'construction': 'multi', 'uid': 'ea0c0c37faa0465ca38d1a3365fb9dfe', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'sazanka': {'name': 'KANSEI TANDEM', 'construction': 'single', 'uid': '4d467ea742e94f6aa9ffa8f7f1a0a913', 'maker': 'Kansei', 'author': 'dermaks', 'license': 'CC Attribution',
                 'bolts': 0},   # a one-piece wheel: the raised lettering on its dish wall made a bolt circle of 13 heads
-    'mikazuki': {'name': 'O.Z MAE', 'uid': '75f3ef08221849e2ac3a17dd2ecf2386', 'maker': 'MAE', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'inazuma': {'name': 'WORK EMOTION T5R 2P', 'uid': '38c31e5755494f7fa5e53fdbc95fa313', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution',
+    'mikazuki': {'name': 'O.Z MAE', 'construction': 'multi', 'uid': '75f3ef08221849e2ac3a17dd2ecf2386', 'maker': 'MAE', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'inazuma': {'name': 'WORK EMOTION T5R 2P', 'construction': 'multi', 'uid': '38c31e5755494f7fa5e53fdbc95fa313', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution',
                 'lugs': (5, 0.205)},   # the five counterbored pockets (r 42 mm), not the ring of small decorative holes inboard (innermost won); the nut sits at the bottom of the bore
-    'hanabi': {'name': 'SSR Starshark', 'uid': '58970916a3be46a48d61de853149a22a', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'minamo': {'name': 'MAE CROWN JEWEL', 'uid': '2c77da7f41df431aa1db7b7c2afa92ca', 'maker': 'MAE', 'author': 'dermaks', 'license': 'CC Attribution',
+    'hanabi': {'name': 'SSR Starshark', 'construction': 'multi', 'uid': '58970916a3be46a48d61de853149a22a', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'minamo': {'name': 'MAE CROWN JEWEL', 'construction': 'multi', 'uid': '2c77da7f41df431aa1db7b7c2afa92ca', 'maker': 'MAE', 'author': 'dermaks', 'license': 'CC Attribution',
               'face': 1,   # the normal vote put the spokes 0.76 down the barrel; the same template as the MAE above reads 0.39 turned
               'cap_edge': 0.181},   # the cap is the silver logo disc and its cone (mae_silver, 37.5 mm, an engraved line); the flush pad round it in the body's material, welded into the same island to 61 mm, is the hub: RimCap ran to 60.5 mm (2026-10-28)
-    'nadeshiko': {'name': 'SSR Collection Mk1', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
+    'nadeshiko': {'name': 'SSR Collection Mk1', 'construction': 'multi', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
                  'pick': ('y', -1, -0.1085)},   # one scene of three wheels in a row along the axle (mk1, mk2, mk3 on one lip): the Mk1 spokes
-    'tsukushi': {'name': 'SSR Collection Mk2', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
+    'tsukushi': {'name': 'SSR Collection Mk2', 'construction': 'multi', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
                 'pick': ('y', -0.1085, 0.1085)},   # one scene of three wheels in a row along the axle (mk1, mk2, mk3 on one lip): the Mk2 spokes
-    'koyomi': {'name': 'SSR Collection Mk3', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
+    'koyomi': {'name': 'SSR Collection Mk3', 'construction': 'multi', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
               'pick': ('y', 0.1085, 1)},   # one scene of three wheels in a row along the axle (mk1, mk2, mk3 on one lip): the Mk3 spokes
     # 2026-10-28, twelve from other authors (all CC BY 4.0)
-    'kawasemi': {'name': 'Spoon SW388', 'uid': '069b86d4b4a2492e92eb3349805479f9', 'maker': 'Spoon', 'author': 'TinoD2', 'license': 'CC Attribution',
+    'kawasemi': {'name': 'Spoon SW388', 'construction': 'single', 'uid': '069b86d4b4a2492e92eb3349805479f9', 'maker': 'Spoon', 'author': 'TinoD2', 'license': 'CC Attribution',
                  'drop': r'LowPoly|Tire'},   # a stand scene: a low poly copy beside the high poly wheel, both on tires
-    'kazakiri': {'name': 'Work Emotion CR-KAI', 'uid': '3025fa1677784df99abcf1cd2a30c5fa', 'maker': 'Work', 'author': 'gordeykomark', 'license': 'CC Attribution',
+    'kazakiri': {'name': 'Work Emotion CR-KAI', 'construction': 'single', 'uid': '3025fa1677784df99abcf1cd2a30c5fa', 'maker': 'Work', 'author': 'gordeykomark', 'license': 'CC Attribution',
                  'drop': r'Tire|Rough_metal',   # its own tire, and the valve stem
                  'lugs': (5, 0.229, {'x': 0.022})},   # five 13 mm radius holes in counterbores that rise to the spokes' roots 56 mm out: the rays round a lug read the wall, so the nut seats on the ledge (x 22 mm) round the hole; the donor's nuts, standing in them, were cap islands that made the cap a 57 mm disc (see clean_cap)
-    'tatsumaki': {'name': 'Rotiform DAB', 'uid': '48ff08bbf17b43b4abbc2ee9113be954', 'maker': 'Rotiform', 'author': 'blakebella', 'license': 'CC Attribution',
+    'tatsumaki': {'name': 'Rotiform DAB', 'construction': 'multi', 'uid': '48ff08bbf17b43b4abbc2ee9113be954', 'maker': 'Rotiform', 'author': 'blakebella', 'license': 'CC Attribution',
                  'drop': r'^tire$',   # its own tire (the rotor goes as junk)
                  'lugs': (5, 0.2426, {'x': 0.0436})},   # the donor's five tall nuts (r 50.3 mm, each 22 mm across with its collar, standing in holes through the bowl's floor); the rays round a lug read the bowl's rim (60.5 mm), so the seat is set outright: the floor, 43.6 mm. The old circle (r 56 mm, x 43.8) was the oversize cap disc, which covered those holes (see clean_cap)
-    'kogane': {'name': 'BBS LM Gold Wheels', 'uid': '3aac505aa9484d088204fabef6a8a4c2', 'maker': 'BBS', 'author': 'zxargon', 'license': 'CC Attribution'},
-    'namida': {'name': 'S13 Teardrops Rims', 'uid': 'f8fe25efca84448994f449ef9d894d54', 'maker': 'Fifteen52', 'author': 'Once_a_goat_death', 'license': 'CC Attribution'},
-    'akane': {'name': 'SSR Hasemi Prot-S', 'uid': '581e5099da7a4620b11c3fc424c507de', 'maker': 'SSR', 'author': 'techtackofficial', 'license': 'CC Attribution',
+    'kogane': {'name': 'BBS LM Gold Wheels', 'construction': 'multi', 'uid': '3aac505aa9484d088204fabef6a8a4c2', 'maker': 'BBS', 'author': 'zxargon', 'license': 'CC Attribution'},
+    'namida': {'name': 'S13 Teardrops Rims', 'construction': 'single', 'uid': 'f8fe25efca84448994f449ef9d894d54', 'maker': 'Fifteen52', 'author': 'Once_a_goat_death', 'license': 'CC Attribution'},
+    'akane': {'name': 'SSR Hasemi Prot-S', 'construction': 'multi', 'uid': '581e5099da7a4620b11c3fc424c507de', 'maker': 'SSR', 'author': 'techtackofficial', 'license': 'CC Attribution',
               'face': 1},   # its center cap and lip bolts face +X; the normal vote showed the spokes' backs deep in the barrel
-    'tsukimi': {'name': 'Rotiform CVT', 'uid': 'ed962ed287cf4430a5af531accef5221', 'maker': 'Rotiform', 'author': 'niev', 'license': 'CC Attribution',
+    'tsukimi': {'name': 'Rotiform CVT', 'construction': 'multi', 'uid': 'ed962ed287cf4430a5af531accef5221', 'maker': 'Rotiform', 'author': 'niev', 'license': 'CC Attribution',
                  'drop': r'Nipel'},   # the valve stem
-    'himawari': {'name': 'WEDS Kranze LXZ', 'uid': '2eef2cea9a634c2fbe5dc187d67ba747', 'maker': 'Weds', 'author': 'blakebella', 'license': 'CC Attribution',
+    'himawari': {'name': 'WEDS Kranze LXZ', 'construction': 'multi', 'uid': '2eef2cea9a634c2fbe5dc187d67ba747', 'maker': 'Weds', 'author': 'blakebella', 'license': 'CC Attribution',
                  'drop': r'^Material$'},   # its own tire, on a material of that name
-    'hibiki': {'name': 'RAYS GramLights 57DR', 'uid': '71a90d6c2d0a444d9d2ca7e3cf715c76', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
+    'hibiki': {'name': 'RAYS GramLights 57DR', 'construction': 'single', 'uid': '71a90d6c2d0a444d9d2ca7e3cf715c76', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
              'drop': r'Sticker',   # the spoke stickers
              'keep': r'^DISK\.'},   # its spokes sit under a node named DISK
-    'kaminari': {'name': 'Rays Gramlights 57CR', 'uid': '47063c38bdaa46ebaf2d2af2079c7118', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
+    'kaminari': {'name': 'Rays Gramlights 57CR', 'construction': 'single', 'uid': '47063c38bdaa46ebaf2d2af2079c7118', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
                'drop': r'^(7\.001|material)$',   # the spoke stickers
                'chunks': True},   # a scan in chunks: the ring islands were barrel scraps (the face stood 18 cm proud of them), and
                                   # 109k triangles of spoke went as bolts. The donor has no cap, an open 24 mm bore in a bare hub with five nuts (r 51 mm):
                                   # its hub pieces and nuts classified as cap made a 62 mm flat disc (clean_cap now turns only the piece reaching the bore:
                                   # the house cap, 32 mm), and the lug circle read r 55.7 mm on that disc, not the nuts' 51 mm in their pockets (x 41 mm)
-    'fuuga': {'name': 'RAYS G025', 'uid': '8b14891bb44b43729d07f1e4e2744488', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
+    'fuuga': {'name': 'RAYS G025', 'construction': 'single', 'uid': '8b14891bb44b43729d07f1e4e2744488', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
             'drop': r'^material\.001$',   # the spoke sticker
             'lugs': (5, 0.215, {'seat': 0.0115}),
             'chunks': True},   # a scan in chunks, as the 57CR
-    'hinoko': {'name': 'RAYS HOMURA 2x7', 'uid': 'f2da4e9b0d04418aa1b53022d692ea6b', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
+    'hinoko': {'name': 'RAYS HOMURA 2x7', 'construction': 'single', 'uid': 'f2da4e9b0d04418aa1b53022d692ea6b', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
              'cap_disc': 0.12,   # the turned cap sat 3 to 20 mm behind the donor's own flat hub disc (r 24 mm, a second Rim layer in front of it); take the disc in so the cap is the one surface, short of the lug circle (r 36 mm) on the cone
              'lugs': (5, 0.2190, {'at': -71.9, 'rad': 0.05}),   # the five nuts in their counterbores (r 45.4 mm, the first at -71.9 deg), placed from the recipe: the same angles as before but not r 36 mm, where the lugs stood on the cap's pocket pieces; the small holes between them are on the same circle and the depth image takes those
              'cap_max': 0.125,   # and nothing else of the hub is cap: the pocket walls round the five lugs and the small holes between them were cap-kind pieces out to r 57 mm, so the cap color showed behind the nuts
              'chunks': True},   # a scan in chunks, as the 57CR
     # 2026-10-28, two more (CC BY 4.0)
-    'shirabe': {'name': 'Konig Countergram 5x120 Wheel / FREE MODEL', 'uid': 'c3bffbcaafbe4f5388f14feed6b38cca', 'maker': 'Konig', 'author': 'shevchenkovisuals', 'license': 'CC Attribution',
+    'shirabe': {'name': 'Konig Countergram 5x120 Wheel / FREE MODEL', 'construction': 'single', 'uid': 'c3bffbcaafbe4f5388f14feed6b38cca', 'maker': 'Konig', 'author': 'shevchenkovisuals', 'license': 'CC Attribution',
                 'drop': r'Tire|Text|Lug Nuts',   # its own tire, the lettering and the donor's nuts (nodes named for them)
                 'cap_edge': 0.133,   # the black dome (Rim_Black, 27.5 mm); the bare chrome hub round it, one island with it to 61.7 mm, is the wheel's: RimCap ran to 61.7 mm, under the nuts (2026-10-28)
                 'lugs': (5, 0.2217, {'at': 0})},   # the dropped nuts stood on a bare chrome hub round the black cap: no hole or pocket for the depth image to read, so the circle is the nuts' own (r 45.9 mm, the first straight up)
-    'asahi': {'name': 'Enkie Rpf1', 'uid': '43182083d4134e918a81f115905d5483', 'maker': 'Enkei', 'author': 'astrubal', 'license': 'CC Attribution',
+    'asahi': {'name': 'Enkie Rpf1', 'construction': 'single', 'uid': '43182083d4134e918a81f115905d5483', 'maker': 'Enkei', 'author': 'astrubal', 'license': 'CC Attribution',
               'face': -1, 'chunks': True,   # the lip flange is in the face's island and the barrel a separate one: as chunks the lip is turned out of both
               'lugs': (5, 0.2207, {'at': 0}),   # five pockets 16 mm deep in a recessed plate, read by the donor's own holes (r 45.7 mm); the depth image splits one and misses another
               'drop': r'Rubber|San_Francisco|Metallic_Simple|black|Car_paint|Black_Metal|Charcoal|Silver|free-enkei'},   # a full corner: its tire (read as the lip), calipers, rotor, hub and clips; the wheel is the one `Metal` mesh
@@ -1561,10 +1558,11 @@ def wheel(name, root):
     KIND = {'face': 0, 'ring': 1, 'cap': 2}
     kl = bm.faces.layers.int['kind']
     one_piece = not any(i.kind == 'ring' for i in isl)
-    # The stock lip: chrome on a multi-piece wheel, the face's paint on a one-piece (the user, 2026-10-28). A
-    # wheel is multi-piece when a ring of bolts holds its lip (six heads or more) or its title says 2P or 3P;
-    # a donor's separate lip mesh says nothing, since jonver87 models a cast wheel's lip as its own piece too.
-    multi = (circle is not None and len(circle[0]) >= 6) or re.search(r'(?i)\b[23] ?p(iece)?\b', R0['name'])
+    # The stock lip: chrome on a multi-piece wheel, the face's paint on a one-piece (the user, 2026-10-28). The
+    # construction is the recipe's word (every recipe states it; the geometry only ever guessed: a ring of six
+    # or more lip bolts, a 2P / 3P title, and a donor's separate lip mesh says nothing, since jonver87 models a
+    # cast wheel's lip as its own piece too).
+    multi = R0['construction'] == 'multi'
     lip = R0.get('lip', 'chrome' if multi else 'rim')
     # A multi-piece wheel's face can carry a round flange of its own (the recipe's `turn`): turned the same way.
     turn = R0.get('turn')
@@ -1674,12 +1672,36 @@ def wheel(name, root):
     hub_r = 0 if cap_pts else hub_cap(o, R0.get('cap'))
     lugs = fit_lugs(o, R0.get('lugs'))
     o['lip'] = lip
+    o['construction'] = R0['construction']
+    wheel_offset(o)
     o['displayName'] = name.capitalize()
     o['group'] = GROUPS[R0['maker']]
     print(f'wheel_{name}: {R0["name"]} ({R0["author"]}); islands {kinds}; face {"+" if sign > 0 else "-"}X, scaled x{k:.3f}, '
           f'barrel squeezed x{squeeze:.2f}, lip {lip}' + (f' turned from {len(ring_prof)} points' if ring_prof else '') + (f' (faces on its profile: {returned} more turned, {unturned} off it kept as face)' if returned or unturned else '') + ', ' + (f'{len(circle[0])} house bolts at r {circle[1]:.3f}' if circle else 'no bolt circle') +
           (f', house cap r {cap_r:.3f}' if cap_r else '') + (f', cap turned from {cap_pts} points' if cap_pts else f', hub turned as a cap to r {hub_r:.2f}' if hub_r else '') + (f', {lugs[0]} lugs at r {lugs[1]:.3f}' if lugs else ', no lugs') + f'; {src_tris} -> {tris(o)} tris ({culled} hidden culled, {loose} loose, {gone["bolt"]} of bolts and {gone["decal"]} of decals replaced)')
     return o
+
+
+def wheel_offset(o):
+    """A multi-piece wheel's stock offset (m, +X outboard; the catalog's `offset`, the number the game's per-car
+    targets move the face against): the lug seat where a circle was fitted (the nuts sit there, so it is what the
+    eye reads against the lip), else the center cap's front (it covers the nuts). The reference is the house
+    tire's centerline at x 0, so it is the wheel's ET at the house scale. Set on the object; returns it."""
+    if 'offset' in o.keys():
+        del o['offset']
+    if o.get('construction') != 'multi':
+        return None
+    me = o.data
+    if 'lugs' in o.keys():
+        x = json.loads(o['lugs'])['x']
+    else:
+        cap = [m.name for m in me.materials].index('RimCap') if 'RimCap' in [m.name for m in me.materials] else -1
+        xs = [me.vertices[i].co.x for p in me.polygons if p.material_index == cap for i in p.vertices]
+        if not xs:
+            raise ValueError(f'{o.name}: no lug seat and no center cap to read the offset from')
+        x = max(xs)
+    o['offset'] = round(x, 5)
+    return o['offset']
 
 
 def _set_normals(o):

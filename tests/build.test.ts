@@ -10,7 +10,7 @@ import { decodeShareCode, encodeShareCode } from '../src/garage/storage';
 import { validateCatalog } from '../scripts/validateParts';
 import { createRace } from '../src/sim/race';
 import { baseTuning, carSnapshot, counterSteer, flatWorld, input, raceConfig, runAutopilot } from './helpers';
-import { MAX_BEAD, beadForSize, detectProfile, remapWheel, sizeForBead } from '../src/render/car/wheelFit';
+import { FaceFit, MAX_BEAD, WidthFit, beadForSize, detectProfile, faceRange, faceShift, remapWheel, sizeForBead } from '../src/render/car/wheelFit';
 import { BlipScript, RevModel } from '../src/garage/revModel';
 
 /** The stock setup with one slider moved. */
@@ -462,6 +462,42 @@ describe('wheel size keeps the tire outer diameter', () => {
     remapWheel(pos, nrm, p, n, profile, 1.25);
     expect(Math.hypot(n[0], n[1], n[2])).toBeCloseTo(1, 5);
     expect(n[1]).toBeGreaterThan(0.99);
+  });
+
+  it('moves a multi-piece face to an offset target between the barrel back and the lip bulb', () => {
+    // A face from -0.05 to 0.01, a ring from the barrel's back at -0.12 to the lip edge at 0.108.
+    const face: FaceFit = { back: -0.05, front: 0.01, lipEdge: 0.108, barrelBack: -0.12 };
+    const [lo, hi] = faceRange(face);
+    expect(lo).toBeCloseTo(-0.05, 9); // 70 mm of barrel less the 20 kept
+    expect(hi).toBeCloseTo(0.108 - 0.017 - 0.01 - 0.01, 9); // the lip cone to the bulb less the 10 kept
+    for (const d of [lo, -0.02, 0, 0.03, hi]) {
+      // Fixed ends, a rigid face, and one monotonic map.
+      expect(faceShift(-0.12, face, d)).toBeCloseTo(-0.12, 9);
+      expect(faceShift(0.108, face, d)).toBeCloseTo(0.108, 9);
+      expect(faceShift(0.1, face, d)).toBeCloseTo(0.1, 9);
+      expect(faceShift(-0.05, face, d)).toBeCloseTo(-0.05 + d, 9);
+      expect(faceShift(0.01, face, d)).toBeCloseTo(0.01 + d, 9);
+      let prev = -Infinity;
+      for (let x = -0.13; x <= 0.12; x += 0.001) {
+        const y = faceShift(x, face, d);
+        expect(y).toBeGreaterThanOrEqual(prev - 1e-12);
+        prev = y;
+      }
+    }
+    // A dome standing proud of the lip leaves no cone: it can only go in.
+    expect(faceRange({ back: 0.09, front: 0.16, lipEdge: 0.108, barrelBack: -0.12 })[1]).toBe(0);
+    // Through remapWheel: the face and the nuts (rigid) move by the shift, the width then measures from the moved spokes.
+    const fit: WidthFit = { spokeBack: -0.05, back: -0.12, tireMin: -0.125, tireMax: 0.125, tirePull: 0, cover: 1, face, shift: 0.03 };
+    const pos = [-0.03, 0.5, 0, -0.1, 0.78, 0, 0.1, 0.78, 0];
+    const out = new Float32Array(9);
+    remapWheel(pos, null, out, null, profile, 1, 1, fit);
+    expect(out[0]).toBeCloseTo(0, 5);
+    expect(out[3]).toBeCloseTo(-0.12 + (-0.1 + 0.12) * ((-0.05 + 0.03 + 0.12) / 0.07), 5);
+    expect(out[6]).toBeCloseTo(0.1, 5);
+    remapWheel(pos, null, out, null, profile, 1, 1, fit, false, true);
+    expect(Array.from(out).filter((_, i) => i % 3 === 0)).toEqual([-0.03, -0.1, 0.1].map((x) => Math.fround(x + 0.03)));
+    remapWheel(pos, null, out, null, profile, 1, 1.2, fit);
+    expect(out[3]).toBeCloseTo(-0.02 + (-0.12 + (-0.1 + 0.12) * ((-0.05 + 0.03 + 0.12) / 0.07) + 0.02) * 1.2, 5);
   });
 });
 

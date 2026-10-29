@@ -11,7 +11,7 @@ import { CarMaterialSet, LAMP_GLOW, applyVisualToMaterials, createCarMaterials, 
 import { makeRadialGlow } from '../textures/textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../../shared/features';
-import { BARREL_MARGIN, WheelProfile, WidthFit, barrelCover, beadForSize, detectProfile, remapWheel, sizeForBead, tirePull } from './wheelFit';
+import { BARREL_MARGIN, WheelProfile, WidthFit, barrelCover, beadForSize, detectFaceFit, detectProfile, faceRange, remapWheel, sizeForBead, spokeBackOf, tirePull } from './wheelFit';
 import { BRAKE, brakeDepth, brakeReach, buildCaliperGeometry, buildRotorGeometry } from './brakes';
 import { damp } from '../../shared/anim';
 import { TIRE_SEGMENTS, latheTire, measureTire } from './tireShapes';
@@ -220,8 +220,8 @@ export class CarView {
    * edge and the tire's extent.
    */
   private widthFit: WidthFit[] = [
-    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0, tirePull: 0, cover: 1 },
-    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0, tirePull: 0, cover: 1 },
+    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0, tirePull: 0, cover: 1, face: { back: 0, front: 0, lipEdge: 0, barrelBack: 0 }, shift: 0 },
+    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0, tirePull: 0, cover: 1, face: { back: 0, front: 0, lipEdge: 0, barrelBack: 0 }, shift: 0 },
   ];
   /** Each axle's wheel profile: front and rear may wear different wheels. */
   private wheelProfiles: WheelProfile[] = [
@@ -652,6 +652,10 @@ export class CarView {
     const tireR: number[] = [];
     const otherR: number[] = [];
     const otherX: number[] = [];
+    // The face (everything but tire and lip ring) and the ring apart, for where the offset shift acts.
+    const faceX: number[] = [];
+    const faceR: number[] = [];
+    const ringX: number[] = [];
     let tireMin = Infinity;
     let tireMax = -Infinity;
     // The lathed tire's half section, which the tire's back is fitted to the barrel by (tirePull).
@@ -698,10 +702,15 @@ export class CarView {
       geo.userData.baseNrm = nrm ? Float32Array.from(nrm.array as ArrayLike<number>) : null;
       geo.userData.isTire = isTire;
       const radii = isTire ? tireR : otherR;
+      const isRing = !isTire && mats.length > 0 && mats.every((m) => m === this.materials.RimLip);
       for (let k = 0; k < pos.count; k++) {
-        radii.push(Math.hypot(pos.getY(k), pos.getZ(k)));
-        if (!isTire) otherX.push(pos.getX(k));
-        else {
+        const r = Math.hypot(pos.getY(k), pos.getZ(k));
+        radii.push(r);
+        if (!isTire) {
+          otherX.push(pos.getX(k));
+          if (isRing) ringX.push(pos.getX(k));
+          else faceX.push(pos.getX(k)), faceR.push(r);
+        } else {
           tireMin = Math.min(tireMin, pos.getX(k));
           tireMax = Math.max(tireMax, pos.getX(k));
         }
@@ -725,6 +734,8 @@ export class CarView {
       geo.userData.basePos = Float32Array.from(pos.array as ArrayLike<number>);
       geo.userData.baseNrm = Float32Array.from(nrm.array as ArrayLike<number>);
       geo.userData.isTire = false;
+      // The nuts sit on the face, so the offset shift carries them whole.
+      geo.userData.rigid = true;
       const out = new THREE.Mesh(geo, axle === 1 ? this.materials.LugRear : this.materials.Lug);
       out.name = 'Lug';
       maskVehicleMesh(out);
@@ -744,6 +755,18 @@ export class CarView {
     }
     const spokeBack = Number.isFinite(back) ? back : 0;
     const barrelBack = Math.min(spokeBack, Number.isFinite(rearmost) ? rearmost : spokeBack);
+    // The offset shift: a multi-piece wheel's face goes from its stock offset to the car's target for this axle,
+    // as far as its lip and barrel allow. The catalog's offset is in the GLB's frame, so it moves with the bake's
+    // centering; the target is mm on the car, so it comes back through the wheel's scale.
+    const face = detectFaceFit(faceX, faceR, ringX, profile.bead);
+    const part = partById(model.userData.partId as string);
+    const target = this.car.targetOffset?.[axle === 0 ? 'front' : 'rear'];
+    let shift = 0;
+    if (part?.construction === 'multi' && part.offset !== undefined && target !== undefined) {
+      const scale = this.car.wheelRadius / (profile.outer || this.car.wheelRadius);
+      const [lo, hi] = faceRange(face);
+      shift = Math.min(hi, Math.max(lo, target / 1000 / scale - (part.offset - center.x)));
+    }
     this.widthFit[axle] = {
       spokeBack,
       back: barrelBack,
@@ -751,6 +774,8 @@ export class CarView {
       tireMax: Number.isFinite(tireMax) ? tireMax : 0,
       tirePull: tirePull(tireProfile, otherX, otherR, barrelBack, TIRE_SEGMENTS),
       cover: 1,
+      face,
+      shift,
     };
     if (model.userData.ownGeometry) model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     this.axleMeshes[axle] = baked.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh);
@@ -823,12 +848,12 @@ export class CarView {
     const profile = this.wheelProfiles[axle];
     const sc = this.car.wheelRadius / (profile.outer || this.car.wheelRadius);
     const k = (sc * beadForSize(profile, size)) / BRAKE.refBead;
-    fit.cover = barrelCover(fit.spokeBack, fit.back, (BRAKE.clearance + k * (brakeReach(axle) + brakeDepth(axle)) + BARREL_MARGIN) / sc);
+    fit.cover = barrelCover(spokeBackOf(fit), fit.back, (BRAKE.clearance + k * (brakeReach(axle) + brakeDepth(axle)) + BARREL_MARGIN) / sc);
     for (const mesh of this.axleMeshes[axle]) {
       const geo = mesh.geometry;
       const pos = geo.getAttribute('position') as THREE.BufferAttribute;
       const nrm = geo.getAttribute('normal') as THREE.BufferAttribute | undefined;
-      remapWheel(geo.userData.basePos as Float32Array, (geo.userData.baseNrm as Float32Array | null) ?? null, pos.array as Float32Array, nrm ? (nrm.array as Float32Array) : null, this.wheelProfiles[axle], size, width, this.widthFit[axle], geo.userData.isTire === true);
+      remapWheel(geo.userData.basePos as Float32Array, (geo.userData.baseNrm as Float32Array | null) ?? null, pos.array as Float32Array, nrm ? (nrm.array as Float32Array) : null, this.wheelProfiles[axle], size, width, this.widthFit[axle], geo.userData.isTire === true, geo.userData.rigid === true);
       pos.needsUpdate = true;
       if (nrm) nrm.needsUpdate = true;
       geo.computeBoundingSphere();
@@ -892,7 +917,7 @@ export class CarView {
           // The unit's outboard-most point (the caliper's housing face, or the hat's) sits a clearance behind the
           // spokes of this axle's wheel, whatever its offset or width (the width only lengthens the barrel behind
           // the spokes); the holder's scale flips x on the right side.
-          const x = (sc * this.widthFit[ax].spokeBack - BRAKE.clearance - k * brakeReach(ax)) * (left ? 1 : -1);
+          const x = (sc * spokeBackOf(this.widthFit[ax]) - BRAKE.clearance - k * brakeReach(ax)) * (left ? 1 : -1);
           brake.rotor.scale.set(left ? k : -k, k, k);
           brake.caliper.scale.set(left ? k : -k, k, k);
           brake.rotor.position.x = x;

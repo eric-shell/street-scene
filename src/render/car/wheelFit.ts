@@ -44,6 +44,94 @@ export interface WidthFit {
    * `barrelCover`). Set by the car view whenever the wheel size changes, since the brake scales with the bead.
    */
   cover: number;
+  /** Where the face sits along the axle (`detectFaceFit`), for the offset shift. */
+  face: FaceFit;
+  /**
+   * The face's move along X (m, + outboard, 0 on a one-piece or without a target): the car's offset target for
+   * the axle less the wheel's stock offset, clamped to `faceRange`. Applied before the width, so the spokes' back
+   * the width and the brake work from is `spokeBack + shift`.
+   */
+  shift: number;
+}
+
+/** The spokes' back once the face has moved: what the width stretch and the brake's placing measure from. */
+export const spokeBackOf = (fit: WidthFit): number => fit.spokeBack + fit.shift;
+
+/**
+ * Where a multi-piece wheel's face sits along the axle, in wheel space (X along the axle, +X outboard, the tire's
+ * centerline at 0), measured once per baked wheel from the original vertices. The face is everything that is not
+ * tire or lip ring (spokes, hub, cap, hardware); the ring is the lathed lip and barrel (`RimLip`). A per-car offset
+ * target moves the face as one piece between the barrel's back and the lip's edge bulb (`faceShift`).
+ */
+export interface FaceFit {
+  /** X of the face's back: the hub's or the flange's rearmost point. */
+  back: number;
+  /** X of the face's front: the spokes' or the flange's foremost point. */
+  front: number;
+  /** X of the lip's edge, the frontmost ring vertex. */
+  lipEdge: number;
+  /** X of the barrel's back, the rearmost ring vertex. */
+  barrelBack: number;
+}
+
+/** Limits of a face shift, m at the house scale (a 0.28 m tire). */
+export const FACE_FIT = {
+  /** Width of the lip's edge bulb, which keeps its shape whatever the face does (docs/carWheels.md, Tires: every shipped lip is a 1.7 cm bulb). */
+  bulb: 0.017,
+  /** The least lip cone left between the face's front and the bulb when the face comes out. */
+  minLip: 0.01,
+  /** The least barrel left behind the face when it goes in (the brake cover stretches it back out past the tire where it must). */
+  minBarrel: 0.02,
+} as const;
+
+/**
+ * The face and ring extents of a wheel from its face vertices (X and radius) and its ring vertices' X, with the
+ * bead radius. The face's back is the spoke zone's (0.3 to 0.75 of the bead, as `WidthFit.spokeBack`: the center
+ * bore runs deeper and stretches with the barrel, inside the brake hat anyway); its front is read inside 0.8 of
+ * the bead, so a sliver of ring left in the face's material (a shard at the lip radius) does not count as face.
+ */
+export function detectFaceFit(faceX: ArrayLike<number>, faceR: ArrayLike<number>, ringX: ArrayLike<number>, bead: number): FaceFit {
+  let back = Infinity, front = -Infinity, lipEdge = -Infinity, barrelBack = Infinity;
+  for (let i = 0; i < faceX.length; i++) {
+    const r = faceR[i] / bead;
+    if (r > 0.3 && r < 0.75) back = Math.min(back, faceX[i]);
+    if (r < 0.8) front = Math.max(front, faceX[i]);
+  }
+  for (let i = 0; i < ringX.length; i++) (barrelBack = Math.min(barrelBack, ringX[i])), (lipEdge = Math.max(lipEdge, ringX[i]));
+  if (!Number.isFinite(back) || !Number.isFinite(front) || !Number.isFinite(lipEdge)) return { back: 0, front: 0, lipEdge: 0, barrelBack: 0 };
+  return { back, front, lipEdge, barrelBack };
+}
+
+/** Where the lip's edge bulb begins: a face that stands proud of it (a dome) leaves no lip cone at all. */
+const bulbStart = (f: FaceFit): number => Math.max(f.lipEdge - FACE_FIT.bulb, f.front);
+
+/** How far the face may go in (first, <= 0) and out (second, >= 0), m: the lip cone and the barrel each keep their minimum. */
+export function faceRange(f: FaceFit): [number, number] {
+  return [Math.min(0, -((f.back - f.barrelBack) - FACE_FIT.minBarrel)), Math.max(0, bulbStart(f) - f.front - FACE_FIT.minLip)];
+}
+
+/**
+ * The axial map of a face shift `d` (m, + outboard): one piecewise linear function of X. The face's own depth
+ * moves rigidly, so wherever it meets the ring (a flange, a sleeve under the dish wall) it still does; the lip
+ * cone from the face's front to the edge bulb is squeezed or stretched into what is left (a narrower or wider
+ * lip piece, the way a multi-piece wheel is built to an offset), the bulb and the tire stay, and the barrel
+ * behind the face takes up the rest back to its unchanged end.
+ */
+export function faceShift(x: number, f: FaceFit, d: number): number {
+  const bulb = bulbStart(f);
+  if (d === 0 || x <= f.barrelBack || x >= bulb) return x;
+  if (x < f.back) return f.barrelBack + (x - f.barrelBack) * ((f.back + d - f.barrelBack) / (f.back - f.barrelBack || 1));
+  if (x <= f.front) return x + d;
+  return f.front + d + (x - f.front) * ((bulb - f.front - d) / (bulb - f.front || 1));
+}
+
+/** The slope dx'/dx of `faceShift` at x, which the normals' X is divided by. */
+export function faceSlope(x: number, f: FaceFit, d: number): number {
+  const bulb = bulbStart(f);
+  if (d === 0 || x <= f.barrelBack || x >= bulb) return 1;
+  if (x < f.back) return (f.back + d - f.barrelBack) / (f.back - f.barrelBack || 1);
+  if (x <= f.front) return 1;
+  return (bulb - f.front - d) / (bulb - f.front || 1);
 }
 
 /** Share of the tire's width, from each side, where its inner side shifts in full (below) and not at all (above the outer one). */
@@ -188,13 +276,20 @@ export function remapRadius(r: number, p: WheelProfile, bead2: number): [number,
  * its outer side stays put, and the tread between is stretched to stay one
  * continuous surface. Normals' X is divided by the local dx'/dx (1 for the
  * parts that only shift).
+ *
+ * The offset shift (`fit.shift`, `faceShift`) comes first on every non-tire
+ * vertex, moving the face as one piece between the barrel's back and the lip's
+ * bulb; `rigid` parts (the house lug nuts) move with it whole. The width then
+ * measures from the moved spokes' back.
  */
-export function remapWheel(pos: ArrayLike<number>, nrm: ArrayLike<number> | null, outPos: Float32Array, outNrm: Float32Array | null, p: WheelProfile, size: number, width = 1, fit: WidthFit | null = null, tire = false): void {
+export function remapWheel(pos: ArrayLike<number>, nrm: ArrayLike<number> | null, outPos: Float32Array, outNrm: Float32Array | null, p: WheelProfile, size: number, width = 1, fit: WidthFit | null = null, tire = false, rigid = false): void {
   const bead2 = beadForSize(p, size);
   // The barrel's stretch: the width slider, floored by what covers the brake (fit.cover).
   if (fit !== null) width = barrelStretch(width, fit.cover);
+  const spokeBack = fit !== null ? spokeBackOf(fit) : 0;
+  const d = fit !== null && !tire ? fit.shift : 0;
   // The tire's inner side moves as far as the barrel's back edge does, plus the pull that covers the stock barrel.
-  const shift = fit !== null ? (fit.back - fit.spokeBack) * (width - 1) + fit.tirePull : 0;
+  const shift = fit !== null ? (fit.back - spokeBack) * (width - 1) + fit.tirePull : 0;
   const axial = fit !== null && (width !== 1 || shift !== 0);
   const tireSpan = axial ? fit.tireMax - fit.tireMin : 0;
   const lo = axial ? fit.tireMin + TIRE_SHIFT_BAND * tireSpan : 0;
@@ -206,14 +301,18 @@ export function remapWheel(pos: ArrayLike<number>, nrm: ArrayLike<number> | null
     const r = Math.hypot(y, z);
     const [r2, dr] = remapRadius(r, p, bead2);
     const t = r > 1e-9 ? r2 / r : bead2 / p.bead;
-    // New X and its slope dx'/dx.
+    // New X and its slope dx'/dx: the face's move, then the width behind the moved spokes.
     let x2 = x;
     let sx = 1;
+    if (d !== 0) {
+      x2 = rigid ? x + d : faceShift(x, fit!.face, d);
+      sx = rigid ? 1 : faceSlope(x, fit!.face, d);
+    }
     if (axial) {
       if (!tire) {
-        if (x < fit.spokeBack) {
-          x2 = fit.spokeBack + (x - fit.spokeBack) * width;
-          sx = width;
+        if (x2 < spokeBack) {
+          x2 = spokeBack + (x2 - spokeBack) * width;
+          sx *= width;
         }
       } else if (x <= lo) x2 = x + shift;
       else if (x < hi) {

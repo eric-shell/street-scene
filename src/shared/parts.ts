@@ -57,11 +57,27 @@ export interface WheelLugs {
   size: number;
 }
 
+/**
+ * How a wheel is built: 'single' is one piece (a cast or forged monoblock), 'multi' is a bolted lip and barrel
+ * round a separate face (two or three piece). Stated per wheel in its recipe (scripts/blender/carWheels.py), never
+ * guessed from the model: the stock lip finish reads it, and the offset tooling acts on multi-piece wheels only.
+ */
+export const WHEEL_CONSTRUCTIONS = ['single', 'multi'] as const;
+export type WheelConstruction = (typeof WHEEL_CONSTRUCTIONS)[number];
+
 export interface PartEntry {
   id: string;
   displayName: string;
   /** The garage section a wheel is listed under: a fictional maker name standing for its donor's real maker. */
   group?: string;
+  /** Wheels: one piece or multi-piece (`WHEEL_CONSTRUCTIONS`); every shipped wheel carries it. */
+  construction?: WheelConstruction;
+  /**
+   * Multi-piece wheels: the stock offset, m along the axle (+X outboard) from the tire's centerline to the lug
+   * seat (the cap's front where a cap hides the nuts), so the wheel's ET at the house scale. The per-car offset
+   * targets move the face by their difference from it (render/car/wheelFit.ts, `FaceFit`). Missing on a one-piece.
+   */
+  offset?: number;
   /** Wheels: how the lip ships, polished ('chrome') or in the face's paint ('rim'); missing reads 'rim'. */
   lip?: 'chrome' | 'rim';
   /** Wheels: the lug circle the house lug nuts sit on; missing: no lug nuts (a solid face hides the hub). */

@@ -28,6 +28,14 @@ export interface ManifestCar {
   dimensions: { length: number; width: number; height: number };
   materialMap: Record<string, string>;
   defaultWheel: string;
+  /**
+   * The offset (ET, mm on the car, from the tire's centerline to the lug seat, + outboard) a multi-piece wheel is
+   * built to on each axle: its face moves from the wheel's stock offset (the catalog's `offset`) to the target, as
+   * far as the wheel's lip and barrel allow (render/car/wheelFit.ts, `FaceFit`). A car whose hubs sit near the
+   * fender's edge wants a higher target than one with inboard hubs under wide arches, and a lower rear than
+   * front shows more lip at the back. Missing: every wheel ships as modelled. One-piece wheels ignore it.
+   */
+  targetOffset?: { front: number; rear: number };
   defaultPaint: string;
   /** Offered in the garage. */
   selectable?: boolean;
