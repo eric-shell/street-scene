@@ -137,7 +137,7 @@
     },
     {
       "id": "wendtStrom_sideSkirts_trackMild",
-      "displayName": "Track Mild",
+      "displayName": "Track Base/Mild",
       "carId": "wendtStrom",
       "slot": "sideSkirts",
       "file": "parts/wendtStrom_sideSkirts_trackMild.glb",
