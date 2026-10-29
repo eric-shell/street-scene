@@ -162,6 +162,22 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_rearBumper_euro",
+      "displayName": "Euro",
+      "carId": "wendtStrom",
+      "slot": "rearBumper",
+      "file": "parts/wendtStrom_rearBumper_euro.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 1114,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",
