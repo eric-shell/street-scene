@@ -139,8 +139,8 @@ export class WheelThumbs {
     const r = this.setup();
     // The wheel is rebuilt as plain meshes in the GLB's frame (wheel space: the center at the origin, the axle
     // along X, the face toward +X), the way the car view bakes it, so its face can be moved to the offset the
-    // car sets without touching the cached GLB's geometry. The cap is the face's finish; the lip is polished or
-    // the face's, as the wheel ships it.
+    // car sets without touching the cached GLB's geometry. The cap is the face's finish; the lip is polished,
+    // the stock lip every wheel wears.
     model.updateMatrixWorld(true);
     const parts: Unpacked[] = [];
     model.traverse((o) => {
@@ -164,7 +164,7 @@ export class WheelThumbs {
     };
     for (const part of parts) {
       const name = part.material.name;
-      const material = this.materials[name === 'RimCap' ? 'Rim' : name === 'RimLip' ? (entry.lip === 'chrome' ? 'Chrome' : 'Rim') : name] ?? this.materials.Rim;
+      const material = this.materials[name === 'RimCap' ? 'Rim' : name === 'RimLip' ? 'Chrome' : name] ?? this.materials.Rim;
       add(part.pos, part.nrm, part.index, material, part.tire, false);
     }
     if (lugs) {

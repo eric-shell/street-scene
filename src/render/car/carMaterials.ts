@@ -6,7 +6,7 @@
  */
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
-import { CHROME_COLOR, type AccentPaint, type Paint, type PaintFinish, type VisualBuild, type AccentFinish, type WheelTrim } from '../../shared/carBuild';
+import { type AccentPaint, type Paint, type PaintFinish, type VisualBuild, type AccentFinish, type WheelTrim } from '../../shared/carBuild';
 import { BRAKE, caliperLogoTexture, rotorTexture } from './brakes';
 import { TIRE_BUMP, acquireTireTexture, releaseTireTexture, tireShader } from './tireTread';
 import { chromeEnvironment } from './chromeEnv';
@@ -31,8 +31,6 @@ const CHROME = { color: 0xdedede, env: 2.2, wheelEnv: 0.45, surface: { metalness
  * build has no trim paint; the material keeps the name for parts that may.
  */
 const TRIM_PAINT: Paint<AccentFinish> = { color: '#15161a', finish: 'gloss' };
-/** Plain chrome as a paint: what a stock polished lip wears. */
-const CHROME_PAINT: Paint<AccentFinish> = { color: CHROME_COLOR, finish: 'chrome' };
 
 /** Each wheel material's own environment (the car's), to go back to when it leaves chrome (a Map, not userData: a material's clone copies userData through JSON). */
 const carEnv = new WeakMap<THREE.Material, THREE.Texture | null>();
@@ -230,29 +228,27 @@ function applyPaint(mat: THREE.MeshPhysicalMaterial, p: Paint<AccentFinish>, env
 }
 
 /**
- * Dress the materials in a build. `stockLips`: each axle's wheel as its catalog entry ships the lip (front, rear):
- * polished or in the face's paint; the lip, cap and lug nuts resolve per axle ('face' wears that axle's wheel paint,
- * 'stock' the lip as shipped). `envScale` scales the painted surfaces' environment reflections (1 the night street's; the
+ * Dress the materials in a build. The lip, cap and lug nuts resolve per axle ('face' wears that axle's wheel paint). `envScale` scales the painted surfaces' environment reflections (1 the night street's; the
  * garage turns it down with its lights, since the paint's own map still holds them lit).
  */
-export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, stockLips: readonly ['chrome' | 'rim', 'chrome' | 'rim'], braking = false, envScale = 1): void {
+export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, braking = false, envScale = 1): void {
   // A matched accent wears the body's paint.
   const accent = <F extends AccentFinish>(p: AccentPaint<F>): Paint<AccentFinish> => (p.match ? v.paint : p);
   applyPaint(m.Paint as THREE.MeshPhysicalMaterial, v.paint, PAINT_ENV.Paint * envScale);
   applyPaint(m.Rim as THREE.MeshPhysicalMaterial, accent(v.wheels.paint), PAINT_ENV.Rim * envScale, true);
   applyPaint(m.RimRear as THREE.MeshPhysicalMaterial, accent(v.wheels.rearPaint), PAINT_ENV.Rim * envScale, true);
-  // A trim resolves per axle: its own paint, the body's, that axle's face or cap, or the lip as the wheel ships it.
-  const wears = (t: WheelTrim, face: Paint<AccentFinish>, cap: Paint<AccentFinish>, stock: 'chrome' | 'rim'): Paint<AccentFinish> =>
-    t.mode === 'paint' ? t : t.mode === 'body' ? v.paint : t.mode === 'cap' ? cap : t.mode === 'stock' && stock === 'chrome' ? CHROME_PAINT : face;
-  const axle = (face: Paint<AccentFinish>, stock: 'chrome' | 'rim', lip: THREE.Material, capMat: THREE.Material, lug: THREE.Material, hw: THREE.Material): void => {
-    const cap = wears(v.wheels.cap, face, face, stock);
-    applyPaint(lip as THREE.MeshPhysicalMaterial, wears(v.wheels.lip, face, cap, stock), PAINT_ENV.Rim * envScale, true);
+  // A trim resolves per axle: its own paint, the body's, or that axle's face or cap.
+  const wears = (t: WheelTrim, face: Paint<AccentFinish>, cap: Paint<AccentFinish>): Paint<AccentFinish> =>
+    t.mode === 'paint' ? t : t.mode === 'body' ? v.paint : t.mode === 'cap' ? cap : face;
+  const axle = (face: Paint<AccentFinish>, lip: THREE.Material, capMat: THREE.Material, lug: THREE.Material, hw: THREE.Material): void => {
+    const cap = wears(v.wheels.cap, face, face);
+    applyPaint(lip as THREE.MeshPhysicalMaterial, wears(v.wheels.lip, face, cap), PAINT_ENV.Rim * envScale, true);
     applyPaint(capMat as THREE.MeshPhysicalMaterial, cap, PAINT_ENV.Rim * envScale, true);
-    applyPaint(lug as THREE.MeshPhysicalMaterial, wears(v.wheels.lugNuts, face, cap, stock), PAINT_ENV.Rim * envScale, true);
-    applyPaint(hw as THREE.MeshPhysicalMaterial, wears(v.wheels.hardware, face, cap, stock), PAINT_ENV.Rim * envScale, true);
+    applyPaint(lug as THREE.MeshPhysicalMaterial, wears(v.wheels.lugNuts, face, cap), PAINT_ENV.Rim * envScale, true);
+    applyPaint(hw as THREE.MeshPhysicalMaterial, wears(v.wheels.hardware, face, cap), PAINT_ENV.Rim * envScale, true);
   };
-  axle(accent(v.wheels.paint), stockLips[0], m.RimLip, m.RimCap, m.Lug, m.Hardware);
-  axle(accent(v.wheels.rearPaint), stockLips[1], m.RimLipRear, m.RimCapRear, m.LugRear, m.HardwareRear);
+  axle(accent(v.wheels.paint), m.RimLip, m.RimCap, m.Lug, m.Hardware);
+  axle(accent(v.wheels.rearPaint), m.RimLipRear, m.RimCapRear, m.LugRear, m.HardwareRear);
   applyPaint(m.Caliper as THREE.MeshPhysicalMaterial, accent(v.calipers), PAINT_ENV.Caliper * envScale);
   applyPaint(m.Trim as THREE.MeshPhysicalMaterial, TRIM_PAINT, PAINT_ENV.Trim * envScale);
   const glass = m.Glass as THREE.MeshPhysicalMaterial;

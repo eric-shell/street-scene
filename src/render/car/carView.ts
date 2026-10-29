@@ -508,7 +508,7 @@ export class CarView {
   /** Apply a visual build. Part swaps load asynchronously; everything else is instant. */
   async applyVisual(v: VisualBuild, token = ++this.loadToken): Promise<void> {
     this.visual = v;
-    applyVisualToMaterials(this.materials, v, this.stockLips(), false, this.envScale);
+    applyVisualToMaterials(this.materials, v, false, this.envScale);
     this.applyStance();
     this.applyUnderglow(0);
 
@@ -1193,14 +1193,7 @@ export class CarView {
     const k = Math.max(0, Math.min(1, scale));
     if (Math.abs(k - this.envScale) < 0.004) return;
     this.envScale = k;
-    applyVisualToMaterials(this.materials, this.visual, this.stockLips(), false, k);
-  }
-
-  /** Each axle's wheel lip as it ships (front, rear), from the catalog: polished, or in the face's paint. */
-  private stockLips(): ['chrome' | 'rim', 'chrome' | 'rim'] {
-    const front = this.visual.parts.wheels ?? this.car.defaultWheel;
-    const lip = (id: string): 'chrome' | 'rim' => (partById(id)?.lip === 'chrome' ? 'chrome' : 'rim');
-    return [lip(front), lip(this.visual.wheels.rearPart ?? front)];
+    applyVisualToMaterials(this.materials, this.visual, false, k);
   }
 
   /**

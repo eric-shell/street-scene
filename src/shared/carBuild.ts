@@ -38,16 +38,16 @@ export interface AccentPaint<F extends AccentFinish = PaintFinish> extends Paint
 }
 
 /**
- * What a wheel trim (lip, center cap, lug nuts) wears: 'stock' as the wheel ships (the catalog's `lip`: polished,
- * or the face's paint), 'face' the axle's wheel paint, 'cap' the axle's resolved center cap, 'body' the body paint
- * (following later body changes), 'paint' its own color and finish. WHEEL_TRIMS says which each trim offers.
+ * What a wheel trim (lip, center cap, lug nuts) wears: 'face' the axle's wheel paint, 'cap' the axle's resolved
+ * center cap, 'body' the body paint (following later body changes), 'paint' its own color and finish (a lip starts
+ * as chrome). WHEEL_TRIMS says which each trim offers.
  */
-export const WHEEL_TRIM_MODES = ['stock', 'face', 'cap', 'body', 'paint'] as const;
+export const WHEEL_TRIM_MODES = ['face', 'cap', 'body', 'paint'] as const;
 export type WheelTrimMode = (typeof WHEEL_TRIM_MODES)[number];
 
 /** The wheel trims and the modes each offers (only a lip ships with a look of its own; the nuts can match the cap). */
 export const WHEEL_TRIMS = {
-  lip: ['stock', 'face', 'body', 'paint'],
+  lip: ['face', 'body', 'paint'],
   cap: ['face', 'body', 'paint'],
   lugNuts: ['cap', 'face', 'body', 'paint'],
   hardware: ['cap', 'face', 'body', 'paint'],
@@ -182,7 +182,7 @@ export function defaultVisual(): VisualBuild {
   return {
     paint: { color: '#d11f3f', finish: 'metallic' },
     parts: {},
-    wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'stock', color: '#c9ced8', finish: 'metallic' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, hardware: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' } },
+    wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, hardware: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' } },
     calipers: { color: '#c41e3a', finish: 'gloss', match: false },
     decals: [],
     stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 } },
@@ -233,7 +233,8 @@ const LEGACY_LUGS: Record<string, WheelTrim> = {
  */
 function validTrim(v: unknown, fallback: WheelTrim, trim: WheelTrimName): WheelTrim {
   const o = obj(v);
-  if (o.mode === 'chrome') return { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' };
+  // A 'chrome' mode (before chrome was a finish) and a 'stock' lip (before the stock lip became a chrome paint) are chrome.
+  if (o.mode === 'chrome' || o.mode === 'stock') return { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' };
   return { mode: oneOf<WheelTrimMode>(o.mode, WHEEL_TRIMS[trim], fallback.mode), ...validPaint(o, fallback, ACCENT_FINISHES) };
 }
 

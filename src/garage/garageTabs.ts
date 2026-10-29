@@ -1,6 +1,6 @@
 /**
- * What each Customize tab shows (Model, Stance, Wheels, Paint, Tune, Body and
- * Style; Vinyls is garageVinyls.ts): the tab list, and one builder that fills
+ * What each Customize tab shows (Model, Tune, Stance, Wheels, Body, Paint, Neon
+ * and Tint; Vinyls is garageVinyls.ts): the tab list, and one builder that fills
  * the body for the open tab from the build. The builders reach the screen only
  * through TabHost, so garageUi.ts keeps the steps, saving and dialogs and this
  * file only the controls. Edits write straight into the build and call
@@ -9,45 +9,45 @@
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partById, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, CHROME_COLOR, CarBuild, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
+import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, CarBuild, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges } from '../shared/carSpec';
 import { cycler, h, onOffSwitch, segmented, toast } from '../ui/kit/dom';
-import { ArrowUpDown, Car, Disc3, Gauge, Hammer, Layers, Moon, Paintbrush, RotateCcw, IconNode } from '../ui/kit/icons';
+import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, Paintbrush, Sparkles, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { GaragePrefs, saveGaragePrefs } from './storage';
-import { capital, choiceList, cm, colorPicker, field, matchBody, mm, note, paintPicker, percent, rowName, section, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
+import { capital, choiceList, cm, colorPicker, field, matchBody, mm, note, paintPicker, percent, revealable, rowName, section, sectionWith, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
 import { renderVinyls } from './garageVinyls';
 import { setupSlider } from './setupSliders';
 import { wheelPicker } from './wheelPicker';
 import type { WheelThumbs } from './wheelThumbs';
 
-export type Tab = 'model' | 'stance' | 'wheels' | 'paint' | 'vinyl' | 'tune' | 'body' | 'style';
+export type Tab = 'model' | 'stance' | 'wheels' | 'paint' | 'vinyl' | 'tune' | 'body' | 'tint' | 'neon';
 
-/** The tabs in order: the car and how it sits first, then its look, its setup, its parts, and the Style tab's night look last. */
+/** The tabs in order: the car and its setup first, then how it sits, its parts, its look, and the night look (Neon, Tint) last. */
 export const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'model', label: 'Model', icon: Car },
+  { id: 'tune', label: 'Tune', icon: Gauge },
   { id: 'stance', label: 'Stance', icon: ArrowUpDown },
   { id: 'wheels', label: 'Wheels', icon: Disc3 },
+  { id: 'body', label: 'Body', icon: Hammer },
   { id: 'paint', label: 'Paint', icon: Paintbrush },
   ...(FEATURES.vinyls ? [{ id: 'vinyl' as Tab, label: 'Vinyls', icon: Layers }] : []),
-  { id: 'tune', label: 'Tune', icon: Gauge },
-  { id: 'body', label: 'Body', icon: Hammer },
-  { id: 'style', label: 'Style', icon: Moon },
+  { id: 'neon', label: 'Neon', icon: Sparkles },
+  { id: 'tint', label: 'Tint', icon: Eye },
 ];
 
 /** Model author shown under a car's name, by manifest `source`. */
 export const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan', eshell: 'eshell' };
 
 /**
- * The Paint tab's surfaces, one on show at a time (like the Body tab's slots): the body, the wheels (the
- * face, the lip and the center cap), the hardware (the lug nuts and the bolts) and the calipers.
+ * The Paint tab's surfaces, all listed in this order: the body, the calipers, the wheels (the face, the lip and the
+ * center cap) and the hardware (the lug nuts and the bolts). The one last touched frames the camera.
  */
-export const PAINT_SURFACES = ['body', 'wheels', 'hardware', 'calipers'] as const;
+export const PAINT_SURFACES = ['body', 'calipers', 'wheels', 'hardware'] as const;
 export type PaintSurface = (typeof PAINT_SURFACES)[number];
-const SURFACE_LABELS: Record<PaintSurface, string> = { body: 'Body', wheels: 'Wheels', hardware: 'Hardware', calipers: 'Calipers' };
 
 /** The tire stretch as the Stance tab lists it (TIRE_SHAPES' order, render/car/tireShapes.ts draws them): none is the standard tire, full the stretched one. */
 const STRETCH_CHOICES: { value: TireShape; label: string }[] = [
@@ -71,14 +71,14 @@ export interface TabHost {
   /** The open tab's pane, emptied and refilled by a render. */
   readonly body: HTMLElement;
   readonly tab: Tab;
-  /** The Body tab's part slot on show. */
+  /** The Body tab's part slot last touched (the camera frames it). */
   bodySlot: PartSlot;
-  /** The Paint tab's surface on show. */
+  /** The Paint tab's surface last touched (the camera frames it). */
   paintSurface: PaintSurface;
   /** The axle the Wheels tab's wheel and the Paint tab's wheel paint dress while front and rear are unlinked. */
   wheelAxle: Axle;
-  /** The wheel maker the Wheels tab's picker shows, or null for all of them. */
-  wheelMaker: string | null;
+  /** The wheel makers the Wheels tab's picker shows (empty: all of them). */
+  wheelMakers: string[];
   /** The wheel picker's thumbnails, drawn once per wheel. */
   readonly wheelThumbs: WheelThumbs;
   /** The vinyl layer picked in the Vinyls tab (-1 for none). */
@@ -89,6 +89,19 @@ export interface TabHost {
   renderTab(): void;
   /** Frame the open tab's shot again (the Body tab's slot or the Paint tab's surface changed). */
   reframe(): void;
+}
+
+/**
+ * A group that frames the camera on what it edits once touched (a click, a tap or focus inside it): the Paint
+ * tab's surfaces and the Body tab's slots are all listed, so the shot follows the one in hand.
+ */
+function framing(el: HTMLElement, host: TabHost, touch: () => boolean): HTMLElement {
+  const go = () => {
+    if (touch()) host.reframe();
+  };
+  el.addEventListener('pointerdown', go);
+  el.addEventListener('focusin', go);
+  return el;
 }
 
 /** Fill the body with the open tab's groups, rebuilt from the build every time (a render empties it first). */
@@ -188,7 +201,7 @@ export function renderTabContent(host: TabHost): void {
           host.changed();
         });
       host.body.append(
-        section('Ride height', linkToggle(host), ...AXLES.map((a) => axleSlider(a, 'rideHeight')), note('Visual only. Front and rear apart rake the car.')),
+        sectionWith('Ride height', [linkToggle(host)], ...AXLES.map((a) => axleSlider(a, 'rideHeight')), note('Visual only. Front and rear apart rake the car.')),
         section('Camber', ...AXLES.map((a) => axleSlider(a, 'camber'))),
         section('Wheel offset', ...AXLES.map((a) => axleSlider(a, 'offset'))),
         section('Wheel size', ...AXLES.map((a) => axleSlider(a, 'wheelSize')), note('Bigger wheels, thinner sidewalls.')),
@@ -196,7 +209,7 @@ export function renderTabContent(host: TabHost): void {
         section('Wheel width', ...AXLES.map((a) => axleSlider(a, 'wheelWidth', false)), note('Wider wheels grow inward; the face and spokes keep their shape. Never linked.')),
         section(
           'Tires',
-          ...(linked ? [field('Stretch', stretchPick(null))] : AXLES.map((a) => field(`${capital(a)} stretch`, stretchPick(a)))),
+          ...(linked ? [revealable(field('Stretch', stretchPick(null)), 'stretch')] : AXLES.map((a) => revealable(field(`${capital(a)} stretch`, stretchPick(a)), `stretch-${a}`))),
           // Per build, not per axle: the brand's raised lettering on every tire's outer sidewall.
           field(
             'Lettering',
@@ -218,18 +231,19 @@ export function renderTabContent(host: TabHost): void {
       const rear = !linked && host.wheelAxle === 'rear';
       const front = v.parts.wheels ?? manifestCar(b.carId).defaultWheel;
       // The picker fills the tab (the section grows to the body's height) with its own scrolling panes.
-      const group = section(
+      const group = sectionWith(
         linked ? 'Wheel' : `${capital(host.wheelAxle)} wheel`,
-        h('div', { class: 'row' }, ...wheelAxleTools(host), linked ? h('span', { class: 'muted garage-note' }, 'Every pick equips all four wheels.') : null),
+        [wheelLink(host)],
+        linked ? revealable(note('Every pick equips all four wheels.'), 'linked-note') : axleSwitch(host),
         wheelPicker({
           wheels: partsFor(b.carId, 'wheels'),
           current: rear ? (w.rearPart ?? front) : front,
-          maker: host.wheelMaker,
+          makers: host.wheelMakers,
           thumbs: host.wheelThumbs,
           target: manifestCar(b.carId).targetOffset?.front,
-          onMaker: (m) => {
-            host.wheelMaker = m;
-            host.renderTab();
+          // The picker filters in place (the menu stays open for the next maker); the host keeps the pick for re-renders.
+          onMakers: (m) => {
+            host.wheelMakers = m;
           },
           onPick: (id) => {
             if (rear) w.rearPart = id;
@@ -247,22 +261,7 @@ export function renderTabContent(host: TabHost): void {
       break;
     }
     case 'paint': {
-      // One surface at a time, like the Body tab's slots: the surfaces on a cycler, then its paint.
-      const surface = host.paintSurface;
-      host.body.append(
-        section(
-          'Surface',
-          cycler(
-            PAINT_SURFACES.map((s) => ({ value: s, label: SURFACE_LABELS[s] })),
-            surface,
-            (s) => {
-              host.paintSurface = s;
-              host.reframe();
-              rerenderFromPicker(host);
-            },
-          ),
-        ),
-      );
+      // Every surface listed, in PAINT_SURFACES' order; the one in hand frames the camera.
       const w = v.wheels;
       // The wheel paints and trims: the face is per axle (the Link and Front / Rear say which), the trims (lip, cap,
       // lug nuts, hardware) are per build, both axles, each wearing its own paint or another surface's (the axle on
@@ -272,69 +271,73 @@ export function renderTabContent(host: TabHost): void {
       const paint = rear ? w.rearPaint : w.paint;
       const wheelId = rear ? (w.rearPart ?? v.parts.wheels ?? manifestCar(b.carId).defaultWheel) : (v.parts.wheels ?? manifestCar(b.carId).defaultWheel);
       const face = (): Paint<AccentFinish> => (paint.match ? v.paint : paint);
-      const stockChrome = partById(wheelId)?.lip === 'chrome';
       const capWears = (): Paint<AccentFinish> => (w.cap.mode === 'body' ? v.paint : w.cap.mode === 'paint' ? w.cap : face());
       const body = (): Paint<AccentFinish> => v.paint;
-      switch (surface) {
-        case 'body':
-          // The body alone takes no chrome.
-          host.body.append(section('Body paint', paintPicker(v.paint, PAINT_FINISHES, () => host.changed())));
-          break;
-        case 'wheels':
-          host.body.append(
-            section(
-              linked ? 'Wheel paint' : `${capital(host.wheelAxle)} wheel paint`,
-              h('div', { class: 'row' }, ...wheelAxleTools(host)),
-              paintPicker(
-                paint,
-                ACCENT_FINISHES,
-                () => {
-                  if (linked) w.rearPaint = { ...w.paint };
-                  host.changed();
-                },
-                [matchBody(paint, v.paint)],
-              ),
+      const surface = (s: PaintSurface, el: HTMLElement) =>
+        framing(el, host, () => {
+          if (host.paintSurface === s) return false;
+          host.paintSurface = s;
+          return true;
+        });
+      host.body.append(
+        // The body alone takes no chrome.
+        surface('body', section('Body', paintPicker(v.paint, PAINT_FINISHES, () => host.changed()))),
+        // One caliper paint for all four corners, whatever the axle switch says.
+        surface('calipers', section('Calipers', paintPicker(v.calipers, ACCENT_FINISHES, () => host.changed(), [matchBody(v.calipers, v.paint)]), note('One paint for all four corners.'))),
+        surface(
+          'wheels',
+          sectionWith(
+            linked ? 'Wheel' : `${capital(host.wheelAxle)} wheel`,
+            [wheelLink(host)],
+            linked ? null : axleSwitch(host),
+            paintPicker(
+              paint,
+              ACCENT_FINISHES,
+              () => {
+                if (linked) w.rearPaint = { ...w.paint };
+                host.changed();
+              },
+              [matchBody(paint, v.paint)],
             ),
-            trimSection(host, 'Lip', w.lip, [
-              trimMatch(w.lip, 'stock', 'Stock', 'Stock lip', () => (stockChrome ? { color: CHROME_COLOR, finish: 'chrome' } : face()), RotateCcw),
-              trimMatch(w.lip, 'face', 'Match wheel', 'Wheel paint', face),
-              trimMatch(w.lip, 'body', 'Match body', 'Body paint', body),
-            ]),
-            trimSection(host, 'Center cap', w.cap, [trimMatch(w.cap, 'face', 'Match wheel', 'Wheel paint', face), trimMatch(w.cap, 'body', 'Match body', 'Body paint', body)]),
-          );
-          break;
-        case 'hardware':
-          host.body.append(
-            trimSection(host, 'Lug nuts', w.lugNuts, [
-              trimMatch(w.lugNuts, 'cap', 'Match cap', 'Center cap', capWears),
-              trimMatch(w.lugNuts, 'face', 'Match wheel', 'Wheel paint', face),
-              trimMatch(w.lugNuts, 'body', 'Match body', 'Body paint', body),
-            ]),
-            // The bolt hardware shows for a wheel model that draws any.
-            ...(hasHardware(wheelId)
-              ? [
-                  trimSection(host, 'Bolts', w.hardware, [
-                    trimMatch(w.hardware, 'cap', 'Match cap', 'Center cap', capWears),
-                    trimMatch(w.hardware, 'face', 'Match wheel', 'Wheel paint', face),
-                    trimMatch(w.hardware, 'body', 'Match body', 'Body paint', body),
-                  ]),
-                ]
-              : []),
-          );
-          break;
-        case 'calipers':
-          // One caliper paint for all four corners, whatever the axle switch says.
-          host.body.append(section('Calipers', paintPicker(v.calipers, ACCENT_FINISHES, () => host.changed(), [matchBody(v.calipers, v.paint)]), note('One paint for all four corners.')));
-          break;
-      }
+          ),
+        ),
+        surface(
+          'wheels',
+          trimSection(host, 'Lip', w.lip, [
+            trimMatch(w.lip, 'face', 'Match wheel', 'Wheel paint', face),
+            trimMatch(w.lip, 'body', 'Match body', 'Body paint', body),
+          ]),
+        ),
+        surface('wheels', trimSection(host, 'Center cap', w.cap, [trimMatch(w.cap, 'face', 'Match wheel', 'Wheel paint', face), trimMatch(w.cap, 'body', 'Match body', 'Body paint', body)])),
+        surface(
+          'hardware',
+          trimSection(host, 'Lug nuts', w.lugNuts, [
+            trimMatch(w.lugNuts, 'cap', 'Match cap', 'Center cap', capWears),
+            trimMatch(w.lugNuts, 'face', 'Match wheel', 'Wheel paint', face),
+            trimMatch(w.lugNuts, 'body', 'Match body', 'Body paint', body),
+          ]),
+        ),
+        // The bolt hardware shows for a wheel model that draws any.
+        ...(hasHardware(wheelId)
+          ? [
+              surface(
+                'hardware',
+                revealable(trimSection(host, 'Bolts', w.hardware, [
+                  trimMatch(w.hardware, 'cap', 'Match cap', 'Center cap', capWears),
+                  trimMatch(w.hardware, 'face', 'Match wheel', 'Wheel paint', face),
+                  trimMatch(w.hardware, 'body', 'Match body', 'Body paint', body),
+                ]), 'bolts'),
+              ),
+            ]
+          : []),
+      );
       break;
     }
     case 'vinyl':
       renderVinyls(host);
       break;
-    case 'style': {
-      // The Style tab's night look, shown with the room's lights down: the glass, then the underglow.
-      const g = v.underglow;
+    case 'tint':
+      // The night look, shown with the room's lights down (as Neon is): the glass catching the shop's lights.
       host.body.append(
         section(
           'Window tint',
@@ -348,6 +351,12 @@ export function renderTabContent(host: TabHost): void {
             host.changed();
           }),
         ),
+      );
+      break;
+    case 'neon': {
+      // The underglow with the room's lights down, so the glow reads on the floor.
+      const g = v.underglow;
+      host.body.append(
         section(
           'Underglow',
           field(
@@ -402,35 +411,34 @@ export function renderTabContent(host: TabHost): void {
       break;
     }
     case 'body': {
-      // One part slot at a time: the slots on a cycler (a ringed dot on those with a part fitted), then its parts.
+      // Every part slot listed (a part list each, or a line while a slot has none yet); the one in hand frames the camera.
       const slots: PartSlot[] = ['body', ...BODY_PART_SLOTS];
-      const slot = host.bodySlot;
-      const parts = partsFor(b.carId, slot);
-      const optional = OPTIONAL_SLOTS.includes(slot);
-      const items: { value: string | null; label: string; sub?: string }[] = [{ value: null, label: optional ? 'None' : 'Stock' }, ...parts.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` }))];
-      const dev = [...host.assets.devParts.entries()].filter(([, d]) => d.slot === slot).map(([id, d]) => ({ value: id, label: d.name, sub: 'Dev preview' }));
-      items.push(...dev);
-      const pick = cycler(
-        slots.map((s) => ({ value: s, label: SLOT_LABELS[s], mark: !!v.parts[s] })),
-        slot,
-        (s) => {
-          host.bodySlot = s;
-          host.reframe();
-          rerenderFromPicker(host);
-        },
-      );
-      host.body.append(
-        section('Part', pick),
-        section(
+      for (const slot of slots) {
+        const parts = partsFor(b.carId, slot);
+        const optional = OPTIONAL_SLOTS.includes(slot);
+        const items: { value: string | null; label: string; sub?: string }[] = [{ value: null, label: optional ? 'None' : 'Stock' }, ...parts.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` }))];
+        const dev = [...host.assets.devParts.entries()].filter(([, d]) => d.slot === slot).map(([id, d]) => ({ value: id, label: d.name, sub: 'Dev preview' }));
+        items.push(...dev);
+        const group = section(
           SLOT_LABELS[slot],
           items.length > 1
             ? choiceList(items, v.parts[slot] ?? null, (id) => {
                 v.parts[slot] = id;
                 void host.changed(true);
               })
-            : h('div', { class: 'muted garage-note garage-note--empty' }, slot === 'body' ? 'Only the stock body for this car.' : 'No parts for this slot yet. See docs/partsAuthoring.md to add one.'),
-        ),
-      );
+            : note(slot === 'body' ? 'Only the stock body for this car.' : 'No parts for this slot yet.'),
+        );
+        group.dataset.slot = slot;
+        host.body.append(
+          framing(group, host, () => {
+            if (host.bodySlot === slot) return false;
+            host.bodySlot = slot;
+            return true;
+          }),
+        );
+      }
+      // A slot picked from elsewhere (the dev part drop) scrolls into view; one already in view stays put.
+      if (host.bodySlot !== 'body') requestAnimationFrame(() => host.body.querySelector(`[data-slot='${host.bodySlot}']`)?.scrollIntoView({ block: 'nearest' }));
       break;
     }
     case 'tune':
@@ -466,12 +474,12 @@ function linkToggle(host: TabHost): HTMLElement {
 }
 
 /**
- * The wheels' link and, unlinked, the Front / Rear switch, for the Wheels tab's picker and the Paint tab's wheel
- * paint: linked, front and rear wear the same wheel and paint; unlinked, the switch says which pair a pick dresses.
+ * The wheels' link, at the right of the Wheels tab's picker and the Paint tab's wheel paint titles: linked, front and
+ * rear wear the same wheel and paint; unlinked, the Front / Rear switch (axleSwitch) says which pair a pick dresses.
  */
-function wheelAxleTools(host: TabHost): Node[] {
+function wheelLink(host: TabHost): HTMLElement {
   const linked = host.prefs.linkWheels;
-  const link = toggle(
+  return toggle(
     linked ? Link2 : Link2Off,
     'Link',
     linked,
@@ -490,30 +498,22 @@ function wheelAxleTools(host: TabHost): Node[] {
       host.renderTab();
     },
   );
-  return linked
-    ? [link]
-    : [
-        link,
-        segmented(
-          AXLES.map((a) => ({ value: a, label: capital(a) })),
-          host.wheelAxle,
-          (a) => {
-            host.wheelAxle = a;
-            host.renderTab();
-          },
-        ),
-      ];
 }
 
-/**
- * Re-render the tab for a pick on its leading cycler (the Paint tab's surface, the Body tab's slot), which the
- * render replaces: keyboard and pad focus moves to the new one, so left and right keep stepping it.
- */
-function rerenderFromPicker(host: TabHost): void {
-  const focused = document.activeElement?.classList.contains('cycler') ?? false;
-  host.renderTab();
-  const next = host.body.querySelector<HTMLElement>('.cycler');
-  if (focused) next?.focus({ preventScroll: true });
+/** The Front / Rear switch while the wheels are unlinked: which pair the Wheels and Paint tabs' picks dress. */
+function axleSwitch(host: TabHost): HTMLElement {
+  return revealable(h(
+    'div',
+    { class: 'row' },
+    segmented(
+      AXLES.map((a) => ({ value: a, label: capital(a) })),
+      host.wheelAxle,
+      (a) => {
+        host.wheelAxle = a;
+        host.renderTab();
+      },
+    ),
+  ), 'axle-switch');
 }
 
 /** The Tune tab: the stat lines, launch control and the four setup sliders. */
@@ -585,10 +585,9 @@ function trimSection(host: TabHost, name: string, trim: WheelTrim, matches: Pain
 }
 
 /** A trim's match: on, the trim wears `mode`'s paint; off, it takes that paint as its own, so nothing jumps. */
-function trimMatch(trim: WheelTrim, mode: WheelTrimMode, label: string, name: string, wears: () => Paint<AccentFinish>, ico?: IconNode): PaintMatch {
+function trimMatch(trim: WheelTrim, mode: WheelTrimMode, label: string, name: string, wears: () => Paint<AccentFinish>): PaintMatch {
   return {
     label,
-    ico,
     wears: () => ({ name, paint: wears() }),
     on: () => trim.mode === mode,
     set: (on) => {

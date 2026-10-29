@@ -13,9 +13,9 @@ import { tuningForBuild } from '../sim/build';
 import type { SpecBadge } from '../shared/carSpec';
 import { measureStats, statBars } from '../sim/stats';
 import type { CarStats } from '../sim/stats';
-import { btn, cycler, h, sheen, specChip } from '../ui/kit/dom';
+import { btn, cycler, h, prefersReducedMotion, selectMenu, sheen, specChip } from '../ui/kit/dom';
 import { KMH_PER_MPH, horsepower } from '../ui/kit/units';
-import { Paintbrush, IconNode } from '../ui/kit/icons';
+import type { IconNode } from '../ui/kit/icons';
 
 /** A label from a lower case id: "metallic" reads "Metallic". */
 export const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -59,6 +59,84 @@ export type Child = Node | false | null;
  * tabs only.
  */
 export const section = (label: string, ...children: Child[]) => h('div', { class: 'garage-section' }, h('div', { class: 'section-title' }, label), ...children);
+
+/**
+ * Mark a piece a toggle shows or hides (the colors chrome hides, the Front / Rear switch the Link hides) with a key
+ * naming it among its redraw's pieces, so revealNew slides it open when a redraw brings it and closed when one takes it.
+ */
+export function revealable<T extends HTMLElement>(el: T, key: string): T {
+  el.dataset.reveal = key;
+  return el;
+}
+
+/** The slide every toggle in the garage shares (revealNew): its length (ms) and the --ease-out curve (base/_tokens.scss). */
+const REVEAL = { ms: 300, ease: 'cubic-bezier(0.2, 0.8, 0.2, 1)' } as const;
+
+/** An element's place under `root` as child indexes, so a redraw's matching parent can be found again. */
+function pathFrom(root: Element, el: Element): number[] {
+  const path: number[] = [];
+  for (let at: Element = el; at !== root && at.parentElement; at = at.parentElement) path.unshift([...at.parentElement.children].indexOf(at));
+  return path;
+}
+
+/** The flex gap above a piece (its nearest boxed ancestor's row gap), which an opening or closing piece slides in or out with it. */
+function gapAbove(el: Element): number {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const cs = getComputedStyle(p);
+    if (cs.display !== 'contents') return parseFloat(cs.rowGap) || 0;
+  }
+  return 0;
+}
+
+/** Slide a piece open (`open`) from nothing or closed to nothing: height, the gap above it and opacity together. */
+function slide(el: HTMLElement, height: number, open: boolean): Animation {
+  const shut = { height: '0px', marginTop: `${-gapAbove(el)}px`, opacity: 0 };
+  const full = { height: `${height}px`, marginTop: '0px', opacity: 1 };
+  el.style.overflow = 'hidden';
+  const a = el.animate(open ? [shut, full] : [full, shut], { duration: REVEAL.ms, easing: REVEAL.ease, fill: open ? 'none' : 'forwards' });
+  a.onfinish = a.oncancel = () => {
+    el.style.overflow = '';
+  };
+  return a;
+}
+
+/**
+ * Redraw `root` with `draw`, sliding toggled pieces like a slide toggle: each revealable the redraw brought (by
+ * key) opens from nothing as it fades in, and each it took away stays where it stood, inert, while it closes and
+ * fades out, so the rows around them glide instead of jumping. One slide for every toggle in the garage; reduced
+ * motion just redraws.
+ */
+export function revealNew(root: HTMLElement, draw: () => void): void {
+  const keyed = () => [...root.querySelectorAll<HTMLElement>('[data-reveal]')];
+  if (prefersReducedMotion()) return draw();
+  // Before: each piece's key, place and height, so one the redraw drops can stand in its old place as it closes.
+  const before = keyed().map((el) => ({ el, key: el.dataset.reveal!, path: pathFrom(root, el), height: el.getBoundingClientRect().height }));
+  draw();
+  const after = keyed();
+  const kept = new Set(after.map((el) => el.dataset.reveal));
+  const had = new Set(before.map((b) => b.key));
+  for (const el of after) if (!had.has(el.dataset.reveal!)) slide(el, el.getBoundingClientRect().height, true);
+  for (const b of before) {
+    if (kept.has(b.key) || !root.isConnected) continue;
+    // Back where it stood: under the redraw's parent at the same place, out of the keys and the focus order.
+    let parent: Element | undefined = root;
+    for (const i of b.path.slice(0, -1)) parent = parent?.children[i];
+    if (!parent) continue;
+    const ghost = b.el;
+    delete ghost.dataset.reveal;
+    ghost.inert = true;
+    ghost.setAttribute('aria-hidden', 'true');
+    parent.insertBefore(ghost, parent.children[b.path[b.path.length - 1]] ?? null);
+    slide(ghost, b.height, false).finished.then(() => ghost.remove(), () => ghost.remove());
+  }
+}
+
+/** A group with controls at the right end of its title, past the hairline (the Link toggles). */
+export function sectionWith(label: string, aside: Node[], ...children: Child[]): HTMLElement {
+  const el = section(label, ...children);
+  el.querySelector('.section-title')!.append(h('span', { class: 'garage-section__aside' }, ...aside));
+  return el;
+}
 
 /** A name over a control too tall for a row (a color picker): the rows' name, on a line of its own. */
 export const rowName = (label: string) => h('span', { class: 'garage-row__name' }, label);
@@ -120,10 +198,9 @@ export function colorPicker(value: string, onInput: (c: string, preset: boolean)
  * wheel ships it): a toggle in the picker's row. At most one of a picker's matches is on.
  */
 export interface PaintMatch {
-  /** The toggle's short label ("Match body"). */
+  /** Its option's label in the picker's dropdown ("Match body"). */
   label: string;
-  ico?: IconNode;
-  /** What the surface wears while on, named in the note that replaces the controls ("Body paint"). */
+  /** What the surface wears while on ("Body paint"); the dropdown shows its color. */
   wears: () => { name: string; paint: Paint<AccentFinish> };
   on: () => boolean;
   /** Turn it on (any other match goes off) or off (the surface takes back a paint of its own). */
@@ -144,45 +221,53 @@ export function matchBody<F extends AccentFinish>(a: AccentPaint<F>, body: Paint
 }
 
 /**
- * A paint's controls (body, trim, wheels and their trims, calipers): its color over its finish (`finishes`: the
- * ones this surface takes; the body has no chrome), edited in place, then onChange. `matches` (Match body, Match
- * wheel...) sit in a row above: while one is on, the surface wears that paint and the picker shows it instead of
- * its controls. Chrome is one look with no color (CHROME_COLOR), so the color picker hides while it is chosen.
+ * A paint's controls (body, wheels and their trims, calipers): its color over its finish (`finishes`: the ones this
+ * surface takes; the body has no chrome), edited in place, then onChange. With `matches` (Stock chrome, Match body,
+ * Match wheel...) a dropdown leads, Custom first: a match wears that paint and hides the controls, Custom brings them
+ * back. Each option shows the color it wears. Chrome is one look with no color (CHROME_COLOR), so the color picker
+ * hides while it is chosen. What a pick shows or hides slides (revealNew).
  */
 export function paintPicker<F extends AccentFinish>(paint: Paint<F>, finishes: readonly F[], onChange: () => void, matches: PaintMatch[] = []): HTMLElement {
   const root = h('div', { class: 'garage-paint' });
   const draw = () => {
     const active = matches.find((m) => m.on());
-    const worn = active?.wears();
     root.replaceChildren(
       ...(matches.length
         ? [
-            h(
-              'div',
-              { class: 'row' },
-              ...matches.map((m) => {
-                const name = m.wears().name.toLowerCase();
-                return toggle(m.ico ?? Paintbrush, m.label, m === active, m === active ? `Wearing the ${name}` : `Wear the ${name}`, () => {
-                  m.set(m !== active);
+            field(
+              'Paint',
+              selectMenu(
+                [{ value: 'custom', label: 'Custom', swatch: paint.color }, ...matches.map((m, i) => ({ value: String(i), label: m.label, swatch: m.wears().paint.color }))],
+                active ? String(matches.indexOf(active)) : 'custom',
+                (v) => {
+                  if (v === 'custom') active?.set(false);
+                  else matches[Number(v)].set(true);
                   onChange();
-                  draw();
-                });
-              }),
+                  revealNew(root, draw);
+                },
+                'What this surface wears',
+              ),
             ),
           ]
         : []),
-      ...(worn
-        ? [h('div', { class: 'muted garage-note' }, h('span', { class: 'garage-dot', style: `background:${worn.paint.color}` }), `${worn.name} · ${capital(worn.paint.finish)}`)]
+      ...(active
+        ? []
         : [
             ...(paint.finish === 'chrome'
               ? []
               : [
-                  colorPicker(paint.color, (c) => {
-                    paint.color = c;
-                    onChange();
-                  }),
+                  revealable(
+                    colorPicker(paint.color, (c) => {
+                      paint.color = c;
+                      // Custom's chip in the dropdown follows the color picked.
+                      root.querySelector<HTMLElement>('.dropdown__summary > .dropdown__swatch')?.style.setProperty('background', c);
+                      onChange();
+                    }),
+                    'colors',
+                  ),
                 ]),
-            cycler(
+            revealable(
+              cycler(
               finishes.map((f) => ({ value: f, label: capital(f) })),
               paint.finish,
               (f) => {
@@ -194,9 +279,11 @@ export function paintPicker<F extends AccentFinish>(paint: Paint<F>, finishes: r
                 if (!swap) return;
                 // The redraw replaces the cycler: focus follows to the new one, so the keys keep stepping it.
                 const focused = root.contains(document.activeElement);
-                draw();
+                revealNew(root, draw);
                 if (focused) root.querySelector<HTMLElement>('.cycler')?.focus({ preventScroll: true });
               },
+              ),
+              'finish',
             ),
           ]),
     );

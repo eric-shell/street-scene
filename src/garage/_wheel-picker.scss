@@ -1,99 +1,40 @@
-/* The Wheels tab's wheel picker (wheelPicker.ts): two wells side by side filling the tab (the section that holds it
-   grows to the body's height, _garage-section.scss --fill). Down the left the makers, a column of small caps rows
-   with their counts (the one shown lit in the tab's hue, a yellow dot on the maker of the wheel fitted); on the
-   right the wheels, two tiles to a row under a heading per maker that sticks to the top of the well as its
-   wheels scroll by. A tile is a chamfered plate holding the wheel's thumbnail on a faint hue spotlight with
-   the name under it; it edges and washes in the hue on hover like a pick in a list, and the wheel fitted is
-   lit along its foot. Until its thumbnail lands a tile shows an empty ring where the wheel will be. */
+/* The Wheels tab's wheel picker (wheelPicker.ts), filling the tab (the section that holds it grows to the body's
+   height, _garage-section.scss --fill): the makers filter (the kit's multi-select) on top, and under it one well of
+   wheels across the full width, as many tiles to a row as fit, under a heading per maker that sticks to the top of
+   the well as its wheels scroll by. A tile is a chamfered plate holding the wheel's thumbnail on a faint hue
+   spotlight with the name under it; it edges and washes in the hue on hover like a pick in a list, and the wheel
+   fitted is lit along its foot. Until its thumbnail lands a tile shows an empty ring where the wheel will be. */
 @use '../ui/styles/abstracts/mixins';
 @use '../ui/styles/abstracts/media';
 .wheel-picker {
   flex: 1 1 auto;
   min-height: 300px;
-  display: grid;
-  /* The makers' column fits the longest name (Kamaitachi) with its count. */
-  grid-template-columns: 124px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   @include media.narrow {
     min-height: 240px;
-    grid-template-columns: 112px minmax(0, 1fr);
   }
-  /* The two wells: each scrolls on its own inside its cut. */
-  &__makers,
-  &__wheels {
-    @include mixins.chamfer(8px);
-    @include mixins.scroll-y;
-    min-height: 0;
-    padding: 5px;
-    background: var(--well);
-    border: 1px solid var(--line);
-  }
-  &__makers {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  &__maker {
-    @include mixins.chamfer(5px);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
+  &__filter {
     flex: none;
-    padding: 6px 7px 6px 8px;
-    font: 700 11px var(--font);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    text-align: left;
-    color: var(--soft);
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 0;
-    cursor: pointer;
-    transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
-    &:hover,
-    &:focus-visible {
-      border-color: rgba(var(--hue-rgb), 0.5);
-      background: var(--surface-hover);
-      color: var(--text);
-      outline: none;
-    }
-    &:focus-visible {
-      box-shadow: var(--ring);
-    }
-    &.is-selected {
-      border-color: rgba(var(--hue-rgb), 0.7);
-      background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.28), rgba(var(--hue-rgb), 0.08)), var(--surface);
-      box-shadow: inset 3px 0 0 var(--hue);
-      color: var(--text);
-    }
-    /* The maker of the wheel fitted carries a yellow dot after its name. */
-    &.is-current .wheel-picker__maker-name::after {
-      content: '';
-      display: inline-block;
-      width: 5px;
-      height: 5px;
-      margin-left: 5px;
-      border-radius: 50%;
-      background: var(--accent-2);
-      vertical-align: middle;
-    }
-  }
-  &__maker-name {
-    @include mixins.ellipsis;
-    min-width: 0;
   }
   &__count {
     flex: none;
     font-weight: 600;
     letter-spacing: 0.02em;
     color: var(--muted);
-    .is-selected > & {
-      color: var(--hue);
-    }
   }
+  /* The well: it scrolls on its own inside its cut, up and down only. The headings bleed into its side padding,
+     which would otherwise count as overflow and scroll it sideways by that much. */
   &__wheels {
+    @include mixins.chamfer(8px);
+    @include mixins.scroll-y;
+    overflow-x: hidden;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 5px;
+    background: var(--well);
+    border: 1px solid var(--line);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -102,6 +43,10 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+    /* A maker the filter leaves out. */
+    &[hidden] {
+      display: none;
+    }
   }
   /* A maker's heading, stuck to the top of the well over its own wheels; the well's background behind it so the
      tiles scroll under it, not through it. */
@@ -128,7 +73,7 @@
   }
   &__grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
     gap: 6px;
   }
   &__tile {

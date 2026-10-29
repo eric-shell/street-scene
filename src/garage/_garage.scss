@@ -245,17 +245,19 @@ $step-rise: 0.58s, 0.45s, 0.32s;
           animation-delay: 120ms;
         }
       }
-    }
-    input[type='range'] {
+    }    input[type='range'] {
       accent-color: var(--hue);
     }
-    /* Picks in a segmented control, cyclers, switches and toggles that are on (linked, match body, mirrored)
+    /* Picks in a segmented control, cyclers, switches, dropdowns and toggles that are on (linked, match body, mirrored)
        take the tab's hue; the screen's actions (Export) stay orange. */
     .cycler {
       --cycler-ink: var(--hue);
     }
     .switch {
       --switch-ink: var(--hue);
+    }
+    .dropdown {
+      --dropdown-ink: var(--hue);
     }
     .segmented__option.is-selected,
     .btn--primary.garage-toggle {
@@ -290,7 +292,7 @@ $step-rise: 0.58s, 0.45s, 0.32s;
 
 /* Each category's hue, on its tab and, while it is open, on the body (garageUi.ts sets data-tab on the root).
    Every category has its own: Model orange like the menu's Garage row, Stance purple, Wheels cyan, Paint red,
-   Tune green, Body yellow, Style blue. Vinyls (behind FEATURES.vinyls) is the eighth and borrows Paint's red. */
+   Tune green, Body yellow, Tint blue, Neon pink. Vinyls (behind FEATURES.vinyls) is the ninth and borrows Paint's red. */
 $tab-hues: (
   'orange': (model),
   'purple': (stance),
@@ -298,7 +300,8 @@ $tab-hues: (
   'red': (paint, vinyl),
   'green': (tune),
   'yellow': (body),
-  'blue': (style),
+  'blue': (tint),
+  'pink': (neon),
 );
 @each $hue, $tabs in $tab-hues {
   $attrs: ();

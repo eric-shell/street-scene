@@ -18,6 +18,7 @@ export {
   Copy,
   Flag,
   FlagTriangleRight,
+  ListFilter,
   Gauge,
   Heart,
   Info,

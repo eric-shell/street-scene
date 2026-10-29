@@ -7,8 +7,8 @@
  * over the garage's slots, one build to a row. Customize (step two) is the tabs of
  * live-preview categories over the open tab's groups, each tab laid out to fit
  * the column without scrolling where it can (one line sliders, the wheel picker
- * filling the tab with its own scrolling panes, the Body and Paint tabs one part
- * slot or surface at a time). Under both steps the Save button;
+ * filling the tab under its makers filter, the Body and Paint tabs every part
+ * slot or surface listed, the camera on the one in hand). Under both steps the Save button;
  * beside the rail the 3D view framed to the free space, with the Garage /
  * Street switch and the camera at the bottom. Steps slide like the menu's and
  * Escape or the back button goes back one. Body part menus are populated
@@ -56,7 +56,7 @@ import { Car, Check, ChevronRight, CircleUser, CloudOff, Copy, Download, Gauge, 
 import { GarageScene } from './garageScene';
 import { track } from '../analytics/telemetry';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, importBuild, loadGaragePrefs, randomBuild, saveGaragePrefs, shareUrl } from './storage';
-import { section, statLines } from './garageWidgets';
+import { revealNew, section, statLines } from './garageWidgets';
 import type { Child } from './garageWidgets';
 import { AUTHORS, renderTabContent, TABS } from './garageTabs';
 import type { PaintSurface, Tab, TabHost } from './garageTabs';
@@ -121,14 +121,16 @@ export class GarageScreen implements TabHost {
   private step: Step = 'builds';
   /** The steps, sliding in the rail's column above the Save button. */
   private readonly steps: RailSteps;
-  /** The Body tab's part slot on show: one at a time, so the tab never scrolls through all of them. */
+  /** The Body tab's part slot last touched: every slot is listed, the camera frames this one. */
   bodySlot: PartSlot = 'body';
-  /** The Paint tab's surface on show: one at a time, like the Body tab's slots. */
+  /** The Paint tab's surface last touched: every surface is listed, the camera frames this one. */
   paintSurface: PaintSurface = 'body';
   /** The axle the Wheels tab's wheel and the Paint tab's wheel paint dress while front and rear are unlinked. */
   wheelAxle: Axle = 'front';
-  /** The maker the wheel picker shows (null: all of them). */
-  wheelMaker: string | null = null;
+  /** The makers the wheel picker shows (empty: all of them). */
+  wheelMakers: string[] = [];
+  /** The tab the body was last rendered for, so a re-render within it can fade in what a toggle brought back. */
+  private renderedTab: Tab | null = null;
   readonly wheelThumbs: WheelThumbs;
   /** The current slot as last saved (JSON): the build differs from it while it has unsaved changes. */
   private savedJson: string;
@@ -425,7 +427,7 @@ export class GarageScreen implements TabHost {
     if (!wantsSignIn()) return null;
     const note = h(
       'div',
-      { class: 'garage-note' },
+      { class: 'garage-note garage-note--plate' },
       icon(CloudOff, { size: 16 }),
       h('span', { class: 'garage-note__text' }, 'Your builds are saved on this device only'),
       btn(CircleUser, 'Sign in', () => this.whenSaved(() => openSignInDialog(this.uiRoot)), '--small garage-note__go'),
@@ -442,7 +444,7 @@ export class GarageScreen implements TabHost {
 
   /**
    * Back to the Builds step. Back is cancel: unsaved edits are discarded, after a prompt that also offers to
-   * save them or keep editing, so the build card and the slots only ever show what the slot holds.
+   * save them (closing it keeps editing), so the build card and the slots only ever show what the slot holds.
    */
   private backToBuilds(): void {
     if (!this.isDirty()) return this.go('builds');
@@ -451,12 +453,14 @@ export class GarageScreen implements TabHost {
       fn();
       this.go('builds');
     };
+    // Discard, the likely answer, is the primary on the left; Save stays quiet on the right. Escape, the close button
+    // or a click outside keeps editing.
     const discard = btn(Undo2, 'Discard', act(() => this.revert()), '--primary');
     this.openDialog(
       Undo2,
       'Discard changes?',
       h('div', { class: 'muted' }, `Going back discards the changes to "${this.build.name}" since it was last saved.`),
-      h('div', { class: 'row' }, discard, btn(Save, 'Save', act(() => this.save())), btn(null, 'Keep editing', () => this.closeDialog())),
+      h('div', { class: 'row' }, discard, h('span', { class: 'dialog__spacer' }), btn(Save, 'Save', act(() => this.save()))),
     );
     discard.focus();
   }
@@ -630,6 +634,8 @@ export class GarageScreen implements TabHost {
   private setTab(t: Tab): void {
     const switched = t !== this.tab;
     this.tab = t;
+    // The Paint tab opens at its top, so its shot starts on the body paint.
+    if (switched && t === 'paint') this.paintSurface = 'body';
     this.placing = null;
     this.configureEngine();
     this.tabBar.querySelectorAll<HTMLElement>('.garage-tab').forEach((b) => {
@@ -843,7 +849,11 @@ export class GarageScreen implements TabHost {
   renderTab(): void {
     // A re-render within the tab (a tier picked, a slot added) keeps the scroll; emptying the body would reset it.
     const scroll = this.body.scrollTop;
-    renderTabContent(this);
+    // Within the tab, what a toggle brought back fades in (revealNew); a new tab cascades in whole (setTab).
+    const same = this.renderedTab === this.tab;
+    this.renderedTab = this.tab;
+    if (same) revealNew(this.body, () => renderTabContent(this));
+    else renderTabContent(this);
     this.body.scrollTop = scroll;
   }
 

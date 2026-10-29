@@ -9,7 +9,7 @@
  * is a modifier of the helper's block, so `btn(icon, 'Race', go, '--primary
  * event-card__go')` is a `btn btn--primary event-card__go`.
  */
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, icon, type IconNode } from './icons';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, icon, type IconNode } from './icons';
 import type { SpecBadge } from '../../shared/carSpec';
 
 type Child = Node | string | null | undefined | false;
@@ -159,6 +159,141 @@ export function cycler<T extends string>(options: readonly { value: T; label: st
       show();
     },
   });
+}
+
+/** One option of a dropdown: its label, an optional count after it, `mark` for a yellow dot (the maker of the wheel fitted), `swatch` a color chip before it. */
+export interface DropOption<T extends string> {
+  value: T;
+  label: string;
+  count?: number;
+  mark?: boolean;
+  swatch?: string;
+}
+
+/**
+ * A dropdown's frame (kit/_dropdown.scss), shared by the single and the multi select: the button (an optional icon,
+ * the summary, a chevron) and the menu it opens. The menu is a popover in the top layer, placed under the button (over
+ * it when there is no room below), so no clipped or scrolling panel cuts it off. Escape, a click outside, the button
+ * or a scroll behind it closes it; opening focuses the row `focusOnOpen` names. Returns the parts and `open`.
+ */
+function dropdownFrame(menu: HTMLElement, label: string, ico: IconNode | undefined, cls: string, focusOnOpen: () => HTMLElement | undefined) {
+  const summary = h('span', { class: 'dropdown__summary' });
+  const button = h('button', { class: 'dropdown__button', type: 'button', 'aria-haspopup': 'true', 'aria-expanded': 'false', 'aria-label': label }, ico && icon(ico, { size: 16 }), summary, icon(ChevronDown, { size: 16 }), sheen());
+  const wrap = h('div', { class: bem('dropdown', cls) }, button, menu);
+  menu.popover = 'manual';
+  const outside = (e: Event) => {
+    if (!wrap.contains(e.target as Node)) open(false);
+  };
+  // A scroll behind the menu would leave it floating away from its button; one inside the menu is its own.
+  const scrolled = (e: Event) => {
+    if (!menu.contains(e.target as Node)) open(false);
+  };
+  const place = () => {
+    const r = button.getBoundingClientRect();
+    const below = innerHeight - r.bottom - 8;
+    const up = below < menu.offsetHeight && r.top > below;
+    menu.style.setProperty('--dropdown-x', `${r.left}px`);
+    menu.style.setProperty('--dropdown-w', `${r.width}px`);
+    menu.style.setProperty('--dropdown-y', `${up ? r.top - 4 - menu.offsetHeight : r.bottom + 4}px`);
+  };
+  const open = (on: boolean) => {
+    if (on === wrap.classList.contains('is-open')) return;
+    if (on) {
+      menu.showPopover();
+      place();
+    } else menu.hidePopover();
+    button.setAttribute('aria-expanded', String(on));
+    wrap.classList.toggle('is-open', on);
+    const listen = on ? document.addEventListener.bind(document) : document.removeEventListener.bind(document);
+    listen('pointerdown', outside, true);
+    listen('scroll', scrolled, true);
+  };
+  button.addEventListener('click', () => {
+    open(!wrap.classList.contains('is-open'));
+    if (wrap.classList.contains('is-open')) focusOnOpen()?.focus({ preventScroll: true });
+  });
+  // Escape closes the menu only, not the screen behind it.
+  wrap.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !wrap.classList.contains('is-open')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    open(false);
+    button.focus();
+  });
+  return { wrap, button, summary, open };
+}
+
+/** A dropdown option's row content: the swatch, the label (dotted when marked) and the count. */
+const dropRow = (o: Pick<DropOption<string>, 'label' | 'count' | 'mark' | 'swatch'>): Node[] =>
+  [
+    o.swatch ? h('span', { class: 'dropdown__swatch', style: `background:${o.swatch}` }) : null,
+    h('span', { class: bem('dropdown__label', o.mark ? '--marked' : '') }, o.label),
+    o.count !== undefined ? h('span', { class: 'dropdown__count' }, String(o.count)) : null,
+  ].filter((n): n is HTMLElement => n !== null);
+
+/**
+ * A single-select dropdown: the button shows the pick (its swatch and label); the menu lists every option, the
+ * pick marked, and a pick closes it and calls onChange. For a few picks too long for a segmented control (what a
+ * paint matches). `cls`: modifiers and extra classes.
+ */
+export function selectMenu<T extends string>(options: readonly DropOption<T>[], value: T, onChange: (v: T) => void, label: string, ico?: IconNode, cls = ''): HTMLElement {
+  const rows = options.map((o) => h('button', { class: bem('dropdown__option', o.value === value ? 'is-selected' : ''), type: 'button', role: 'menuitemradio', 'aria-checked': String(o.value === value) }, ...dropRow(o), o.value === value ? icon(Check, { size: 15 }) : null));
+  const menu = h('div', { class: 'dropdown__menu', role: 'menu', 'aria-label': label }, ...rows);
+  const f = dropdownFrame(menu, label, ico, `--single ${cls}`, () => rows[Math.max(0, options.findIndex((o) => o.value === value))]);
+  const at = options.find((o) => o.value === value) ?? options[0];
+  f.summary.replaceChildren(...dropRow({ label: at.label, swatch: at.swatch }));
+  rows.forEach((r, i) =>
+    r.addEventListener('click', () => {
+      f.open(false);
+      f.button.focus({ preventScroll: true });
+      if (options[i].value !== value) onChange(options[i].value);
+    }),
+  );
+  return f.wrap;
+}
+
+/**
+ * A multi-select dropdown: a button summing up the pick (`allLabel` while nothing narrows it, else the one or two
+ * names, else how many) that opens a menu of checkboxes under it, "All" first. Ticking All clears the pick, and
+ * ticking every option comes back to All. The menu stays open while options are ticked (onChange runs on each).
+ * `cls`: modifiers and extra classes.
+ */
+export function multiSelect<T extends string>(options: readonly DropOption<T>[], selected: readonly T[], allLabel: string, onChange: (selected: T[]) => void, ico?: IconNode, cls = ''): HTMLElement {
+  let pick = new Set(selected.filter((v) => options.some((o) => o.value === v)));
+  const box = (o: Pick<DropOption<string>, 'label' | 'count' | 'mark'>, extra = '') => {
+    const input = h('input', { type: 'checkbox' }) as HTMLInputElement;
+    const row = h('label', { class: bem('dropdown__option', extra) }, input, ...dropRow(o));
+    return { row, input };
+  };
+  const all = box({ label: allLabel }, '--all');
+  const rows = options.map((o) => box(o));
+  const menu = h('div', { class: 'dropdown__menu', role: 'group', 'aria-label': allLabel }, all.row, ...rows.map((r) => r.row));
+  const f = dropdownFrame(menu, allLabel, ico, `--multi ${cls}`, () => (rows.find((r) => r.input.checked) ?? all).input);
+  const show = () => {
+    all.input.checked = pick.size === 0;
+    rows.forEach((r, i) => (r.input.checked = pick.has(options[i].value)));
+    const names = options.filter((o) => pick.has(o.value)).map((o) => o.label);
+    f.summary.textContent = !names.length ? allLabel : names.length <= 2 ? names.join(', ') : `${names.length} selected`;
+    f.wrap.classList.toggle('is-narrowed', names.length > 0);
+  };
+  const changed = () => {
+    if (pick.size === options.length) pick = new Set();
+    show();
+    onChange(options.filter((o) => pick.has(o.value)).map((o) => o.value));
+  };
+  all.input.addEventListener('change', () => {
+    pick = new Set();
+    changed();
+  });
+  rows.forEach((r, i) =>
+    r.input.addEventListener('change', () => {
+      if (r.input.checked) pick.add(options[i].value);
+      else pick.delete(options[i].value);
+      changed();
+    }),
+  );
+  show();
+  return f.wrap;
 }
 
 /** An on / off switch: a track and knob that slides across, `aria-checked` its state. `label` names it for assistive tech. */

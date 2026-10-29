@@ -10,7 +10,7 @@ import { btn, h, iconBtn, sheen, toast } from '../ui/kit/dom';
 import { M_PER_FT } from '../ui/kit/units';
 import { FlipHorizontal2, MousePointerClick, Trash2, icon } from '../ui/kit/icons';
 import type { TabHost } from './garageTabs';
-import { choiceList, colorPicker, section, slider, toggle } from './garageWidgets';
+import { choiceList, colorPicker, revealable, section, slider, toggle } from './garageWidgets';
 
 /** Fill the body with the shapes to add, then the layers and the selected layer's controls. */
 export function renderVinyls(host: TabHost): void {
@@ -27,7 +27,7 @@ export function renderVinyls(host: TabHost): void {
     });
     shapes.append(b);
   }
-  host.body.append(section(`Add vinyl (${v.decals.length}/${MAX_DECALS})`, shapes, host.placing ? h('div', { class: 'garage-note' }, icon(MousePointerClick, { size: 14 }), 'Click on the painted body to place it') : null));
+  host.body.append(section(`Add vinyl (${v.decals.length}/${MAX_DECALS})`, shapes, host.placing ? revealable(h('div', { class: 'garage-note' }, icon(MousePointerClick, { size: 14 }), 'Click on the painted body to place it'), 'placing') : null));
   if (!v.decals.length) return;
   const layers = choiceList(
     v.decals.map((d, i) => ({ value: i, label: `${i + 1}. ${SHAPE_LABELS[d.shape]}`, extra: h('span', { class: 'garage-dot', style: `background:${d.color}` }) })),

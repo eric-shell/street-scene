@@ -126,6 +126,8 @@ describe('build validation', () => {
     // A tinted chrome saved before chrome lost its color reads plain chrome.
     expect(validateBuild({ visual: { wheels: { hardware: { mode: 'paint', color: '#2563d6', finish: 'chrome' } } } }).visual.wheels.hardware).toEqual({ mode: 'paint', color: '#dedede', finish: 'chrome' });
     expect(validateBuild({ visual: { wheels: { lugNuts: 'cap' } } }).visual.wheels.lugNuts.mode).toBe('cap');
+    // A stock lip (before it became a chrome paint) reads chrome.
+    expect(validateBuild({ visual: { wheels: { lip: { mode: 'stock', color: '#c9ced8', finish: 'metallic' } } } }).visual.wheels.lip).toEqual({ mode: 'paint', color: '#dedede', finish: 'chrome' });
     // The lettering is off unless a build says true.
     expect(validateBuild({ visual: { wheels: { lettering: 'yes' } } }).visual.wheels.lettering).toBe(false);
     // New per axle values win over legacy ones and are clamped independently.
@@ -147,7 +149,7 @@ describe('build validation', () => {
     expect(b!.visual.stance.rear.rideHeight).toBe(-0.03);
     expect(b!.visual.stance.front).toEqual({ rideHeight: -0.03, camber: -6, offset: 0.04, wheelSize: 1.15, wheelWidth: 1 });
     expect(b!.visual.stance.rear).toEqual({ rideHeight: -0.03, camber: -8.5, offset: 0.04, wheelSize: 1.15, wheelWidth: 1 });
-    expect(b!.visual.wheels).toEqual({ paint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPaint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'stock', color: '#c9ced8', finish: 'metallic' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: { mode: 'paint', color: '#dedede', finish: 'chrome' }, hardware: { mode: 'paint', color: '#dedede', finish: 'chrome' } });
+    expect(b!.visual.wheels).toEqual({ paint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPaint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'paint', color: '#dedede', finish: 'chrome' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: { mode: 'paint', color: '#dedede', finish: 'chrome' }, hardware: { mode: 'paint', color: '#dedede', finish: 'chrome' } });
     // Its wheel id is from a retired car: kept as saved (the renderer falls back to a wheel the car offers).
     expect(b!.visual.parts.wheels).toBe('wheel_s64_2');
     // Saved with the retired component upgrades (engine tier 2): it starts on the stock setup.

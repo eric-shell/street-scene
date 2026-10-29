@@ -70,7 +70,7 @@ export function randomBuild(name = DEFAULT_BUILD_NAME): CarBuild {
   v.paint = { color: pick([...SWATCHES.loud, ...SWATCHES.deep]), finish: pick<PaintFinish>(['gloss', 'metallic', 'metallic', 'pearl', 'candy', 'matte']) };
   v.wheels.paint = { color: pick(SWATCHES.metal), finish: pick<AccentFinish>(['metallic', 'gloss', 'matte', 'chrome']), match: false };
   v.wheels.rearPaint = { ...v.wheels.paint };
-  v.wheels.lip = { mode: 'stock', color: '#c9ced8', finish: 'metallic' };
+  v.wheels.lip = { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' };
   v.wheels.cap = { mode: 'face', color: '#c9ced8', finish: 'metallic' };
   // Chrome takes no color, so the black nuts are gloss black.
   v.wheels.lugNuts = pick<WheelTrim>([{ mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, { mode: 'paint', color: '#111214', finish: 'gloss' }]);

@@ -1,17 +1,19 @@
 /**
- * The Wheels tab's wheel picker: two panes side by side, filling the tab.
- * Down the left the makers (All first, then each maker with its count; a dot
- * on the maker of the wheel fitted), one tap to show just theirs. On the right
- * the wheels as tiles of their thumbnails (wheelThumbs.ts), two to a row so
- * the thumbnails read, under a heading per maker that sticks to the top of the
- * pane as that maker's wheels scroll by, so under All the hundred wheels still
- * say where you are. Makers and wheels alphabetical, a neutral order with no
- * ranking. The picker opens scrolled to the wheel fitted (and the makers to
- * its maker), and a tile asks for its thumbnail only as it scrolls into the
- * pane, so a maker's dozen wheels load, not all of them.
+ * The Wheels tab's wheel picker, filling the tab: a makers filter on top (the
+ * kit's multi-select: All, or any set of makers, each with its count and a dot
+ * on the maker of the wheel fitted), and under it the wheels as tiles of their
+ * thumbnails (wheelThumbs.ts) across the whole width, under a heading per maker
+ * that sticks to the top of the pane as that maker's wheels scroll by, so under
+ * All the hundred wheels still say where you are. Makers and wheels
+ * alphabetical, a neutral order with no ranking. The filter shows and hides the
+ * makers' groups in place, so its menu stays open for the next maker. The
+ * picker opens scrolled to the wheel fitted, and a tile asks for its thumbnail
+ * only as it scrolls into the pane, so a maker's dozen wheels load, not all of
+ * them.
  */
 import type { PartEntry } from '../shared/parts';
-import { h, sheen } from '../ui/kit/dom';
+import { h, multiSelect, sheen } from '../ui/kit/dom';
+import { ListFilter } from '../ui/kit/icons';
 import type { WheelThumbs } from './wheelThumbs';
 
 /** The wheels by maker (`group`), makers and wheels in alphabetical order; a wheel without one goes under Other, last. */
@@ -34,52 +36,52 @@ export interface WheelPickerOptions {
   wheels: PartEntry[];
   /** The wheel the axle on show wears. */
   current: string;
-  /** The maker on show, or null for All. */
-  maker: string | null;
+  /** The makers on show (empty: all of them). */
+  makers: string[];
   thumbs: WheelThumbs;
   /** The car's front offset target (mm), so the tiles show each face where this car sets it. */
   target?: number;
-  onMaker(maker: string | null): void;
+  onMakers(makers: string[]): void;
   onPick(id: string): void;
 }
 
 export function wheelPicker(o: WheelPickerOptions): HTMLElement {
   const groups = wheelGroups(o.wheels);
-  const maker = groups.some(([g]) => g === o.maker) ? o.maker : null;
   const currentGroup = groups.find(([, list]) => list.some((p) => p.id === o.current))?.[0];
 
-  // The makers down the left.
-  const makers = h('div', { class: 'wheel-picker__makers', role: 'tablist', 'aria-label': 'Makers', 'aria-orientation': 'vertical' });
-  let currentMaker: HTMLElement | null = null;
-  const makerBtn = (label: string, value: string | null, count: number) => {
-    const on = value === maker;
-    const b = h(
-      'button',
-      { type: 'button', role: 'tab', class: `wheel-picker__maker${on ? ' is-selected' : ''}${value !== null && value === currentGroup ? ' is-current' : ''}`, 'aria-selected': String(on) },
-      h('span', { class: 'wheel-picker__maker-name' }, label),
-      h('span', { class: 'wheel-picker__count' }, String(count)),
-    );
-    if (value === currentGroup) b.title = `${label}: the wheel fitted is one of theirs`;
-    if (on) currentMaker = b;
-    b.addEventListener('click', () => o.onMaker(value));
-    return b;
-  };
-  makers.append(makerBtn('All', null, o.wheels.length), ...groups.map(([g, list]) => makerBtn(g, g, list.length)));
-
-  // The wheels on the right: a heading and a grid per maker shown.
+  // The wheels: a heading and a grid per maker, every maker built and the filter hiding the rest.
   const wheels = h('div', { class: 'wheel-picker__wheels' });
   const tiles: HTMLElement[] = [];
+  const shown = new Map<string, HTMLElement>();
   let currentTile: HTMLElement | null = null;
   for (const [group, list] of groups) {
-    if (maker !== null && group !== maker) continue;
     const grid = h('div', { class: 'wheel-picker__grid' });
     for (const p of list) {
       const t = tile(p, group);
       if (p.id === o.current) currentTile = t;
       grid.append(t);
     }
-    wheels.append(h('div', { class: 'wheel-picker__group' }, h('div', { class: 'wheel-picker__head' }, h('span', { class: 'wheel-picker__head-name' }, group), h('span', { class: 'wheel-picker__count' }, `${list.length} ${list.length === 1 ? 'wheel' : 'wheels'}`)), grid));
+    const el = h('div', { class: 'wheel-picker__group' }, h('div', { class: 'wheel-picker__head' }, h('span', { class: 'wheel-picker__head-name' }, group), h('span', { class: 'wheel-picker__count' }, `${list.length} ${list.length === 1 ? 'wheel' : 'wheels'}`)), grid);
+    shown.set(group, el);
+    wheels.append(el);
   }
+  const filter = (makers: readonly string[]) => {
+    for (const [g, el] of shown) el.hidden = makers.length > 0 && !makers.includes(g);
+  };
+  filter(o.makers);
+  const makers = multiSelect(
+    groups.map(([g, list]) => ({ value: g, label: g, count: list.length, mark: g === currentGroup })),
+    o.makers,
+    'All makers',
+    (m) => {
+      filter(m);
+      wheels.scrollTop = 0;
+      o.onMakers(m);
+    },
+    ListFilter,
+    'wheel-picker__filter',
+  );
+
   function tile(p: PartEntry, group: string): HTMLElement {
     const img = h('img', { class: 'wheel-picker__thumb', alt: '', draggable: 'false' }) as HTMLImageElement;
     const el = h(
@@ -119,8 +121,7 @@ export function wheelPicker(o: WheelPickerOptions): HTMLElement {
     pane.scrollTop = Math.max(0, top - (pane.clientHeight - el.offsetHeight) / 2);
   };
   requestAnimationFrame(() => {
-    reveal(wheels, currentTile);
-    reveal(makers, currentMaker);
+    if (currentTile && !currentTile.closest<HTMLElement>('.wheel-picker__group')!.hidden) reveal(wheels, currentTile);
     seen?.disconnect();
     seen = new IntersectionObserver(
       (entries, obs) => {

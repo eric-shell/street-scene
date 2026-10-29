@@ -84,7 +84,7 @@ export interface PartEntry {
    * seat says), or from stock on a one-piece wheel or one without `offset`, which is then its only move.
    */
   offsetBias?: number;
-  /** Wheels: how the lip ships, polished ('chrome') or in the face's paint ('rim'); missing reads 'rim'. */
+  /** Wheels: how the source models ship the lip, polished ('chrome') or in the face's paint ('rim'). Not read at runtime: a stock lip is chrome on every wheel. */
   lip?: 'chrome' | 'rim';
   /** Wheels: the lug circle the house lug nuts sit on; missing: no lug nuts (a solid face hides the hub). */
   lugs?: WheelLugs;
