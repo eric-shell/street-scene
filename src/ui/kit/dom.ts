@@ -76,6 +76,8 @@ export function scrollHint(scroller: HTMLElement, cls = ''): HTMLElement {
   scroller.addEventListener('scroll', update, { passive: true });
   new ResizeObserver(update).observe(scroller);
   new MutationObserver(update).observe(scroller, { childList: true, subtree: true });
+  // Parts rising in (the menu's opening, a garage tab's groups) overflow until they land, and nothing resizes when they do.
+  scroller.addEventListener('animationend', update);
   return wrap;
 }
 
