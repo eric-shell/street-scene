@@ -50,11 +50,33 @@
     opacity: 0;
     pointer-events: none;
   }
-  /* The menu's title rule, drawn out from the left on the splash; it pulses there and settles as it lands. */
+  /* The menu's title rule as the loading bar: drawn out from the left as a ghost of itself, then filled to the
+     menu's full strength as the boot reports its steps (--load, 0..1, set by splash.ts). The fill is clipped,
+     not scaled, so its gradient sits where the menu's does. */
   &__rule {
+    position: relative;
+    background: none;
     transform: scaleX(0);
     transform-origin: 0 50%;
     opacity: 0;
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: var(--rule);
+      opacity: 0.22;
+    }
+  }
+  &__rule-fill {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--rule);
+    clip-path: inset(0 calc((1 - var(--load, 0)) * 100%) 0 0);
+    @include media.motion {
+      transition: clip-path 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
   }
   /* Shrink-wrapped like .title-lockup, so the title wraps onto the same lines; JS centers and scales it. */
   &__block {
@@ -133,7 +155,7 @@
         animation: splash-impact 0.45s linear 0.3s both;
       }
       .splash__rule {
-        animation: splash-rule 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.7s both, splash-rule-pulse 1.6s ease-in-out 1.5s infinite alternate;
+        animation: splash-rule 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.7s both;
       }
       .splash__logo {
         animation: splash-logo-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.05s both;
@@ -216,14 +238,6 @@
   to {
     transform: scaleX(1);
     opacity: 1;
-  }
-}
-@keyframes splash-rule-pulse {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0.55;
   }
 }
 @keyframes splash-glow {
@@ -339,9 +353,13 @@
     }
   }
 }
-/* Without the animations the tagline that would track in is simply there. */
+/* Without the animations the tagline that would track in and the rule that would draw out are simply there. */
 @include media.reduced-motion {
-  .splash .title-lockup__tagline {
+  .splash .title-lockup__tagline,
+  .splash__rule {
     opacity: 1;
+  }
+  .splash__rule {
+    transform: none;
   }
 }

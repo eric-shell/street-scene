@@ -8,7 +8,7 @@
  * The game's boot holds the main thread for seconds (the renderer, the city, its shaders), which would stall most
  * of the flash-in's animations. So the game downloads beside the intro (vite.config.ts preloads its chunks) but only
  * runs once the flash-in has played; the splash then holds on the title until the menu is ready, its street still
- * moving (drawn from a worker, splashFx.ts) and its rule pulsing (opacity, which the compositor runs alone). The
+ * moving (drawn from a worker, splashFx.ts) and its rule filling as the game reports its boot steps. The
  * menu arrives no later for it: the intro no longer waits behind the game's boot. Deep links have no splash and
  * start the game at once. The music player starts here too (a small module and its catalog), so the opening track
  * plays with the splash instead of waiting for the game's bundle.

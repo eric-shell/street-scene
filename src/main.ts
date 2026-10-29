@@ -1053,6 +1053,8 @@ let photoDrone = false;
 let splashWarmup: number | null = null;
 /** Longest the splash waits for the menu car and the city's shaders before it lands anyway (ms). */
 const SPLASH_LAND_WAIT_MS = 4000;
+/** How full the splash's rule (its loading bar) is after each boot step: the game's bundle running, the car and traffic assets, the menu city, its car, then its shaders fill it. */
+const SPLASH_LOAD = { bundle: 0.35, assets: 0.55, city: 0.75, car: 0.9 } as const;
 
 /** The music dips a little while the menu shifts to a new city (MusicPlayer.setDip): the gain, how fast it eases (1/s), and where it is now. */
 const MUSIC_DIP = { gain: 0.6, rate: 5 } as const;
@@ -1120,8 +1122,10 @@ async function boot(): Promise<void> {
   const splash = deepLink ? null : (bootSplash() ?? showSplash(document.body));
   const loading = splash ? null : loadingScreen();
   if (loading) uiRoot.append(loading);
+  splash?.progress(SPLASH_LOAD.bundle);
   // Traffic models load beside the cars so no session draws its traffic late.
   [availability] = await Promise.all([assets.availability(), loadTrafficAssets()]);
+  splash?.progress(SPLASH_LOAD.assets);
   const code = params.get('build');
   let notice: (() => void) | null = null;
   if (code) {
@@ -1156,9 +1160,13 @@ async function boot(): Promise<void> {
   else if (params.has('freeroam')) startFreeRoam(seedStr);
   else showMenu();
   if (splash) {
+    splash.progress(SPLASH_LOAD.city);
     splashWarmup = 2;
     // The car arrives a moment later: one more frame for its materials.
-    void stage?.ready.then(() => splashWarmup !== null && (splashWarmup = Math.max(splashWarmup, 1)));
+    void stage?.ready.then(() => {
+      splash.progress(SPLASH_LOAD.car);
+      if (splashWarmup !== null) splashWarmup = Math.max(splashWarmup, 1);
+    });
   }
   loop.start();
   if (splash) {
@@ -1171,6 +1179,7 @@ async function boot(): Promise<void> {
     // never holds the menu.
     const st = stage;
     if (st) await Promise.race([st.ready.then(() => gr.renderer.compileAsync(st.night.scene, showreel.camera)).catch(() => undefined), new Promise((r) => setTimeout(r, SPLASH_LAND_WAIT_MS))]);
+    splash.progress(1);
     splashWarmup = null;
     arrival = splash;
     await splash.land(overlay);

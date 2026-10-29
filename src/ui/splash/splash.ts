@@ -7,8 +7,9 @@
  * at any width) scaled
  * up and centered; landing is a FLIP transform to the real block's rectangle,
  * after which the real one is shown and the splash removed, so the swap is
- * invisible. The rule pulses on the splash and settles as it lands on the
- * menu's own rule.
+ * invisible. The rule is the loading bar: it draws out as a ghost and fills
+ * to full strength as the boot reports its steps (`progress`), so it lands
+ * exactly as the menu's own rule.
  * The landing lights the nitrous: the splash's street floors it with its edges
  * burning through the stage colors, and the menu city revealed under it starts
  * in the race's own nitrous warp (post.ts) at the top stage, which eases out as
@@ -43,6 +44,8 @@ export interface Splash {
    * with it (0..1); null once it has burned out.
    */
   nitro(now: number): { warp: number; stage: number; blur: number } | null;
+  /** Fill the rule to this fraction of the load (0..1); it only ever grows. */
+  progress(fraction: number): void;
 }
 
 const TITLE = TITLE_WORDS.join(' ');
@@ -66,8 +69,11 @@ const SPLASH = {
   horizonGap: 0.06,
   horizonMin: 0.55,
   horizonMax: 0.86,
-  /** The rule under the title stops pulsing and settles to full strength this fast once the flight starts (s). */
-  ruleSettle: 0.25,
+  /** The load the rule shows once the fonts are in, and once the flash-in has played (boot.ts then runs the game) (0..1). */
+  fontsLoad: 0.1,
+  playedLoad: 0.2,
+  /** The rule's fill eases to each step this fast (_splash.scss's transition); the flight waits this long for a bar it has to finish (s). */
+  ruleFill: 0.4,
   /** The menu city's nitrous on landing: its peak warp (the top stage's), the stage climbing 1 to 3 over `climb` (s), held at full for `hold` (s), then easing out at `out` (1/s) like a burn ending. */
   nitroPeak: 1.4,
   nitroClimb: 0.45,
@@ -110,7 +116,7 @@ export function showSplash(parent: HTMLElement): Splash {
   let n = 0;
   const letters = titleWords((t) => t.split('').map((ch) => h('span', { class: 'splash__letter', style: `--i:${n++}` }, ch)));
   const logo = h('h1', { class: 'logo splash__logo', 'data-text': TITLE }, ...titleWords());
-  const rule = h('div', { class: 'title-lockup__rule splash__rule', 'aria-hidden': 'true' });
+  const rule = h('div', { class: 'title-lockup__rule splash__rule', 'aria-hidden': 'true' }, h('div', { class: 'splash__rule-fill' }));
   const title = h(
     'div',
     { class: 'title-lockup__title splash__title' },
@@ -131,11 +137,21 @@ export function showSplash(parent: HTMLElement): Splash {
   /** When the landing started (performance.now() ms), null before it or with reduced motion. */
   let landedAt: number | null = null;
 
+  let loaded = 0;
+  /** When the fill last moved (performance.now() ms). */
+  let filledAt = 0;
+  const progress = (f: number) => {
+    if (f <= loaded) return;
+    loaded = Math.min(1, f);
+    filledAt = performance.now();
+    rule.style.setProperty('--load', String(loaded));
+  };
   let from = '';
   let markPlayed!: () => void;
   const played = new Promise<void>((r) => (markPlayed = r));
   const intro = (async () => {
     await fontsReady();
+    progress(SPLASH.fontsLoad);
     // Center the block, enlarged as far as the viewport allows.
     const w = block.offsetWidth;
     const hgt = block.offsetHeight;
@@ -144,6 +160,7 @@ export function showSplash(parent: HTMLElement): Splash {
     block.style.transform = from;
     root.classList.add('is-playing');
     if (reduced) {
+      progress(SPLASH.playedLoad);
       markPlayed();
       return delay(SPLASH.reducedHold * 1000);
     }
@@ -155,7 +172,10 @@ export function showSplash(parent: HTMLElement): Splash {
       },
       title: () => block.getBoundingClientRect(),
     });
-    void delay(SPLASH.flashIn * 1000).then(markPlayed);
+    void delay(SPLASH.flashIn * 1000).then(() => {
+      progress(SPLASH.playedLoad);
+      markPlayed();
+    });
     await delay(SPLASH.hold * 1000);
   })();
 
@@ -172,6 +192,10 @@ export function showSplash(parent: HTMLElement): Splash {
       const head = menu?.querySelector<HTMLElement>('.title-lockup') ?? null;
       const ms = SPLASH.flight * 1000;
       const anims: Animation[] = [];
+      // The bar finishes filling before the title flies.
+      progress(1);
+      const filling = SPLASH.ruleFill * 1000 - (performance.now() - filledAt);
+      if (!reduced && filling > 0) await delay(filling);
       menu?.classList.remove('is-pending');
       if (menu && head && !reduced) {
         // The rest of the menu assembles around the title while it flies in.
@@ -180,13 +204,9 @@ export function showSplash(parent: HTMLElement): Splash {
         const to = head.getBoundingClientRect();
         anims.push(block.animate([{ transform: from }, { transform: `translate(${to.left}px, ${to.top}px) scale(1)` }], { duration: ms, easing: 'cubic-bezier(0.7, 0, 0.25, 1)', fill: 'forwards' }));
         anims.push(bg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms, easing: 'ease-in-out', fill: 'forwards' }));
-        // The road floors it into a warp and fades with the black; the rule is gone before the title lands.
+        // The road floors it into a warp and fades with the black.
         fx?.warp();
         anims.push(canvas.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.7, easing: 'ease-in-out', fill: 'forwards' }));
-        // The rule stops pulsing and lands as the menu's own (full strength, full width).
-        const ruleFrom = getComputedStyle(rule).opacity;
-        rule.style.animation = 'none';
-        anims.push(rule.animate([{ opacity: ruleFrom, transform: 'none' }, { opacity: 1, transform: 'none' }], { duration: SPLASH.ruleSettle * 1000, easing: 'ease-out', fill: 'forwards' }));
       } else {
         anims.push(root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: reduced ? 300 : ms, easing: 'ease-in-out', fill: 'forwards' }));
       }
@@ -205,5 +225,6 @@ export function showSplash(parent: HTMLElement): Splash {
       if (t > SPLASH.nitroHold && blur < 0.002) return null;
       return { warp: SPLASH.nitroPeak * blur, stage: 1 + 2 * Math.min(1, t / SPLASH.nitroClimb), blur };
     },
+    progress,
   };
 }
