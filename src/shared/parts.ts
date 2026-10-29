@@ -8,7 +8,7 @@ export const PART_SLOTS = ['body', 'frontBumper', 'rearBumper', 'sideSkirts', 's
 export type PartSlot = (typeof PART_SLOTS)[number];
 
 /** Slots shown as body part menus in the garage (body and wheels have their own menus). */
-export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'sideSkirts', 'rearBumper', 'spoiler', 'hood', 'roof'];
+export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'sideSkirts', 'rearBumper', 'hood', 'spoiler', 'roof'];
 
 /** Slots where "none" is a valid choice (nothing rendered, base meshes still visible unless hidden). */
 export const OPTIONAL_SLOTS: PartSlot[] = ['spoiler'];
@@ -109,6 +109,8 @@ export interface PartEntry {
   node?: string;
   /** Base car mesh names to hide while this part is equipped. */
   hides: string[];
+  /** Exhaust tips this part moves the car's to (car space x, y, z; m, the manifest's `exhaustTips` frame), as many as the car has: a center exhaust bumper carries its own pipes and hides the stock ones. */
+  exhaustTips?: [number, number, number][];
   materialSlots: MaterialName[];
   tris: number;
 }
