@@ -232,7 +232,7 @@ const TWELVE: LayoutVoice = { ...BASE, pipes: 2, edge: 1.0, air: 0.65, rough: 0.
 
 /**
  * The Audi 2.2 20v / 2.5 five's exhaust, as a runner table per cylinder position (1 to 5 along the head), the data
- * behind the warble. Two sources, neither complete (docs/engineSound.md, Brandt Kombi):
+ * behind the warble. Two sources, neither complete (docs/engineSound.md, Albrecht Kombi):
  *  - Layout. The 3B / AAN / ABY cast log manifold feeds one turbo from near the middle of the head: the runners of
  *    cylinders 2, 3 and 4 run straight into it while 1 and 5 "rise up to connect just under the wastegate flange"
  *    (quattroworld.com and s2forum.com's consolidation of the OE 3B / ABY exhaust components). So the outer pair run

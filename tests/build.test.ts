@@ -95,8 +95,8 @@ describe('build validation', () => {
       const ghost = (opp: string) => ({ v: 1, config: { player: entrant('kazamaRotor'), opponents: [entrant(opp)] }, log: '', visuals: [], result: { time: 1, position: 1 }, date: '' });
       store.set('nightrun.ghost.7.circuit', JSON.stringify(ghost('protoMuscle')));
       expect(loadGhost(7, 'circuit')).toBeNull();
-      store.set('nightrun.ghost.7.circuit', JSON.stringify(ghost('ridgewayFiend')));
-      expect((loadGhost(7, 'circuit') as ReplayData).config.opponents[0].carId).toBe('ridgewayFiend');
+      store.set('nightrun.ghost.7.circuit', JSON.stringify(ghost('daltonFiend')));
+      expect((loadGhost(7, 'circuit') as ReplayData).config.opponents[0].carId).toBe('daltonFiend');
     } finally {
       (globalThis as { localStorage?: unknown }).localStorage = prev;
     }
@@ -227,9 +227,9 @@ describe('setup sliders', () => {
     expect(validatePerformance({ ...LEGACY_TIERS, suspension: 1, launchRpm: 4000 })).toEqual({ ...stockPerformance(), launchRpm: 4000 });
     expect(validatePerformance({ engine: 0, turbo: 0, exhaust: 0, transmission: 0, tires: 0, suspension: 0, brakes: 0, weight: 0, nitrous: 0 }, 'kazamaRotor')).toEqual(stockPerformance('kazamaRotor'));
     // An old garage slot in localStorage loads with the stock setup and keeps the rest of the build.
-    const slot = validateBuild({ carId: 'brandtKombi', name: 'Old Slot', performance: LEGACY_TIERS });
+    const slot = validateBuild({ carId: 'albrechtKombi', name: 'Old Slot', performance: LEGACY_TIERS });
     expect(slot.name).toBe('Old Slot');
-    expect(slot.performance).toEqual(stockPerformance('brandtKombi'));
+    expect(slot.performance).toEqual(stockPerformance('albrechtKombi'));
   });
 
   it('a stock race, and an old replay config with upgrade tiers, drive exactly as before', () => {
@@ -273,7 +273,7 @@ describe('setup sliders', () => {
       }
       return { top, pull: (at280 - at200) / 60 };
     };
-    for (const id of ['wendtStrom', 'kazamaRotor', 'brandtKombi', 'ridgewayFiend', 'hinodeHorizon', 'tachibanaZenith', 'tachibanaRunabout']) {
+    for (const id of ['wendtStrom', 'kazamaRotor', 'albrechtKombi', 'daltonFiend', 'nakayaHorizon', 'tachibanaZenith', 'tachibanaRunabout']) {
       const st = SETUP_POSITIONS.map((p) => measureStats(tuned(id, 'gearing', p)));
       // The garage's 0-60 slows one step at a time to the right (the torque bonus, with first gear where it was).
       for (let i = 1; i < st.length; i++) expect(st[i].zeroTo60, `${id} ${i + 1}`).toBeGreaterThan(st[i - 1].zeroTo60);

@@ -45,7 +45,7 @@ const STREET_FITS: Record<string, Record<(typeof AXLES)[number], AxleStance>> = 
     front: { rideHeight: -0.085, camber: -2.5, offset: 0.065, wheelSize: 1.063, wheelWidth: 1 },
     rear: { rideHeight: -0.08, camber: -4.5, offset: 0.05, wheelSize: 1.063, wheelWidth: 1 },
   },
-  brandtKombi: {
+  albrechtKombi: {
     front: { rideHeight: -0.065, camber: -3.5, offset: 0.05, wheelSize: 1.09, wheelWidth: 1 },
     rear: { rideHeight: -0.03, camber: -4, offset: 0.065, wheelSize: 1.09, wheelWidth: 1 },
   },

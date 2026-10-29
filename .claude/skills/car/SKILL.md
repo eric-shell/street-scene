@@ -6,7 +6,7 @@ allowed-tools: Bash(npm run audit *)
 ---
 # A car (or a kit) from references
 
-The numbers and rules are `docs/carDesign.md`; read it first, then this checklist. `$ARGUMENTS` is the car id (`wendtStrom`, `kazamaRotor`, `brandtKombi`, `ridgewayFiend`, or a new one: ids are `<fictional maker><Model>`, e.g. `wendtStrom`, and display names fictional maker + model, never the donor's trademarks). Blender mechanics (helpers, traps, saving) are `/blender`; the asset pipeline is `/assets`.
+The numbers and rules are `docs/carDesign.md`; read it first, then this checklist. `$ARGUMENTS` is the car id (`wendtStrom`, `kazamaRotor`, `albrechtKombi`, `daltonFiend`, or a new one: ids are `<fictional maker><Model>`, e.g. `wendtStrom`, and display names fictional maker + model, never the donor's trademarks). Blender mechanics (helpers, traps, saving) are `/blender`; the asset pipeline is `/assets`.
 
 ## 1. Gather context (no Blender yet)
 

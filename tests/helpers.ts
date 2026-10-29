@@ -45,7 +45,7 @@ export function raceConfig(seed: number, mode: RaceConfig['mode'], opponents = 3
     mode,
     laps,
     player: { name: 'Player', carId: TEST_CAR, performance: perf },
-    opponents: Array.from({ length: opponents }, (_, i) => ({ name: `AI ${i + 1}`, carId: ['wendtStrom', 'brandtKombi'][i % 2], performance: stockPerformance() })),
+    opponents: Array.from({ length: opponents }, (_, i) => ({ name: `AI ${i + 1}`, carId: ['wendtStrom', 'albrechtKombi'][i % 2], performance: stockPerformance() })),
     difficulty: 'medium',
     manualGearbox: false,
   };

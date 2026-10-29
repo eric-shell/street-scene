@@ -10,13 +10,13 @@ and the differences in construction found (docs/carDesign.md, "Donor models").
     exec(open(REPO + '/scripts/blender/carRefs.py').read())
     exec(open(REPO + '/scripts/blender/carDonors.py').read())
     import_asset(source='sketchfab', id=DONORS[cid]['uid'], target_size=DONORS[cid]['mm']['length'] / 1000)   # MCP tool
-    donor('brandtKombi', 'Sketchfab_model.001')   # collect, classify, place, join -> donor:brandtKombi.Full
-    reduce_donor('brandtKombi', BUDGET)           # decimated copy -> donor:brandtKombi.Low
+    donor('albrechtKombi', 'Sketchfab_model.001')   # collect, classify, place, join -> donor:albrechtKombi.Full
+    reduce_donor('albrechtKombi', BUDGET)           # decimated copy -> donor:albrechtKombi.Low
     donor_report(list(DONORS))                   # one table: size, scale check, triangles, materials, stations
     compare_donors(list(DONORS), OUT)            # side / front / rear sheets, same framing for every car
-    lamp_islands('brandtKombi', (0.4, -2.1, 0.3), (0.8, -1.7, 0.6))   # the lamp pieces in a box: material, faces, center, bounds
-    edit_diff('brandtKombi', 'myEdits')          # a hand-edited copy of .Low against it: what to put in the recipe
-    ship_donor('brandtKombi', WORK)              # .Low into brandtKombi.Body, a working copy for saveCar.py
+    lamp_islands('albrechtKombi', (0.4, -2.1, 0.3), (0.8, -1.7, 0.6))   # the lamp pieces in a box: material, faces, center, bounds
+    edit_diff('albrechtKombi', 'myEdits')          # a hand-edited copy of .Low against it: what to put in the recipe
+    ship_donor('albrechtKombi', WORK)              # .Low into albrechtKombi.Body, a working copy for saveCar.py
 
 A recipe classifies by regex: `materials` maps the import's material names to a shared
 material, None (drop those faces) or 'Lamp' (HeadLight ahead of the axles' midpoint, TailLight
@@ -55,7 +55,7 @@ POPUP = lambda c: 0.47 < abs(c.x) < 0.76 and -1.86 < c.y < -1.48 and c.z > 0.6
 TAIL = lambda c, n, m: m in ('TailLight', 'Light', 'Chrome', 'Black') and c.y > 1.6 and 0.49 < abs(c.x) < 0.785 and 0.685 < c.z < 0.905
 
 DONORS = {
-    'brandtKombi': {
+    'albrechtKombi': {
         'name': '1992 Audi S2 Avant',
         'uid': '939dc6336dfe4fbd99fdb3608d58de56',
         'author': 'tonielpro520',
@@ -195,7 +195,7 @@ DONORS = {
                  lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y > 2.11 and 0.68 < c.z < 0.77,
                  lambda c, n, m: m == 'Chrome' and 0.26 < abs(c.x) < 0.35 and c.y > 2.1 and 0.69 < c.z < 0.73],
     },
-    'ridgewayFiend': {
+    'daltonFiend': {
         'name': '2018 Dodge Challenger SRT Demon (widebody)',
         'uid': '54d229c2c0ff4eac8bc872f50b25e36c',
         'author': 'SDC PERFORMANCE (Lambo_SC04)',
@@ -217,7 +217,7 @@ DONORS = {
         # The fuel cap on the left rear quarter: an 11,000 face black disc standing off the panel.
         'patches': [((0.84, 1.52, 0.88), (0.95, 1.69, 1.01), ('Black', 'Paint'), True)],
     },
-    'hinodeHorizon': {
+    'nakayaHorizon': {
         'name': 'Nissan Skyline R33 GT-R',
         'uid': '9107448c53f3452888f2ccf96acc3d3f',
         'author': 'greddy295',

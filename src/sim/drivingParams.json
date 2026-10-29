@@ -241,8 +241,8 @@
         "antilagRpm": 5500
       }
     },
-    "brandtKombi": {
-      "_name": "Brandt Kombi (1992-95 Audi S2 Avant donor): front 2.2 L 20 valve turbo inline five (ABY), all wheel drive split evenly (a Torsen centre differential). 230 PS (169 kW) at 5,900 rpm and 350 N\u00b7m from 1,950 to 3,000 rpm behind one KKK K24 turbo, a six speed manual, about 1,480 kg. A fat low rpm plateau and a long tail; the longest car, a little more yaw inertia.",
+    "albrechtKombi": {
+      "_name": "Albrecht Kombi (1992-95 Audi S2 Avant donor): front 2.2 L 20 valve turbo inline five (ABY), all wheel drive split evenly (a Torsen centre differential). 230 PS (169 kW) at 5,900 rpm and 350 N\u00b7m from 1,950 to 3,000 rpm behind one KKK K24 turbo, a six speed manual, about 1,480 kg. A fat low rpm plateau and a long tail; the longest car, a little more yaw inertia.",
       "mass": 1480,
       "yawInertiaScale": 0.95,
       "drivetrain": { "layout": "awd", "awdFrontShare": 0.5 },
@@ -277,8 +277,8 @@
         "antilagRpm": 4000
       }
     },
-    "ridgewayFiend": {
-      "_name": "Ridgeway Fiend (2018 Dodge Challenger SRT Demon widebody donor): front supercharged 6.2 L cross-plane Hemi V8, rear wheel drive. 808 hp and 717 lb-ft on pump fuel (840 hp and 770 lb-ft on race fuel), a wall of low-rpm torque from the 2.7 L blower and a 6,500 rpm redline. The heaviest, longest, loosest car: the strongest straight line of the four, paid for in corners.",
+    "daltonFiend": {
+      "_name": "Dalton Fiend (2018 Dodge Challenger SRT Demon widebody donor): front supercharged 6.2 L cross-plane Hemi V8, rear wheel drive. 808 hp and 717 lb-ft on pump fuel (840 hp and 770 lb-ft on race fuel), a wall of low-rpm torque from the 2.7 L blower and a 6,500 rpm redline. The heaviest, longest, loosest car: the strongest straight line of the four, paid for in corners.",
       "mass": 1940,
       "yawInertiaScale": 1.1,
       "drivetrain": { "layout": "rwd" },
@@ -312,8 +312,8 @@
         "antilagRpm": 0
       }
     },
-    "hinodeHorizon": {
-      "_name": "Hinode Horizon GT (1997 Nissan Skyline GT-R R33 V-Spec donor): front twin turbo 2.6 L inline six (RB26DETT), ATTESA E-TS all wheel drive. 280 PS and 368 N\u00b7m at 4,400 rpm to an 8,000 rpm redline, a five speed manual, front heavy (57/43) and 1,540 kg. Drives like a rear wheel drive car until the rears slip, then the front axle takes its share.",
+    "nakayaHorizon": {
+      "_name": "Nakaya Horizon GT (1997 Nissan Skyline GT-R R33 V-Spec donor): front twin turbo 2.6 L inline six (RB26DETT), ATTESA E-TS all wheel drive. 280 PS and 368 N\u00b7m at 4,400 rpm to an 8,000 rpm redline, a five speed manual, front heavy (57/43) and 1,540 kg. Drives like a rear wheel drive car until the rears slip, then the front axle takes its share.",
       "mass": 1540,
       "drivetrain": { "layout": "awd", "awdFrontShare": 0.25 },
       "engine": {

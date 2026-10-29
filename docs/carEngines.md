@@ -67,7 +67,7 @@ Shipped (`kazamaRotor`) vs sourced: redline 8,000 (est. 7,000 manual); gear rati
 
 Sources fetched: https://en.wikipedia.org/wiki/Mazda_RX-7 (first 100k chars) , https://en.wikipedia.org/wiki/Mazda_Wankel_engine , https://justjap.com/products/os-giken-5-speed-cross-gear-set-with-input-shaft-mazda-rx-7-fd3s-r15m-d , https://221616.com/catalog/mazda/efinirx7/199112_199710/2501181/ ; via search only: https://carfromjapan.com/specifications/mazda/rx-7/5813aa2b2afaa2c4b286b005 , https://www.autoguide.com/auto-news/2013/06/retro-ride-1993-mazda-rx-7-review.html , https://www.cars.com/research/mazda-rx_7-1993 . (The `Mazda_13B-REW` Wikipedia URL is a 404.)
 
-## Brandt Kombi S: 1992-95 Audi S2 Avant (2.2 20v turbo I5, ABY)
+## Albrecht Kombi S: 1992-95 Audi S2 Avant (2.2 20v turbo I5, ABY)
 
 Note: `docs/engineSound.md` still describes the Kombi as "2.7 V6 biturbo"; the donor named here is the I5. (Another worker is editing that section.)
 
@@ -90,11 +90,11 @@ Source status key: **sourced** = read on a fetched page; **est.** = not found.
 | Voice | I5, turbo; `headers: equal`, `pipes: 1`, `muffler: quiet`, `intake: plenum` (unchanged) |
 | Synth gaps | Diverter-valve chirp/flutter; the odd-cylinder beat is in `docs/engineSound.md`'s I5 plan (stagger tuning) |
 
-Shipped (`brandtKombi`) vs sourced: ratios 3.500 / 1.889 / 1.320 / 1.034 / 0.857 / 0.711 on 4.111 agree with the GT40s listing; torque 350 plateau agrees; redline 6,600 is below the est. 6,800. Top speed in the shipped comment (246-250) agrees with the sources.
+Shipped (`albrechtKombi`) vs sourced: ratios 3.500 / 1.889 / 1.320 / 1.034 / 0.857 / 0.711 on 4.111 agree with the GT40s listing; torque 350 plateau agrees; redline 6,600 is below the est. 6,800. Top speed in the shipped comment (246-250) agrees with the sources.
 
 Sources fetched: https://en.wikipedia.org/wiki/Audi_S2 , https://www.automoli.com/gb/vehicles/audi/s2/s2-coupe-1136/ , https://12v.org/urs/charlie_smith/01E/index.htm ; via search only: https://www.gt40s.com/threads/batch-of-audi-01e-6-speeds.31761 , https://forum.rs246.com/viewtopic.php?p=65813 .
 
-## Hinode Horizon GT: 1995-98 Nissan Skyline GT-R R33 (RB26DETT)
+## Nakaya Horizon GT: 1995-98 Nissan Skyline GT-R R33 (RB26DETT)
 
 Source status key: **sourced** = read on a fetched page; **est.** = not found.
 
@@ -112,10 +112,10 @@ Source status key: **sourced** = read on a fetched page; **est.** = not found.
 | Drive / curb | ATTESA E-TS Pro: introduced 1995 as an option, **standard on V-spec**, with a hydraulic active rear limited-slip diff (Wikipedia Skyline GT-R). Up to 50 % to the front: est. Super HICAS rear steer: sourced as a GT-R technology. Curb **1,530 kg** (infobox) or 1,540 kg (text); V-spec about 10 kg more. |
 | 0-100 / top | No clean 0-100 km/h figure: monkeymotor lists 5.5 s, ultimatespecs 0-60 mph 5.0 s, lapmeta 5.4 s (all search snippets). Top speed: **180 km/h JDM limiter; UK-imported V-spec limited to 250 km/h** (Wikipedia GT-R). The doc's "250 governed" holds only for the UK cars. |
 | Sound | Smooth-then-ragged inline six, ITB intake induction rasp, twin-turbo flutter, 8,000 rpm top. (Character, not sourced.) |
-| Voice | `intake: itb` **confirmed** (six throttle bodies), `headers: equal`, `pipes: 2`, `crossover: none`, `muffler: quiet` (stock) / `sport` (shipped). Shipped: `pipes: 2, muffler: sport, intake: itb, manifold: split3, howl: 1, diverter: recirculating, wastegate: 0.4, twinWhistle: 0.015` (the voice follows the RB26DETT: ITBs, the manifold split front three / rear three, a metallic howl above 0.55 of the redline, two close whistle tones for the parallel twin turbos; sources and measurements in `docs/engineSound.md`, Hinode Horizon GT) |
+| Voice | `intake: itb` **confirmed** (six throttle bodies), `headers: equal`, `pipes: 2`, `crossover: none`, `muffler: quiet` (stock) / `sport` (shipped). Shipped: `pipes: 2, muffler: sport, intake: itb, manifold: split3, howl: 1, diverter: recirculating, wastegate: 0.4, twinWhistle: 0.015` (the voice follows the RB26DETT: ITBs, the manifold split front three / rear three, a metallic howl above 0.55 of the redline, two close whistle tones for the parallel twin turbos; sources and measurements in `docs/engineSound.md`, Nakaya Horizon GT) |
 | Synth gaps | Twin-turbine flutter from two separate turbines per bank (parallel, so no handover); ITB honk is shared with N/A engines. Done: stock `diverter: 'recirculating'`, wastegate chatter (`wastegate: 0.4`, the wastegates are sourced above), the front three / rear three manifold table (`manifold`, est.), the high-rpm rasp (`howl`) and the twin turbos' two whistle tones (`twinWhistle`) |
 
-Shipped (`hinodeHorizon`) vs sourced: the shipped curve peaks 368 at 4,400, which **matches the sourced R33 figure** (the old doc's 392 was the outlier); gears and 4.111 final match, fifth 0.893 is a deliberate fit (donor 0.752); mass 1,540 matches; redline 8,000 is est.
+Shipped (`nakayaHorizon`) vs sourced: the shipped curve peaks 368 at 4,400, which **matches the sourced R33 figure** (the old doc's 392 was the outlier); gears and 4.111 final match, fifth 0.893 is a deliberate fit (donor 0.752); mass 1,540 matches; redline 8,000 is est.
 
 Sources fetched: https://en.wikipedia.org/wiki/Nissan_RB_engine , https://en.wikipedia.org/wiki/Nissan_Skyline_GT-R (first 100k chars) , https://www.nissan-global.com/EN/HERITAGE%5FCOLLECTION/skyline_gt-r_bcnr33.html ; via search only: https://justjap.com/collections/bnr32/products/os-giken-cross-gear-set-nissan-skyline-r32-r33-r34-300zx-z32-fs5w30a , https://dsportmag.com/the-cars/project-gt-r-749-wheel-horsepower-found-one-transmission-lost/2/ , https://sau.com.au/forums/topic/480711-r34-gearbox-diff-ratios , https://www.ultimatespecs.com/car-specs/Nissan/17028/Nissan-R33-Skyline-GT-R.html .
 

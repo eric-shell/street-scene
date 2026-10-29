@@ -338,13 +338,13 @@ describe('driving parameters file', () => {
     }
     expect(CAR_IDS).not.toContain('cc96');
     expect(CAR_IDS).not.toContain('ar7');
-    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['brandtKombi', 'hinodeHorizon', 'kazamaRotor', 'ridgewayFiend', 'tachibanaRunabout', 'tachibanaZenith', 'wendtStrom']);
+    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['albrechtKombi', 'daltonFiend', 'kazamaRotor', 'nakayaHorizon', 'tachibanaRunabout', 'tachibanaZenith', 'wendtStrom']);
   });
 
   it('keeps each car\'s character: a front biased AWD hatch, a light high revving RWD coupe, an even AWD wagon', () => {
     const hatch = getBaseTuning('wendtStrom');
     const coupe = getBaseTuning('kazamaRotor');
-    const wagon = getBaseTuning('brandtKombi');
+    const wagon = getBaseTuning('albrechtKombi');
     expect(hatch.drivetrain.layout).toBe('awd');
     expect(driveSplit(hatch).front).toBeGreaterThan(driveSplit(hatch).rear);
     expect(driveSplit(coupe)).toEqual({ front: 0, rear: 1 });

@@ -94,7 +94,7 @@
             "car": "kazamaRotor"
           },
           "fourSeat": {
-            "car": "brandtKombi",
+            "car": "albrechtKombi",
             "cropFwd": -1.3
           }
         },
@@ -271,8 +271,8 @@
         }
       }
     },
-    "brandtKombi": {
-      "displayName": "Brandt Kombi S",
+    "albrechtKombi": {
+      "displayName": "Albrecht Kombi S",
       "brief": "Five door sports wagon: the S2 Avant donor reduced whole at true size on its own tires, its own lamps, roof rails kept, badges, antenna and wipers removed. Front turbo inline five, all wheel drive split evenly (a Torsen centre differential).",
       "donors": [
         {
@@ -350,8 +350,8 @@
         }
       }
     },
-    "ridgewayFiend": {
-      "displayName": "Ridgeway Fiend",
+    "daltonFiend": {
+      "displayName": "Dalton Fiend",
       "brief": "Two door widebody muscle coupe: the Challenger SRT Demon donor reduced whole at true size on its own drag radials, its own lamps, the carbon hood, roof, trunk lid and mirrors painted body colour, splitter black, badges and fuel cap removed. Front supercharged V8, rear wheel drive.",
       "donors": [
         {
@@ -428,8 +428,8 @@
         }
       }
     },
-    "hinodeHorizon": {
-      "displayName": "Hinode Horizon GT",
+    "nakayaHorizon": {
+      "displayName": "Nakaya Horizon GT",
       "brief": "Two door AWD grand touring coupe: the R33 Skyline GT-R donor reduced whole at true size on its own tires, its own grilles, fog lamps, round tail lamps and rear wing; the empty headlamp recesses (the donor is unfinished there) recoloured as lenses inside its own black outline; badges dropped by material. Front twin turbo inline six, all wheel drive.",
       "donors": [
         {

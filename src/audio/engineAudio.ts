@@ -102,7 +102,7 @@ const BLOWER = {
   boost: 12,
   /**
    * Amplitude of the fundamental at full load and the redline with REF_PSI of boost, on the voice's output. Measured
-   * in Chromium on the Ridgeway Fiend (21.3 psi) at full throttle: the whine sits 7 dB under the engine at 3,500 rpm
+   * in Chromium on the Dalton Fiend (21.3 psi) at full throttle: the whine sits 7 dB under the engine at 3,500 rpm
    * and 3 dB under at 6,000 (where it lifts the voice's RMS by 2.7 dB); idle leaves it 23 dB under, a lift 13.
    */
   level: 0.063,

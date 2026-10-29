@@ -80,7 +80,7 @@ Keep it low poly. Flat shading with a few hundred triangles looks right next to 
 wheel_<name>.glb                  e.g.  wheel_mesh_classic.glb
 ```
 
-Car ids are in `src/assets/carManifest.json`: `wendtStrom`, `kazamaRotor`, `brandtKombi`, `ridgewayFiend`. Put the file in `public/parts/`.
+Car ids are in `src/assets/carManifest.json`: `wendtStrom`, `kazamaRotor`, `albrechtKombi`, `daltonFiend`. Put the file in `public/parts/`.
 
 ## 6. Blender export settings (File > Export > glTF 2.0)
 

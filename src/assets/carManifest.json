@@ -148,11 +148,11 @@
       ]
     },
     {
-      "id": "brandtKombi",
-      "displayName": "Brandt Kombi S",
+      "id": "albrechtKombi",
+      "displayName": "Albrecht Kombi S",
       "source": "eshell",
       "provisional": false,
-      "file": "cars/brandtKombi.glb",
+      "file": "cars/albrechtKombi.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
       "wheelRadius": 0.302,
@@ -221,11 +221,11 @@
       ]
     },
     {
-      "id": "ridgewayFiend",
-      "displayName": "Ridgeway Fiend",
+      "id": "daltonFiend",
+      "displayName": "Dalton Fiend",
       "source": "eshell",
       "provisional": false,
-      "file": "cars/ridgewayFiend.glb",
+      "file": "cars/daltonFiend.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
       "wheelRadius": 0.359,
@@ -295,11 +295,11 @@
       ]
     },
     {
-      "id": "hinodeHorizon",
-      "displayName": "Hinode Horizon GT",
+      "id": "nakayaHorizon",
+      "displayName": "Nakaya Horizon GT",
       "source": "eshell",
       "provisional": false,
-      "file": "cars/hinodeHorizon.glb",
+      "file": "cars/nakayaHorizon.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
       "wheelRadius": 0.324,

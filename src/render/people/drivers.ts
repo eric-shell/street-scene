@@ -58,7 +58,7 @@ const SEATS: Record<string, Seat> = {
   // Its floor (0.29) is barely below the hips, so the legs lie almost flat, reaching long to keep the knees under the low wheel.
   kazamaRotor: { x: 0.38, y: 0.38, z: -0.4, lean: 0.12, floor: 0.29, feet: 0.85, wheel: { ahead: 0.53, up: 0.28 } },
   // The dash hangs low (0.54 at z 0.8): the toes stop short of it.
-  brandtKombi: { x: 0.38, y: 0.47, z: -0.18, lean: -0.22, floor: 0.24, feet: 0.8 },
+  albrechtKombi: { x: 0.38, y: 0.47, z: -0.18, lean: -0.22, floor: 0.24, feet: 0.8 },
 };
 const DEFAULT_SEAT: Seat = { x: 0.38, y: 0.47, z: -0.3, lean: -0.22, floor: 0.24, feet: 0.8 };
 /** Steer angle (rad) that turns the wheel fully for the hands, and how far round the rim they go there (rad). */

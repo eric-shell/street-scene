@@ -108,7 +108,7 @@ describe('engine programs', () => {
     const car = (id: string) => buildProgram(manifest.cars.find((c) => c.id === id)!.engine as EngineSpec);
     const hatch = car('wendtStrom');
     const coupe = car('kazamaRotor');
-    const wagon = car('brandtKombi');
+    const wagon = car('albrechtKombi');
     // The Hatch's VR6: six cylinders on one pipe. 1-5-3-6-2-4 fires three from the near side of the narrow V,
     // then three from the far side, whose longer runners (unequal headers, 0.35 m) make them arrive a
     // millisecond late and weaker: a beat once a cycle, the growl.
@@ -208,7 +208,7 @@ describe('engine synth', () => {
 
   it('an Audi five warbles: clearly more uneven than a six, less than a boxer, and the 2.5 order still leads', () => {
     const car = (id: string) => buildProgram(manifest.cars.find((c) => c.id === id)!.engine as EngineSpec);
-    const five = car('brandtKombi');
+    const five = car('albrechtKombi');
     const six = buildProgram(spec('I6', 'turbo', { pipes: 1, muffler: 'quiet' }));
     const four = buildProgram(spec('I4', 'turbo', { pipes: 1, muffler: 'quiet' }));
     const boxer = buildProgram(spec('B4', 'turbo', { headers: 'unequal', pipes: 1, muffler: 'quiet' }));
@@ -346,8 +346,8 @@ describe('loudness and width across the cars', () => {
 describe('turbo voice', () => {
   it('is per car: only the Kombi has the whoosh; the turbo cars carry stock recirculating valves; the vocabulary validates', () => {
     const voices = Object.fromEntries((manifest.cars as { id: string; engine: EngineSpec }[]).map((c) => [c.id, c.engine.voice ?? {}]));
-    expect(voices.brandtKombi).toMatchObject({ diverter: 'recirculating', whoosh: 1 });
-    for (const [id, v] of Object.entries(voices)) if (id !== 'brandtKombi') expect(v, id).not.toHaveProperty('whoosh');
+    expect(voices.albrechtKombi).toMatchObject({ diverter: 'recirculating', whoosh: 1 });
+    for (const [id, v] of Object.entries(voices)) if (id !== 'albrechtKombi') expect(v, id).not.toHaveProperty('whoosh');
     for (const c of manifest.cars as { id: string; engine: EngineSpec }[]) {
       if (c.engine.aspiration === 'turbo') expect(c.engine.voice, c.id).toMatchObject({ diverter: 'recirculating' });
       else expect(c.engine.voice ?? {}, c.id).not.toHaveProperty('diverter');
@@ -763,9 +763,9 @@ describe('compressor surge flutter and wastegate chatter', () => {
     expect(voice('tachibanaRunabout')).toMatchObject({ diverter: 'recirculating', flutter: 0.5, wastegate: 0.6 });
     expect(voice('tachibanaZenith')).toMatchObject({ flutter: 0.4 });
     expect(voice('kazamaRotor')).toMatchObject({ flutter: 0.3 });
-    expect(voice('hinodeHorizon')).toMatchObject({ wastegate: 0.4 });
-    expect(voice('hinodeHorizon')).not.toHaveProperty('flutter');
-    expect(voice('brandtKombi')).not.toHaveProperty('flutter');
+    expect(voice('nakayaHorizon')).toMatchObject({ wastegate: 0.4 });
+    expect(voice('nakayaHorizon')).not.toHaveProperty('flutter');
+    expect(voice('albrechtKombi')).not.toHaveProperty('flutter');
     expect(engineSpecErrors({ ...spec('I4', 'turbo'), voice: { diverter: 'flutter' } })).toEqual([]);
     expect(engineSpecErrors({ ...spec('I4', 'na'), voice: { diverter: 'flutter' } })).toEqual([expect.stringContaining('"flutter" is for a turbo')]);
     expect(engineSpecErrors({ ...spec('I4', 'na'), voice: { flutter: 0.5, wastegate: 1 } })).toHaveLength(2);
@@ -901,9 +901,9 @@ describe('fan and gear whine', () => {
   });
 });
 
-describe('RB26DETT voice (Hinode Horizon GT)', () => {
+describe('RB26DETT voice (Nakaya Horizon GT)', () => {
   const cars = manifest.cars as { id: string; engine: EngineSpec }[];
-  const horizonSpec = cars.find((c) => c.id === 'hinodeHorizon')!.engine;
+  const horizonSpec = cars.find((c) => c.id === 'nakayaHorizon')!.engine;
   const zenithSpec = cars.find((c) => c.id === 'tachibanaZenith')!.engine;
   const horizon = buildProgram(horizonSpec, { seed: 5 });
   const zenith = buildProgram(zenithSpec, { seed: 5 });
@@ -925,7 +925,7 @@ describe('RB26DETT voice (Hinode Horizon GT)', () => {
     expect(horizonSpec.voice!.howl).toBeGreaterThan(0.5);
     expect(horizonSpec.voice!.twinWhistle).toBeGreaterThan(0);
     expect(horizonSpec.voice!.twinWhistle).toBeLessThan(0.05);
-    for (const c of cars) if (c.id !== 'hinodeHorizon') for (const k of ['manifold', 'howl', 'twinWhistle']) expect(c.engine.voice ?? {}, `${c.id} ${k}`).not.toHaveProperty(k);
+    for (const c of cars) if (c.id !== 'nakayaHorizon') for (const k of ['manifold', 'howl', 'twinWhistle']) expect(c.engine.voice ?? {}, `${c.id} ${k}`).not.toHaveProperty(k);
     // The layout's own ramp is the 2JZ's: the generic six has no runner table.
     expect(LAYOUT_VOICE.I6.runners).toBeUndefined();
     expect(horizon.howl).toBe(horizonSpec.voice!.howl);

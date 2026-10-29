@@ -275,9 +275,9 @@ const CC_BY = 'https://creativecommons.org/licenses/by/4.0/';
 const DONOR_CREDITS: { use: string; title: string; uid: string; author: string }[] = [
   { use: 'Wendt Strom R6', title: '2002_volkswagen_golf_r32_mk4', uid: '98e6828648084ae3b877ad69e8ad36dc', author: 'tangwang920' },
   { use: 'Kazama Rotor', title: 'Mazda RX7 FD 1999', uid: '06986b70c65b44c5a7315ed467b621a6', author: 'niev' },
-  { use: 'Brandt Kombi S', title: '1992 Audi S2 Avant', uid: '939dc6336dfe4fbd99fdb3608d58de56', author: 'tonielpro520' },
-  { use: 'Ridgeway Fiend', title: 'Dodge Challenger SRT DEMON SDC', uid: '54d229c2c0ff4eac8bc872f50b25e36c', author: 'SDC PERFORMANCE' },
-  { use: 'Hinode Horizon GT', title: 'Nissan Skyline R33 GT-R', uid: '9107448c53f3452888f2ccf96acc3d3f', author: 'greddy295' },
+  { use: 'Albrecht Kombi S', title: '1992 Audi S2 Avant', uid: '939dc6336dfe4fbd99fdb3608d58de56', author: 'tonielpro520' },
+  { use: 'Dalton Fiend', title: 'Dodge Challenger SRT DEMON SDC', uid: '54d229c2c0ff4eac8bc872f50b25e36c', author: 'SDC PERFORMANCE' },
+  { use: 'Nakaya Horizon GT', title: 'Nissan Skyline R33 GT-R', uid: '9107448c53f3452888f2ccf96acc3d3f', author: 'greddy295' },
   { use: 'Tachibana Zenith', title: 'Toyota Supra MK IV (1994)', uid: 'eb9bb1eb41db431cb078088ae1ce45f8', author: 'TinoD2' },
   { use: 'Tachibana Runabout', title: '1996 Toyota MR2 W20', uid: 'f66020ee62d741ebb0adc1ba351300db', author: 's0h1o9b' },
   { use: 'Kumo wheels', title: 'WORK VS-TX', uid: '31c76095a0754cb1b08591d63973a2c2', author: 'jonver87' },

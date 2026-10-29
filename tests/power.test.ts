@@ -9,7 +9,7 @@ const SELECTABLE = (manifest.cars as { id: string; selectable?: boolean }[]).fil
 const stock = (id: string) => tuningForBuild(id, stockPerformance(id));
 
 describe('engine power curve (the garage dyno)', () => {
-  it('is positive for every selectable car, and the Ridgeway Fiend has the highest peak', () => {
+  it('is positive for every selectable car, and the Dalton Fiend has the highest peak', () => {
     const peaks = SELECTABLE.map((id) => ({ id, ...powerCurve(stock(id)) }));
     for (const p of peaks) {
       expect(p.peakPower).toBeGreaterThan(50_000);
@@ -18,8 +18,8 @@ describe('engine power curve (the garage dyno)', () => {
       expect(p.peakPowerRpm).toBeLessThanOrEqual(p.redline);
     }
     const top = peaks.reduce((a, b) => (b.peakPower > a.peakPower ? b : a));
-    expect(top.id).toBe('ridgewayFiend');
-    expect(peaks.reduce((a, b) => (b.peakTorque > a.peakTorque ? b : a)).id).toBe('ridgewayFiend');
+    expect(top.id).toBe('daltonFiend');
+    expect(peaks.reduce((a, b) => (b.peakTorque > a.peakTorque ? b : a)).id).toBe('daltonFiend');
   });
 
   it('scales with the torque multiplier and is deterministic', () => {

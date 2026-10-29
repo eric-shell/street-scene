@@ -10,7 +10,7 @@ assets/source/eshell/*/*.blend, see the /blender skill), after carKit.py:
     exec(open(REPO + '/scripts/blender/tunerKits.py').read())
     build_kits()        # bumpers and skirts
     build_hood_roof()   # hoods and roofs
-    build_kits(['brandtKombi'])   # one car; the others need not be in the session
+    build_kits(['albrechtKombi'])   # one car; the others need not be in the session
 
 Each replaces its slots' parts in `<carId>:Parts` and keeps the others. SEAMS are the planes the stock pieces were cut with; displacements are
 pinned to them. Kurogane: carbon (Trim) lower apron, deep splitter with end plates,
@@ -22,7 +22,7 @@ a cowl bulge / rally roof scoop, twin contrast stripes over both.
 SEAMS = {
     'wendtStrom': dict(YF=-1.54, YR=1.54, ZF=0.49, ZR=0.60, ZS=0.26, YS=0.86, XS=0.68),
     'kazamaRotor': dict(YF=-1.6, YR=1.6, ZF=0.47, ZR=0.64, ZS=0.26, YS=0.95, XS=0.74),
-    'brandtKombi': dict(YF=-1.66, YR=1.66, ZF=0.48, ZR=0.62, ZS=0.27, YS=0.98, XS=0.8),
+    'albrechtKombi': dict(YF=-1.66, YR=1.66, ZF=0.48, ZR=0.62, ZS=0.27, YS=0.98, XS=0.8),
 }
 
 def lin(a, b, n):
