@@ -81,7 +81,7 @@ Parts (front bumper budget 4,000):
 | wendtStrom | Cupra R Lip (`cupraR`) | Euro | `bumper_lip` defaults: flat bottom z 0.148; centre plate (|x| < 0.28) 8 mm thick, 1.5 cm clear, 3.5 cm proud, on two 14 mm posts at |x| 0.114; full depth outboard of the centre grille (2.2 to 3.3 cm), 2 cm proud, 1.2 cm chamfer; runs out past 70 degrees | 3,683 |
 | wendtStrom | Cupra R Lip w/ Fogs (`cupraRFogs`) | Euro w/ Fogs | the same lip (its faces match the plain one's exactly) | 3,991 |
 
-A variant with and without an option is two parts, the plain one first: the garage lists a car's parts in the order of its `Parts` collection (unlink and relink an object to move it to the end), and the ids pair up (`euro` / `euroFogs`, `cupraR` / `cupraRFogs`).
+**Order: cheapest to most expensive.** The garage lists a car's parts in the order of its `Parts` collection, and the user wants every body slot sorted from the cheapest real-world part to the most expensive, so the order implies perceived value (Stock, then Euro, Euro w/ Fogs, Cupra R Lip, Cupra R Lip w/ Fogs). Place each new part by its rough real price; ask when two are close. Move an object to the end by unlinking and relinking it in the collection, and print `[o.get('displayName') for o in collection.objects]` before saving. A variant with and without an option is two parts with paired ids (`euro` / `euroFogs`, `cupraR` / `cupraRFogs`), the plain one first.
 
 ## 7. Keep this skill honest
 
