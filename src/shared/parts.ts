@@ -44,8 +44,9 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   // A donor shell's bumper, cut whole with its intakes and lips, runs past 3,000 (the Wendt Strom's 3,240),
   // and a part adds lamps, a lip or cut openings to it (the Wendt Strom's Cupra R Lip w/ Fogs: 3,991;
   // its Speedholes, ten real 16-sided holes: 4,365; its Track Mild, holes, a smooth sheet splitter and
-  // canards: 4,973; its Track Wild, a dropped splitter with its air dam, end plates, rods and a tow strap: 6,073).
-  frontBumper: 6500,
+  // canards: 4,973; its Track Wild, a dropped splitter with its air dam, spats, rods, a tow strap and a trim
+  // plate round oval speed holes: 7,357).
+  frontBumper: 7500,
   rearBumper: 3000,
   sideSkirts: 2000,
   spoiler: 1500,
