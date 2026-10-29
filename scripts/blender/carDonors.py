@@ -92,6 +92,9 @@ DONORS = {
         # The headlamp washer nozzles (on the bumper over each lower lamp) go as badges, but pressed
         # flush the curved bumper crumpled round them: left as they were.
         'press': lambda c: not (abs(abs(c.x) - 0.49) < 0.03 and c.y < -2.0 and 0.49 < c.z < 0.55),
+        # The bumper's lip round the lower lamps' openings is reduced with the lamps: in the shell's
+        # collapse it folded over the left lamp's round inner end, which read sheared.
+        'lamps': [lambda c, n, m: 0.33 < abs(c.x) < 0.77 and c.y < -2.0 and 0.39 < c.z < 0.51],
         # The lamps kept finer (the round fog lamps were octagons): a tighter error, the budget for
         # it, and the car's total raised so the shell keeps its 13,500.
         'lampBudget': 9000,
@@ -1445,6 +1448,58 @@ def lamp_strip(o, points, height, material):
     me.update()
 
 
+def tuck_behind_glass(o, inset=0.004, reach=0.03, margin=0.02):
+    """Push trim the reduction pulled through a window back behind it: every vertex of a face that
+    is not Glass, lying over a Glass face (its projection inside the face, `margin` m in from the
+    window's edge) and less than `reach` m in front of it, moves `inset` m behind the glass. The
+    seals and frames round a window (on its edge) and the glass's own vertices stay. The Albrecht
+    Kombi's rear window showed black splotches: the frit band and pillar trim just behind it, a
+    few mm off, came through in the collapse. A non-glass face whose middle still lies over the
+    glass (fanned across it from the seal) is deleted. Returns the vertices moved and faces gone."""
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    glass = [p for p in me.polygons if names[p.material_index] == 'Glass']
+    if not glass:
+        return 0
+    verts = [v.co.copy() for v in me.vertices]
+    tree = BVHTree.FromPolygons(verts, [list(p.vertices) for p in glass])
+    on_glass = {v for p in glass for v in p.vertices}
+    # The window's edge: glass edges used by one glass face.
+    count = {}
+    for p in glass:
+        for e in p.edge_keys:
+            count[e] = count.get(e, 0) + 1
+    edge = [(verts[a], verts[b]) for (a, b), k in count.items() if k == 1]
+    near_edge = lambda q: any((intersect_point_line(q, a, b)[0] - q).length < margin
+                              and 0 <= intersect_point_line(q, a, b)[1] <= 1 for a, b in edge)
+    moved = 0
+    for i in {v for p in me.polygons if names[p.material_index] != 'Glass' for v in p.vertices} - on_glass:
+        q = verts[i]
+        hit, n, _, d = tree.find_nearest(q)
+        if hit is None or d > reach:
+            continue
+        # Outward: the glass's normals face out of the car.
+        depth = (q - hit).dot(n)
+        if depth < -inset or ((q - hit) - n * depth).length > 1e-3 or near_edge(q):
+            continue
+        me.vertices[i].co = hit - n * inset
+        moved += 1
+    me.update()
+    # A face fanned from the seal across the window (its corners on the edge, its middle over the
+    # glass) cannot be pushed back: it goes. What it covered is behind the tinted glass.
+    over = []
+    for p in me.polygons:
+        if names[p.material_index] == 'Glass':
+            continue
+        c = p.center
+        hit, n, _, d = tree.find_nearest(c)
+        if hit is not None and d < reach and (c - hit).dot(n) > -1e-3 and ((c - hit) - n * (c - hit).dot(n)).length < 1e-3 and not near_edge(c):
+            over.append(p.index)
+    if over:
+        _delete_indices(o, lambda p: p.index in set(over))
+    return moved + len(over)
+
+
 def tuck_cabin(cabin, shell, inset=0.005, reach=0.05):
     """Pull every cabin vertex the reduced shell does not cover back inside it, `inset` m: across
     the car to the outermost skin at its height and station, down to the roof over it. The cabin
@@ -1607,6 +1662,9 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     # collapse, the shell round them folded into slivers.
     if DONORS[cid].get('pieces'):
         splice_pieces(cid, low)
+    tucked = tuck_behind_glass(low)
+    if tucked:
+        print(f'{cid}: {tucked} trim vertices and faces pushed back behind the glass')
     # Wheel well liners on or through the tire (recipe `liftLiners`) raised clear of it.
     if DONORS[cid].get('liftLiners'):
         hy, ht = full['wheelbase'] / 2, full['track'] / 2
