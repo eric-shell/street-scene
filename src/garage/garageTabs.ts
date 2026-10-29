@@ -1,6 +1,6 @@
 /**
  * What each Customize tab shows (Model, Stance, Wheels, Paint, Tune, Body and
- * Night; Vinyls is garageVinyls.ts): the tab list, and one builder that fills
+ * Style; Vinyls is garageVinyls.ts): the tab list, and one builder that fills
  * the body for the open tab from the build. The builders reach the screen only
  * through TabHost, so garageUi.ts keeps the steps, saving and dialogs and this
  * file only the controls. Edits write straight into the build and call
@@ -24,9 +24,9 @@ import { setupSlider } from './setupSliders';
 import { wheelPicker } from './wheelPicker';
 import type { WheelThumbs } from './wheelThumbs';
 
-export type Tab = 'model' | 'stance' | 'wheels' | 'paint' | 'vinyl' | 'tune' | 'body' | 'night';
+export type Tab = 'model' | 'stance' | 'wheels' | 'paint' | 'vinyl' | 'tune' | 'body' | 'style';
 
-/** The tabs in order: the car and how it sits first, then its look, its setup, its parts, and the night look last. */
+/** The tabs in order: the car and how it sits first, then its look, its setup, its parts, and the Style tab's night look last. */
 export const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'model', label: 'Model', icon: Car },
   { id: 'stance', label: 'Stance', icon: ArrowUpDown },
@@ -35,7 +35,7 @@ export const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   ...(FEATURES.vinyls ? [{ id: 'vinyl' as Tab, label: 'Vinyls', icon: Layers }] : []),
   { id: 'tune', label: 'Tune', icon: Gauge },
   { id: 'body', label: 'Body', icon: Hammer },
-  { id: 'night', label: 'Night', icon: Moon },
+  { id: 'style', label: 'Style', icon: Moon },
 ];
 
 /** Model author shown under a car's name, by manifest `source`. */
@@ -329,8 +329,8 @@ export function renderTabContent(host: TabHost): void {
     case 'vinyl':
       renderVinyls(host);
       break;
-    case 'night': {
-      // The night look, shown with the room's lights down: the glass, then the underglow.
+    case 'style': {
+      // The Style tab's night look, shown with the room's lights down: the glass, then the underglow.
       const g = v.underglow;
       host.body.append(
         section(

@@ -272,7 +272,7 @@ $step-rise: 0.58s, 0.45s, 0.32s;
 
 /* Each category's hue, on its tab and, while it is open, on the body (garageUi.ts sets data-tab on the root).
    Every category has its own: Model orange like the menu's Garage row, Stance purple, Wheels cyan, Paint red,
-   Tune green, Body yellow, Night blue. Vinyls (behind FEATURES.vinyls) is the eighth and borrows Paint's red. */
+   Tune green, Body yellow, Style blue. Vinyls (behind FEATURES.vinyls) is the eighth and borrows Paint's red. */
 $tab-hues: (
   'orange': (model),
   'purple': (stance),
@@ -280,7 +280,7 @@ $tab-hues: (
   'red': (paint, vinyl),
   'green': (tune),
   'yellow': (body),
-  'blue': (night),
+  'blue': (style),
 );
 @each $hue, $tabs in $tab-hues {
   $attrs: ();

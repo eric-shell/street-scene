@@ -19,7 +19,7 @@
  * All share the orbit camera (drag to rotate, pinch or scroll to zoom) and a
  * few camera presets in car space (the dyno has its own); the garage UI frames
  * the view beside its rail. The room follows what is being edited: each
- * Customize tab frames its own shot (`frame`), the Night tab takes the room's
+ * Customize tab frames its own shot (`frame`), the Style tab takes the room's
  * lights down, and on the Builds step, left alone, the camera tours the car in
  * slow drifting shots over the turning turntable. The engine can be revved in
  * any: a free-rev model drives the synthesized engine voice and rocks the body
@@ -85,13 +85,13 @@ const DYNO_CAMERAS: CameraPreset[] = [
 const ROLLERS_PRESET = 'Rollers';
 
 /** What a Customize tab asks the room to show: the tab, the Body tab with the slot on show, or the Paint tab with the surface. */
-export type TabFrame = 'model' | 'stance' | 'wheels' | 'vinyl' | 'night' | 'tune' | `body:${PartSlot}` | `paint:${PaintSurface}`;
+export type TabFrame = 'model' | 'stance' | 'wheels' | 'vinyl' | 'style' | 'tune' | `body:${PartSlot}` | `paint:${PaintSurface}`;
 
 /**
  * The shots the Customize tabs frame, in car space like CAMERAS (a name found there reuses that preset), and
  * whether the turntable keeps turning under them: an edit is shown from where it reads best, the spin stopped
  * where the eye has to hold still (a wheel, a stance, a part) and kept where it helps (paint, whose
- * reflections slide over the car as it turns; the night look, so the tint catches the lights and the underglow
+ * reflections slide over the car as it turns; Style's night look, so the tint catches the lights and the underglow
  * sweeps the floor).
  */
 const FRAMES: Record<TabFrame, { shot: string | CameraPreset; spin: boolean }> = {
@@ -105,7 +105,7 @@ const FRAMES: Record<TabFrame, { shot: string | CameraPreset; spin: boolean }> =
   'paint:hardware': { shot: 'Wheel', spin: false },
   vinyl: { shot: 'Three quarter', spin: false },
   // Low and wide, with the lights down: the glass at window height and the glow on the floor in one shot.
-  night: { shot: { name: 'Night', pos: [4.6, 1.0, 4.8], target: [0, 0.6, 0.1] }, spin: true },
+  style: { shot: { name: 'Style', pos: [4.6, 1.0, 4.8], target: [0, 0.6, 0.1] }, spin: true },
   tune: { shot: { name: 'Exhaust', pos: [-3.2, 0.9, -4.3], target: [0, 0.5, -1.4] }, spin: false },
   'body:body': { shot: 'Three quarter', spin: true },
   'body:frontBumper': { shot: 'Front', spin: false },
@@ -334,11 +334,11 @@ export class GarageScene {
   /**
    * Frame what a Customize tab edits (FRAMES), or null for the Builds step: back to the three quarter view and
    * the spin. A new frame always moves the camera; leaving one moves it back only if nobody dragged it
-   * meanwhile (then it stays where it was put). The Night tab takes the room's lights down with it. The Street
+   * meanwhile (then it stays where it was put). The Style tab takes the room's lights down with it. The Street
    * view's camera follows the car and is left alone.
    */
   frame(view: TabFrame | null): void {
-    this.showroom.setLightsDown(view === 'night' ? 1 : 0);
+    this.showroom.setLightsDown(view === 'style' ? 1 : 0);
     if (this.mode === 'street' || view === this.framed) return;
     this.framed = view;
     if (!view) {
