@@ -1302,6 +1302,60 @@ def end_plate(target, edge, base, heights, thick=0.006, curl=0.025, curl_height=
     return secs
 
 
+def drape_strap(surface, target, x, root, length=0.165, width=0.04, thick=0.003, sep=0.012, clear=0.003, step=0.006,
+                material='Strap'):
+    """A webbing tow strap hanging as a flat loop from an eye bolt at (x, root y, root z) and draping
+    over what is below it: each point of the loop's back layer moves forward just enough to clear
+    `surface` (an object: the part as built so far, so a rim, an air dam or a splitter below the bolt
+    are all draped over) across the strap's whole width, never back again; the front layer runs `sep` m
+    ahead of it, and the two join round the bottom and over the bolt. Broad face forward, `width` m
+    wide, `thick` m thick. The Wendt Strom's Track Wild, after an OMP strap: it hangs from the
+    passenger intake's inboard side and drapes over the lower rim and the air dam. Carries authored
+    normals."""
+    from mathutils.bvhtree import BVHTree
+    t = BVHTree.FromObject(surface, bpy.context.evaluated_depsgraph_get())
+    ry, rz = root
+
+    def face_y(z):
+        ys = []
+        for dx in (-width / 2, 0.0, width / 2):
+            h = t.ray_cast(Vector((x + dx, -5, z)), Vector((0, 1, 0)), 10)
+            if h[0]:
+                ys.append(h[0].y)
+        return min(ys) if ys else None
+
+    back = []
+    y, z, run = ry, rz, 0.0
+    while run < length - sep / 2:
+        f = face_y(z)
+        if f is not None:
+            y = min(y, f - clear - thick / 2)
+        if back:
+            run += (Vector((0, y, z)) - Vector((0, back[-1][0], back[-1][1]))).length
+        back.append((y, z))
+        z -= step
+    r = sep / 2
+    path = [Vector((x, by, bz)) for by, bz in back]
+    by, bz = back[-1]
+    path += [Vector((x, by - r + r * math.cos(a), bz - r * math.sin(a))) for a in [math.pi * k / 6 for k in range(1, 6)]]
+    path += [Vector((x, b[0] - sep, b[1])) for b in reversed(back)]
+    top = back[0]
+    path += [Vector((x, top[0] - r - r * math.cos(a), top[1] + r * math.sin(a))) for a in [math.pi * k / 6 for k in range(1, 6)]]
+    path.append(path[0])
+    wdir = Vector((1, 0, 0))
+    secs = []
+    for i, p in enumerate(path):
+        tg = (path[min(i + 1, len(path) - 1)] - path[max(i - 1, 0)]).normalized()
+        nrm = tg.cross(wdir).normalized()
+        w, h = wdir * (width / 2), nrm * (thick / 2)
+        secs.append([tuple(p + w + h), tuple(p - w + h), tuple(p - w - h), tuple(p + w - h)])
+    carry = stash_normals(target)
+    sweep(target, secs, material)
+    if carry:
+        restore_normals(target)
+    return path
+
+
 def tow_strap(target, root, direction, length=0.10, width=0.035, strap=(0.022, 0.004), segments=20, material='Chrome',
               side=None):
     """A tow hook loop: a flat strap bent into a racetrack loop `length` m long and `width` wide from
