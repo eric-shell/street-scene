@@ -203,7 +203,7 @@ export function renderTabContent(host: TabHost): void {
       host.body.append(
         sectionWith('Ride height', [linkToggle(host)], ...AXLES.map((a) => axleSlider(a, 'rideHeight')), note('Visual only. Front and rear apart rake the car.')),
         section('Camber', ...AXLES.map((a) => axleSlider(a, 'camber'))),
-        section('Wheel offset', ...AXLES.map((a) => axleSlider(a, 'offset'))),
+        section('Wheel spacing', ...AXLES.map((a) => axleSlider(a, 'offset'))),
         section('Wheel size', ...AXLES.map((a) => axleSlider(a, 'wheelSize')), note('Bigger wheels, thinner sidewalls.')),
         // Width is always set per axle, linked or not: a staggered fitment is the point of it.
         section('Wheel width', ...AXLES.map((a) => axleSlider(a, 'wheelWidth', false)), note('Wider wheels grow inward; the face and spokes keep their shape. Never linked.')),
