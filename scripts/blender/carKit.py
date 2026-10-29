@@ -993,7 +993,7 @@ SHEET_ANGLES = (0, 8, 16, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 52.5, 54, 55.5
 
 def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 0.235), thick=0.013,
               proud=0.03, end_proud=0.012, taper_from=70, tuck=0.04, butt=0.004, chamfer=0.006, full=True,
-              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, dam_face=True, dam_band=0.1, to_well=True,
+              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, dam_face=True, dam_band=0.1, to_well=True, straight_from=None,
               material='Black'):
     """A flat splitter cut from sheet stock (half inch HDPE) under a front bumper: top and bottom flat
     all the way round at the height of the bumper's underside at the nose, its outline through `angles`
@@ -1091,6 +1091,18 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
     P = [e.to_2d() + n * x for e, n, x in zip(E, N0, ext)]
     for _ in range(smooth):
         P = [P[0]] + [P[i - 1] * 0.25 + P[i] * 0.5 + P[i + 1] * 0.25 for i in range(1, len(P) - 1)] + [P[-1]]
+    # `straight_from`: from that angle to the end the edge runs straight, so a flat `spat` stands
+    # flush on it (on the curve the edge bowed 1.6 cm past the plate and the spat looked detached).
+    if straight_from is not None:
+        for side in (1, -1):
+            idx = [i for i, a in enumerate(A) if a * side >= straight_from]
+            if len(idx) > 2:
+                i0, i1 = (idx[0], idx[-1]) if side > 0 else (idx[-1], idx[0])
+                p0, p1 = P[i0], P[i1]
+                seg = p1 - p0
+                for i in idx:
+                    k = max(0.0, min(1.0, (P[i] - p0).dot(seg) / seg.length_squared))
+                    P[i] = p0 + seg * k
     N = normals(P)
     # The air dam's top follows the bumper's bottom edge, smoothed: one noisy station near the arch
     # stood up as a spike.
@@ -1272,14 +1284,16 @@ def side_lip(body, target, y0, y1, top, thick=0.013, proud=0.02, tuck=0.04, cham
 
 
 def spat(target, front, rear, base, height=0.15, rake=0.05, curl=(0.015, 0.045), curl_height=0.04, thick=0.006,
-         stations=6, rows=4, material='Black'):
+         stations=6, rows=4, fillet=None, material='Black'):
     """A splitter spat (end plate) as race cars run them: a flat plate standing on a splitter's outer
     end, straight from `front` to `rear` ((x, y) plan points, outward by the sign of x) from `base` z up
     `height` m, its outline a parallelogram (the top set back `rake` m, so the bottom front leads), its
     bottom `curl_height` m curling outward into a lip `curl` (front, rear) m wide, a quarter round
     growing toward the back. Aero: it fences the high pressure on the splitter's top from spilling
     round the end. After the user's photo; `end_plate`, a plate following the splitter's curve with
-    its top curled out, was the wrong reading. Carries authored normals."""
+    its top curled out, was the wrong reading. `fillet` (sheet top z, size m) adds a 45 degree fillet
+    joining the plate's inner face to the splitter's top, so the two read as one piece (without it the
+    spat looked detached). Carries authored normals."""
     f, r = Vector(front), Vector(rear)
     along = (r - f).normalized()
     n = Vector((along.y, -along.x))
@@ -1303,8 +1317,19 @@ def spat(target, front, rear, base, height=0.15, rake=0.05, curl=(0.015, 0.045),
         outer = [at(o, z) for o, z in prof]
         inner = [at(o - thick, z) for o, z in prof]
         secs.append([tuple(v) for v in outer] + [tuple(v) for v in reversed(inner)])
+    fil = []
+    if fillet:
+        zt, fs = fillet
+        for k in range(stations):
+            p = f.lerp(r, k / (stations - 1))
+            z0 = zt - base
+            pts = [(-thick + 0.001, z0 - 0.002), (-thick - fs, z0 - 0.002), (-thick - fs, z0), (-thick + 0.001, z0 + fs)]
+            fil.append([tuple(Vector(((p + n * o + along * (rake * z / height)).x, (p + n * o + along * (rake * z / height)).y, base + z)))
+                        for o, z in pts])
     carry = stash_normals(target)
     sweep(target, secs, material)
+    if fil:
+        sweep(target, fil, material)
     if carry:
         restore_normals(target)
     return secs
