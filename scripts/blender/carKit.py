@@ -1061,7 +1061,7 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
 
 
 def canard(src, target, side, a0, a1, z0, rise=0.03, width=(0.06, 0.02), thick=0.004, embed=0.006,
-           chamfer=0.0, curve=0.0, center=(0, -1.55), stations=5, material='Black'):
+           chamfer=0.0, curve=0.0, corner=(0.0, 0.0), center=(0, -1.55), stations=5, material='Black'):
     """A canard (dive plane) on a bumper's corner: a thin plate standing out of the corner face from
     `a0` to `a1` degrees about `center` (plan, 0 toward -y; `side` +1 the car's left, -1 its right), its
     root following the face (plan rays at each station) from height z0 at the front end to z0 + `rise`
@@ -1069,23 +1069,35 @@ def canard(src, target, side, a0, a1, z0, rise=0.03, width=(0.06, 0.02), thick=0
     root sunk `embed` m into the face so no seam shows, and `chamfer` a 45 degree bevel on its top
     outer edge (cut sheet, like `sheet_lip`). `curve` m more rise at the back end, growing with the
     square of the distance along it, sweeps the plate up toward its tail instead of a straight incline
-    (give it six stations or more so the sweep reads round). The Wendt Strom's Track bumper carries two a side where
-    the amber markers were. Carries authored normals."""
+    (give it six stations or more so the sweep reads round). `corner` (front, back) rounds the plate's
+    two outer corners in plan to those radii, m; `stations` is a count (even spacing) or a list of
+    fractions along it, which should crowd the ends when the corners are rounded. The Wendt Strom's
+    Track Mild bumper carries two a side where the amber markers were. Carries authored normals."""
     from mathutils.bvhtree import BVHTree
     t = BVHTree.FromObject(src, bpy.context.evaluated_depsgraph_get())
     c = Vector((center[0], center[1], 0))
-    secs = []
-    for k in range(stations):
-        f = k / (stations - 1)
+    fracs = [k / (stations - 1) for k in range(stations)] if isinstance(stations, int) else list(stations)
+    roots = []
+    for f in fracs:
         a = math.radians(a0 + (a1 - a0) * f)
         d = Vector((side * math.sin(a), -math.cos(a), 0))
         z = z0 + rise * f + curve * f * f
         h = t.ray_cast(c + d * 3 + Vector((0, 0, z)), -d, 3)
-        if not h[0]:
-            continue
-        n = Vector((h[1].x, h[1].y, 0)).normalized()
+        if h[0]:
+            roots.append((f, h[0].copy(), Vector((h[1].x, h[1].y, 0)).normalized()))
+    run = [0.0]
+    for (_, p, _), (_, q, _) in zip(roots, roots[1:]):
+        run.append(run[-1] + (q - p).length)
+    total = run[-1]
+
+    def pull(s, r):
+        """How far a corner of radius r draws the outer edge in, s m from that end."""
+        return 0.0 if r <= 0 or s >= r else r - math.sqrt(r * r - (r - s) ** 2)
+
+    secs = []
+    for (f, s, n), along in zip(roots, run):
         w = width[0] + (width[1] - width[0]) * f
-        s = h[0]
+        w -= max(pull(along, corner[0]), pull(total - along, corner[1]))
         up = Vector((0, 0, thick / 2))
         if chamfer > 0:
             ch = Vector((0, 0, chamfer))
