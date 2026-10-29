@@ -40,17 +40,19 @@ interface ProfileDef {
 
 /**
  * Each shape's half profile, from the face side's bead to the end of the crown's flat. For reference the
- * standard tire is the house tire (scripts/blender/carWheels.py house_tire): a sidewall bulging out to 1.24
- * and a tread flat from 0.71.
+ * house tire (scripts/blender/carWheels.py house_tire) has a sidewall bulging out to 1.24 and a tread flat
+ * from 0.71.
  */
 const PROFILES: Record<TireShape, ProfileDef> = {
-  standard: { side: [[1, 0], [1.19, 0.242], [1.238, 0.573], [1.167, 0.763]], tread: [[1, 0.963], [0.714, 1]] },
+  // The house tire's profile with its bulge trimmed to the lip's edge (1.07 of the bead), so the sidewall sits flush
+  // with the wheel instead of standing past it.
+  standard: { side: [[1, 0], [1.05, 0.242], [1.07, 0.573], [1.02, 0.763]], tread: [[0.9, 0.963], [0.68, 1]] },
   // Pulled a little tight: the bead in the lip's bulb so its edge shows, the bulge gone, the shoulder tucked in,
   // the tread a touch narrower.
-  mild: { side: [[0.96, -0.03], [0.93, -0.03], [0.95, 0.25], [0.9, 0.6], [0.8, 0.86]], tread: [[0.72, 0.97], [0.56, 1]] },
+  mild: { side: [[0.96, -0.03], [0.95, -0.03], [0.96, 0.25], [0.9, 0.6], [0.8, 0.86]], tread: [[0.72, 0.97], [0.56, 1]] },
   // Pulled tight over a wide wheel: the bead at the back of the lip's bulb, a straight, steep sidewall leaning in
   // to a narrow tread, the lip standing a modest band proud of the rubber.
-  stretched: { side: [[0.96, -0.03], [0.85, -0.03], [0.66, 0.7]], tread: [[0.56, 0.92], [0.5, 0.99], [0.38, 1]] },
+  stretched: { side: [[0.96, -0.03], [0.88, -0.03], [0.66, 0.7]], tread: [[0.56, 0.92], [0.5, 0.99], [0.38, 1]] },
 };
 
 /**
