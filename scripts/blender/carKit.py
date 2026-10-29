@@ -993,7 +993,7 @@ SHEET_ANGLES = (0, 8, 16, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 52.5, 54, 55.5
 
 def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 0.235), thick=0.013,
               proud=0.03, end_proud=0.012, taper_from=70, tuck=0.04, butt=0.004, chamfer=0.006, full=True,
-              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, dam_face=True, dam_band=0.07, to_well=True,
+              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, dam_face=True, dam_band=0.1, to_well=True,
               material='Black'):
     """A flat splitter cut from sheet stock (half inch HDPE) under a front bumper: top and bottom flat
     all the way round at the height of the bumper's underside at the nose, its outline through `angles`
@@ -1022,6 +1022,7 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
     over = [0.0] * len(E)
     zout = [e.z for e in E]
     over_low = [0.0] * len(E)
+    found = [False] * len(E)
     if from_face or dam_face:
         from mathutils.bvhtree import BVHTree
         t = BVHTree.FromObject(src, bpy.context.evaluated_depsgraph_get())
@@ -1033,15 +1034,37 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
             far = max(hits, key=lambda q: (q - c).to_2d().length, default=None)
             if far is not None:
                 over[i] = max(0.0, (far - c).to_2d().length - (e - c).to_2d().length)
-            # The air dam follows the bumper's lower face, its most forward point in the bottom
-            # `dam_band` m: following the whole face, the panel climbed over the intakes (the face is
-            # furthest forward above them); at the bottom edge it sat 5 cm back under the face's curve.
-            low = max((q for q in hits if q.z < band[0] + dam_band), key=lambda q: (q - c).to_2d().length, default=None)
-            if low is not None:
-                over_low[i] = max(0.0, (low - c).to_2d().length - (e - c).to_2d().length)
-                zout[i] = low.z
+            # The air dam's top runs along the bumper's lower line: the ledge where the face steps in
+            # near the bottom (three samples in a row facing up), and stands just inside the face below
+            # it. Its first rule, the lower face's most forward point in a band, wandered off the line
+            # round the corners (the face keeps coming forward there) and the user asked for the line.
+            prof = []
+            for j in range(int(dam_band / 0.002)):
+                zz = band[0] + 0.006 + 0.002 * j
+                h = t.ray_cast(c + d * 3 + Vector((0, 0, zz)), -d, 3)
+                if h[0]:
+                    prof.append((zz, (h[0] - c).to_2d().length, h[1].z))
+            for k in range(1, len(prof) - 2):
+                if all(prof[k + m][2] > 0.3 for m in range(3)):
+                    zout[i] = prof[k][0]
+                    over_low[i] = max(0.0, prof[k - 1][1] - (e - c).to_2d().length)
+                    found[i] = True
+                    break
     if not from_face:
         over = [0.0] * len(E)
+    # Stations where the ledge was not found borrow it from their neighbours, linearly.
+    known = [i for i in range(len(E)) if found[i]]
+    for i in range(len(E)):
+        if not found[i] and known:
+            lo = max((k for k in known if k < i), default=None)
+            hi = min((k for k in known if k > i), default=None)
+            if lo is None or hi is None:
+                k = lo if hi is None else hi
+                zout[i], over_low[i] = zout[k], over_low[k]
+            else:
+                f = (i - lo) / (hi - lo)
+                zout[i] = zout[lo] + (zout[hi] - zout[lo]) * f
+                over_low[i] = over_low[lo] + (over_low[hi] - over_low[lo]) * f
     E = [Vector((-e.x, e.y, e.z)) for e in reversed(E[1:])] + E
     A = [-a for a in reversed(A[1:])] + A
     over = list(reversed(over[1:])) + over
@@ -1078,6 +1101,8 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
     ZT = list(zout)
     for _ in range(smooth):
         ZT = [ZT[0]] + [ZT[i - 1] * 0.25 + ZT[i] * 0.5 + ZT[i + 1] * 0.25 for i in range(1, len(ZT) - 1)] + [ZT[-1]]
+        over_low = [over_low[0]] + [over_low[i - 1] * 0.25 + over_low[i] * 0.5 + over_low[i + 1] * 0.25
+                                    for i in range(1, len(over_low) - 1)] + [over_low[-1]]
     secs = []
     for i, e in enumerate(E):
         n3 = Vector((N[i].x, N[i].y, 0))
@@ -1088,8 +1113,11 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
             # its most forward point there, so it never sits behind what the bumper shows (the user
             # moved it forward from the bottom edge).
             if dam_face:
-                edge = front - n3 * (ext[i] - over_low[i] + 0.005)
-                zu = ZT[i]
+                # 1 mm proud of the strip below the ledge, its top on the ledge: the panel's own smooth
+                # edge is then the line seen. Set 5 mm inside the strip, the visible edge was wherever
+                # the donor's uneven strip crossed the panel, ragged round the corners.
+                edge = front - n3 * (ext[i] - over_low[i] - 0.001)
+                zu = ZT[i] + 0.001
             else:
                 edge = front - n3 * ext[i]
                 zu = ZU[i] + 0.003
