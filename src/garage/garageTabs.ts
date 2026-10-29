@@ -359,7 +359,7 @@ export function renderTabContent(host: TabHost): void {
       renderVinyls(host);
       break;
     case 'tint':
-      // The night look, shown with the room's lights down (as Neon is): the glass catching the shop's lights.
+      // The glass in the lit room, catching the shop's lights.
       host.body.append(
         section(
           'Window tint',
