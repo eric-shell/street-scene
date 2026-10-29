@@ -993,7 +993,8 @@ SHEET_ANGLES = (0, 8, 16, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 52.5, 54, 55.5
 
 def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 0.235), thick=0.013,
               proud=0.03, end_proud=0.012, taper_from=70, tuck=0.04, butt=0.004, chamfer=0.006, full=True,
-              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, to_well=True, material='Black'):
+              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, dam_face=True, dam_band=0.07, to_well=True,
+              material='Black'):
     """A flat splitter cut from sheet stock (half inch HDPE) under a front bumper: top and bottom flat
     all the way round at the height of the bumper's underside at the nose, its outline through `angles`
     (degrees about `center`, one half, mirrored), with a 45 degree `chamfer` on the top front edge.
@@ -1019,18 +1020,33 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
     E = [E[i] for i in keep]
     A = [angles[i] for i in keep]
     over = [0.0] * len(E)
-    if from_face:
+    zout = [e.z for e in E]
+    over_low = [0.0] * len(E)
+    if from_face or dam_face:
         from mathutils.bvhtree import BVHTree
         t = BVHTree.FromObject(src, bpy.context.evaluated_depsgraph_get())
         c = Vector((center[0], center[1], 0))
         for i, (e, a) in enumerate(zip(E, A)):
             d = Vector((math.sin(math.radians(a)), -math.cos(math.radians(a)), 0))
-            r = max(((h[0] - c).to_2d().length for h in (t.ray_cast(c + d * 3 + Vector((0, 0, band[0] + 0.005 * j)), -d, 3)
-                                                     for j in range(int(face_band / 0.005))) if h[0]), default=0.0)
-            over[i] = max(0.0, r - (e - c).to_2d().length)
+            hits = [h[0] for h in (t.ray_cast(c + d * 3 + Vector((0, 0, band[0] + 0.005 * j)), -d, 3)
+                                   for j in range(int(face_band / 0.005))) if h[0]]
+            far = max(hits, key=lambda q: (q - c).to_2d().length, default=None)
+            if far is not None:
+                over[i] = max(0.0, (far - c).to_2d().length - (e - c).to_2d().length)
+            # The air dam follows the bumper's lower face, its most forward point in the bottom
+            # `dam_band` m: following the whole face, the panel climbed over the intakes (the face is
+            # furthest forward above them); at the bottom edge it sat 5 cm back under the face's curve.
+            low = max((q for q in hits if q.z < band[0] + dam_band), key=lambda q: (q - c).to_2d().length, default=None)
+            if low is not None:
+                over_low[i] = max(0.0, (low - c).to_2d().length - (e - c).to_2d().length)
+                zout[i] = low.z
+    if not from_face:
+        over = [0.0] * len(E)
     E = [Vector((-e.x, e.y, e.z)) for e in reversed(E[1:])] + E
     A = [-a for a in reversed(A[1:])] + A
     over = list(reversed(over[1:])) + over
+    over_low = list(reversed(over_low[1:])) + over_low
+    zout = list(reversed(zout[1:])) + zout
     bot = top - thick
     last = max(abs(x) for x in A)
 
@@ -1059,14 +1075,24 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
     for _ in range(smooth):
         ZU = [ZU[0]] + [ZU[i - 1] * 0.25 + ZU[i] * 0.5 + ZU[i + 1] * 0.25 for i in range(1, len(ZU) - 1)] + [ZU[-1]]
     ZU[0], ZU[-1] = ZU[1], ZU[-2]
+    ZT = list(zout)
+    for _ in range(smooth):
+        ZT = [ZT[0]] + [ZT[i - 1] * 0.25 + ZT[i] * 0.5 + ZT[i + 1] * 0.25 for i in range(1, len(ZT) - 1)] + [ZT[-1]]
     secs = []
     for i, e in enumerate(E):
         n3 = Vector((N[i].x, N[i].y, 0))
         tk = tuck if e.z >= top + 0.001 else butt
         front = Vector((P[i].x, P[i].y, 0))
         if dam > 0:
-            edge = front - n3 * ext[i]
-            zu = ZU[i] + 0.003
+            # `dam_face`: the panel stands just inside the bumper's lower face (see above) and rises to
+            # its most forward point there, so it never sits behind what the bumper shows (the user
+            # moved it forward from the bottom edge).
+            if dam_face:
+                edge = front - n3 * (ext[i] - over_low[i] + 0.005)
+                zu = ZT[i]
+            else:
+                edge = front - n3 * ext[i]
+                zu = ZU[i] + 0.003
             secs.append([tuple(edge - n3 * dam + Vector((0, 0, zu))), tuple(edge + Vector((0, 0, zu))),
                          tuple(edge + Vector((0, 0, top))), tuple(front - n3 * chamfer + Vector((0, 0, top))),
                          tuple(front + Vector((0, 0, top - chamfer))), tuple(front + Vector((0, 0, bot))),
