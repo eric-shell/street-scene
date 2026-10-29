@@ -876,6 +876,103 @@ def bumper_lip(src, target, center=(0, -1.55), angles=None, band=(0.165, 0.235),
     return secs
 
 
+def punch_holes(o, holes, r, depth=0.015, sides=16, wall='Black', back='Black', skin=0.012):
+    """Real round holes through a panel (speed holes, vents): for each (center, normal), `center` on the
+    surface and `normal` pointing out of it, the faces round it are cut along a `sides`-gon of radius r
+    (one bisect per side, limited to faces within `skin` of the surface and near the hole, so the
+    inside of the bumper is never sliced), the faces inside are deleted, the opening's edge is run
+    `depth` m inward as a `wall` and capped with a `back` (the black mesh a real hole shows). A real
+    opening rather than a black disc on the paint: from the garage's three-quarter a disc reads as a
+    sticker. Carries authored normals (the cut faces keep theirs, the wall is radial, the back flat).
+    Returns the faces added."""
+    carry = stash_normals(o)
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    mw, mb = mat_index(o, wall), mat_index(o, back)
+    added = 0
+    for center, normal in holes:
+        c, n = Vector(center), Vector(normal).normalized()
+        u = n.cross(Vector((0, 0, 1))).normalized()
+        w = u.cross(n)
+        ring = [c + (u * math.cos(2 * math.pi * i / sides) + w * math.sin(2 * math.pi * i / sides)) * r for i in range(sides)]
+        radial = lambda p: (p - c) - n * (p - c).dot(n)
+
+        def seg_dist(a, b):
+            a, b = radial(a), radial(b)
+            ab = b - a
+            k = 0.0 if ab.length_squared < 1e-12 else max(0.0, min(1.0, -a.dot(ab) / ab.length_squared))
+            return (a + ab * k).length
+
+        # Near the hole: on the surface (within `skin` of it) and with an edge passing within 1.3 r of the
+        # axis. Testing the centre or the corners missed the reduced mesh's long slivers that cross a
+        # hole with every corner outside it, and those holes stayed half covered.
+        def near(f):
+            if abs((f.calc_center_median() - c).dot(n)) >= skin:
+                return False
+            return radial(f.calc_center_median()).length < r * 1.3 or any(seg_dist(e.verts[0].co, e.verts[1].co) < r * 1.3 for e in f.edges)
+        planes = [(ring[i], (ring[(i + 1) % sides] - ring[i]).cross(n).normalized()) for i in range(sides)]
+        # Two passes: a piece made by one side's cut can touch the next side's line only at a corner
+        # and slip through it; the second pass catches it (one pass left notches at the openings' tops).
+        for _ in range(2):
+            for co, no in planes:
+                faces = [f for f in bm.faces if near(f)]
+                geom = list({v for f in faces for v in f.verts}) + list({e for f in faces for e in f.edges}) + faces
+                bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-5, plane_co=co, plane_no=no)
+        # Outward plane normals point away from the centre: a corner is inside when it is behind every side.
+        planes = [(co, no if no.dot(co - c) > 0 else -no) for co, no in planes]
+        in_poly = lambda p: all((p - co).dot(no) < 1e-4 for co, no in planes)
+        doomed = [f for f in bm.faces if near(f) and all(in_poly(v.co) for v in f.verts)]
+        bmesh.ops.delete(bm, geom=doomed, context='FACES')
+        edges = [e for e in bm.edges if e.is_boundary and all(abs((v.co - c).dot(n)) < skin and in_poly(v.co) for v in e.verts)]
+        ext = bmesh.ops.extrude_edge_only(bm, edges=edges)
+        new_verts = [g for g in ext['geom'] if isinstance(g, bmesh.types.BMVert)]
+        new_edges = [g for g in ext['geom'] if isinstance(g, bmesh.types.BMEdge)]
+        walls = [g for g in ext['geom'] if isinstance(g, bmesh.types.BMFace)]
+        for v in new_verts:
+            v.co -= n * depth
+        for f in walls:
+            f.material_index = mw
+            f.smooth = True
+            f.normal_update()
+            mid = f.calc_center_median()
+            if f.normal.dot(-radial(mid)) < 0:
+                f.normal_flip()
+            if sn is not None:
+                for loop in f.loops:
+                    loop[sn] = -radial(loop.vert.co).normalized()
+        rim = [e for e in new_edges if e.is_boundary]
+        cap = bmesh.ops.contextual_create(bm, geom=rim)['faces']
+        for f in cap:
+            f.material_index = mb
+            f.smooth = False
+            f.normal_update()
+            if f.normal.dot(n) < 0:
+                f.normal_flip()
+            if sn is not None:
+                for loop in f.loops:
+                    loop[sn] = n
+        added += len(walls) + len(cap)
+        # The cut lines run on across every face near the hole; merge the flat slivers they leave
+        # back into the faces they came from (a ten hole row doubled a 3,200 triangle bumper).
+        region = [f for f in bm.faces if near(f) and f.material_index not in (mw, mb)]
+        bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(0.5), use_dissolve_boundaries=False,
+                                 verts=list({v for f in region for v in f.verts}),
+                                 edges=list({e for f in region for e in f.edges}), delimit={'MATERIAL'})
+    gaps = [e for e in bm.edges if e.is_boundary and any(
+        abs((v.co - Vector(c)).dot(Vector(nn).normalized())) < skin and ((v.co - Vector(c)) - Vector(nn).normalized() * (v.co - Vector(c)).dot(Vector(nn).normalized())).length < r * 1.6
+        for v in e.verts for c, nn in holes)]
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    if carry:
+        restore_normals(o)
+    if gaps:
+        print(f'punch_holes: {len(gaps)} open edges left round the holes')
+    return added
+
+
 def ray_map(objs, x0, x1, z0, z1, step=0.005, skip=('Lens', 'Glass', 'ClearLens'), deep=-1.8):
     """What the eye sees through the front, one letter per material: rays along +y over x0..x1, z1..z0,
     passing through `skip` (clear covers) to the first face behind. `O` marks a ray whose first hit lies
