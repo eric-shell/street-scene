@@ -6,10 +6,9 @@
  *  - full: the player card; can be minimized to a pill in the same corner
  *  - compact: a race's now-playing chip, the pill's twin (controls via M, [ and ])
  *  - hidden
- * A new track glints across the piece on show; the pill and the chip, which
- * name only the title, also drop a small now-playing toast under them with the
- * full credit (the card already shows it). Styled by _music-player.scss and,
- * for the library dialog, _music-library.scss.
+ * A new track glints across the piece on show; the full credit is a click away
+ * (the pill opens the card). Styled by _music-player.scss and, for the library
+ * dialog, _music-library.scss.
  *
  * Every screen's help button stands just left of whichever piece is on show
  * (card, pill or chip), so the corner reads as one row of controls: the widget
@@ -24,9 +23,6 @@ import { ChevronLeft, Disc3, ListMusic, Minimize2, Music, Pause, Play, Shuffle, 
 import { formatClock } from '../kit/format';
 
 export type MusicMode = 'full' | 'compact' | 'hidden';
-
-/** How long the now-playing toast stays up, ms. */
-const TOAST_MS = 5000;
 
 /** Artist · Album, linked. */
 function byLine(t: MusicTrack): (Node | string)[] {
@@ -45,7 +41,7 @@ function setGlyph(b: HTMLButtonElement, node: IconNode, label: string): void {
   b.title = label;
 }
 
-/** Replay a one-shot class (the glint, the toast's entrance) even if it is already on. */
+/** Replay a one-shot class (the glint) even if it is already on. */
 function replay(el: HTMLElement, cls: string): void {
   el.classList.remove(cls);
   void el.offsetWidth;
@@ -57,7 +53,6 @@ export class MusicWidget {
   private card: HTMLElement;
   private pill: HTMLButtonElement;
   private chip: HTMLElement;
-  private toast: HTMLElement;
   private library: HTMLElement | null = null;
   private titleEl: HTMLElement;
   private artistEl: HTMLElement;
@@ -70,7 +65,6 @@ export class MusicWidget {
   private vol: HTMLInputElement;
   private disc: HTMLElement;
   private mode: MusicMode = 'hidden';
-  private toastTimer = 0;
   private lastTrack: string | null = null;
 
   constructor(
@@ -126,9 +120,8 @@ export class MusicWidget {
     this.pill = h('button', { class: 'music-player__pill', type: 'button', 'aria-label': 'Show music player' }) as HTMLButtonElement;
     this.pill.addEventListener('click', () => player.setMinimized(false));
     this.chip = h('div', { class: 'music-player__chip', role: 'status', 'aria-label': 'Now playing' });
-    this.toast = h('div', { class: 'music-player__toast', 'aria-live': 'polite' });
-    // The dock is the corner: the piece on show, with the toast hanging under it.
-    this.root = h('div', { class: 'music-player' }, h('div', { class: 'music-player__dock' }, this.card, this.pill, this.chip, this.toast));
+    // The dock is the corner: the piece on show.
+    this.root = h('div', { class: 'music-player' }, h('div', { class: 'music-player__dock' }, this.card, this.pill, this.chip));
     parent.append(this.root);
     // Sizes change with the title and the media queries; places with the viewport.
     const ro = new ResizeObserver(() => this.dock());
@@ -183,23 +176,9 @@ export class MusicWidget {
       return;
     }
     this.lastTrack = t.id;
-    this.announce(t);
-  }
-
-  /** A new track: a glint across the piece on show, and under the pill or the chip, which name only the title, the toast with the full credit. */
-  private announce(t: MusicTrack): void {
-    if (this.mode === 'hidden') return;
-    const piece = this.shown();
+    // A new track: one glint across the piece on show.
+    const piece = this.mode === 'hidden' ? undefined : this.shown();
     if (piece) replay(piece, 'is-fresh');
-    if (!piece || piece === this.card) return;
-    this.toast.replaceChildren(
-      h('span', { class: 'label label--kicker music-player__toast-label' }, icon(Music, { size: 12 }), 'Now playing'),
-      h('div', { class: 'music-player__toast-title' }, link(t.url, t.title)),
-      h('div', { class: 'music-player__toast-credit' }, ...byLine(t), ' · ', ...sourceLine(t)),
-    );
-    replay(this.toast, 'is-visible');
-    clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => this.toast.classList.remove('is-visible'), TOAST_MS);
   }
 
   private render(): void {
@@ -210,8 +189,6 @@ export class MusicWidget {
     this.card.style.display = full && !p.minimized ? '' : 'none';
     this.pill.style.display = full && p.minimized ? '' : 'none';
     this.chip.style.display = this.mode === 'compact' && t ? '' : 'none';
-    // The card carries the whole credit itself: opening it puts the toast away.
-    if (this.card.style.display === '' || this.mode === 'hidden') this.toast.classList.remove('is-visible');
     // A mode or screen can move the piece on show without resizing it (the observer catches the rest).
     this.dock();
     if (!t) {
@@ -249,7 +226,6 @@ export class MusicWidget {
   /** Library: every artist, album and track with full credits. */
   openLibrary(): void {
     this.library?.remove();
-    this.toast.classList.remove('is-visible');
     const p = this.player;
     const list = h('div', { class: 'music-library__list' });
     for (const artist of MUSIC_CATALOG.artists) {

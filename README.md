@@ -79,7 +79,7 @@ Drift by tapping the handbrake into a corner (it locks the rear wheels, and on a
 
 ## Music
 
-A persistent music player runs across every screen. Every session opens with "Astrology" under the boot splash and shuffles on from there; volume, mute and shuffle are remembered. The soundtrack is **"CC BY: FREE TO USE - Electronic/Gaming Instrumentals" by 1000 Handz**, from the [Free Music Archive](https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), plus **"Claymore" by Kaito Shoma**, used with the artist's permission. Each track is credited (title, artist, album, source, license) in the player, the library, the "Now playing" toast and the credits screen. The library is organized by artist and album so more artists can be added; see [docs/music.md](docs/music.md).
+A persistent music player runs across every screen. Every session opens with "Astrology" under the boot splash and shuffles on from there; volume, mute and shuffle are remembered. The soundtrack is **"CC BY: FREE TO USE - Electronic/Gaming Instrumentals" by 1000 Handz**, from the [Free Music Archive](https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), plus **"Claymore" by Kaito Shoma**, used with the artist's permission. Each track is credited (title, artist, album, source, license) in the player, the library and the credits screen. The library is organized by artist and album so more artists can be added; see [docs/music.md](docs/music.md).
 
 ## Sound effects
 

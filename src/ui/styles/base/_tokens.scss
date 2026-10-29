@@ -78,8 +78,8 @@
   --radius-sm: 2px;
   --shadow: var(--edge), 0 1px 0 rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.45);
   /* The one margin between the viewport's edges and everything that stands at them: the garage, the pause
-     and results rails, the HUD and the drone, the full map, the help, the music player and its toast, so
-     every plate sits the same distance in from its edge. Under mixins.safe where a notch can intrude. The
+     and results rails, the HUD and the drone, the full map, the help, the music player, so every
+     plate sits the same distance in from its edge. Under mixins.safe where a notch can intrude. The
      main menu alone keeps a wider margin (ui/menu/_menu.scss): it is the primary screen, not one sharing
      the view with other plates. */
   --gutter: clamp(12px, 1.25vw, 24px);

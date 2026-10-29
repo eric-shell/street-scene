@@ -1,11 +1,10 @@
 /* The music player (panels/musicWidget.ts), over the whole UI layer. It has one place on every screen, the top
    right corner (the dock), so it never moves between the menu, the garage, a race, the drone, a pause or the
-   results: the player card, minimized to a pill, or in a race the now-playing chip, the pill's twin. A small
-   toast hangs under the pill or the chip with each new track's full credit, and a new track glints across the
-   piece on show. The card is a menu card: the accent hairline across its top, a yellow kicker over the title
+   results: the player card, minimized to a pill, or in a race the now-playing chip, the pill's twin. A new track
+   glints across the piece on show. The card is a menu card: the accent hairline across its top, a yellow kicker over the title
    in the event's white-to-peach caps, quiet ghost controls around one lit play button. The pieces stand on the
    menu's plates; the dock casts their drop shadow, which the chamfers would clip. Links read as text and take
-   the accent when hovered. Touch screens drop the chip and its toast in a race, where the corner belongs to the
+   the accent when hovered. Touch screens drop the chip in a race, where the corner belongs to the
    dials (the pause screen's card credits the track). */
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
@@ -190,55 +189,10 @@
   &__chip {
     pointer-events: none;
   }
-  &[data-mode='compact'] &__chip,
-  &[data-mode='compact'] &__toast {
+  &[data-mode='compact'] &__chip {
     @include media.touch {
       display: none;
     }
-  }
-
-  /* Now playing: a small card under the pill or the chip, right aligned with it. */
-  &__toast {
-    @include mixins.chamfer(10px);
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    width: max-content;
-    max-width: min(300px, calc(100vw - var(--gutter) * 2));
-    padding: 6px 12px 8px;
-    display: flex;
-    flex-direction: column;
-    @include mixins.plate((var(--card-top), var(--plate)));
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s, visibility 0s linear 0.3s;
-    @include media.motion {
-      transform: translateY(-6px);
-      transition: opacity 0.3s, transform 0.3s var(--ease-out), visibility 0s linear 0.3s;
-    }
-    &.is-visible {
-      opacity: 1;
-      visibility: visible;
-      transform: none;
-      pointer-events: auto;
-      transition: opacity 0.25s, transform 0.3s var(--ease-out);
-    }
-  }
-  &__toast-label {
-    font-size: 10.5px;
-  }
-  &__toast-title {
-    font: 900 14px/1.2 var(--display);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    @include mixins.ellipsis;
-    @include mixins.gradient-text(var(--title-ink));
-  }
-  &__toast-credit {
-    margin-top: 1px;
-    font-size: 11.5px;
-    line-height: 1.35;
-    color: var(--muted);
   }
 
   @include media.motion {
