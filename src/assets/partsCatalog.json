@@ -129,9 +129,10 @@
       "materialSlots": [
         "Paint",
         "Black",
-        "Chrome"
+        "Chrome",
+        "Strap"
       ],
-      "tris": 5557,
+      "tris": 6073,
       "generated": true
     },
     {

@@ -55,6 +55,7 @@ Parts must use the shared material names. The game swaps each one for a runtime 
 | `Light` | Indicators, side markers | amber lens, unlit |
 | `Reflector` | Red reflectors and markers | red lens, unlit |
 | `ClearLens` | White side markers and repeaters | white lens, unlit |
+| `Strap` | Woven webbing (tow straps) | matte red, never painted |
 | `Lens` | Clear lamp covers, reverse and fog lamps | clear, see-through, unlit |
 | `Interior` | Seats, dash | fixed |
 
@@ -66,7 +67,7 @@ Only `HeadLight`, `TailLight` and `BrakeLight` glow: a lamp that is not one of t
 
 | Slot | Budget |
 |---|---|
-| frontBumper | 6000 |
+| frontBumper | 6500 |
 | rearBumper | 3000 |
 | sideSkirts, hood, roof | 2000 |
 | spoiler | 1500 |

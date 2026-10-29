@@ -139,6 +139,8 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   m.Reflector = new THREE.MeshPhysicalMaterial({ name: 'Reflector', color: 0x7a0610, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
   m.Lens = new THREE.MeshPhysicalMaterial({ name: 'Lens', color: 0xdfe6ee, metalness: 0, roughness: 0.03, transparent: true, opacity: 0.22, depthWrite: false });
   m.Interior = new THREE.MeshStandardMaterial({ name: 'Interior', color: 0x1a1a1e, roughness: 0.8 });
+  // Red woven webbing (a motorsport tow strap): matte, both sides since a strap is one thin loop.
+  m.Strap = new THREE.MeshStandardMaterial({ name: 'Strap', color: 0xc8141c, roughness: 0.92, side: THREE.DoubleSide });
   const grille = grilleTexture(GRILLE_PATTERN);
   // Bright metal bars on dark holes: the map darkens the holes, the bump map raises the bars.
   m.Grille = new THREE.MeshStandardMaterial({ name: 'Grille', color: 0x9a9ea8, metalness: 0.7, roughness: 0.35, map: grille, bumpMap: grille, bumpScale: 2 });

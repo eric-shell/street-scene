@@ -20,7 +20,7 @@ from mathutils.bvhtree import BVHTree
 from mathutils.geometry import intersect_point_line
 
 REPO = globals().get('REPO') or os.getcwd()
-SHARED = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap', 'Lens', 'Reflector', 'BrakeLight', 'ClearLens']
+SHARED = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap', 'Lens', 'Reflector', 'BrakeLight', 'ClearLens', 'Strap']
 # Every lamp material: only HeadLight, TailLight and BrakeLight (under braking) glow in the game; Light (amber indicators and markers),
 # Reflector (red) and Lens (the clear covers, see-through) are unlit lenses (src/shared/parts.ts).
 LAMP_MATS = ('HeadLight', 'TailLight', 'BrakeLight', 'Light', 'Lens', 'Reflector', 'ClearLens')
@@ -1271,13 +1271,47 @@ def side_lip(body, target, y0, y1, top, thick=0.013, proud=0.02, tuck=0.04, cham
     return secs
 
 
-def tow_strap(target, root, direction, length=0.10, width=0.035, strap=(0.022, 0.004), segments=20, material='Chrome'):
+def end_plate(target, edge, base, heights, thick=0.006, curl=0.025, curl_height=0.035, rows=6, material='Black'):
+    """A splitter end plate (spat): a vertical plate standing on a splitter's outer edge, `edge` the
+    edge's plan points front to back ((x, y), outward to +x or -x by their sign), from `base` z up by
+    `heights` (one per point: tall at the front, lower at the back), its top `curl_height` m bending
+    outward by `curl` m (a quarter round), `thick` m thick. Race splitters carry them to keep the high
+    pressure on the splitter's top from spilling round its ends (the Wendt Strom's Track Wild, after a
+    time attack Supra). Carries authored normals."""
+    P = [Vector((p[0], p[1])) for p in edge]
+    secs = []
+    for i, p in enumerate(P):
+        tg = (P[min(i + 1, len(P) - 1)] - P[max(i - 1, 0)]).normalized()
+        n = Vector((tg.y, -tg.x))
+        if n.x * p.x < 0:
+            n = -n
+        h = heights[i]
+        straight = max(h - curl_height, 0.0)
+        prof = [(0.0, 0.0)]
+        for r in range(1, rows + 1):
+            a = (math.pi / 2) * r / rows
+            prof.append((curl * (1 - math.cos(a)), straight + curl_height * math.sin(a)))
+        prof = [(0.0, 0.0), (0.0, straight)] + prof[1:]
+        outer = [Vector((p.x + n.x * o, p.y + n.y * o, base + z)) for o, z in prof]
+        inner = [Vector((p.x + n.x * (o - thick), p.y + n.y * (o - thick), base + z)) for o, z in prof]
+        secs.append([tuple(v) for v in outer] + [tuple(v) for v in reversed(inner)])
+    carry = stash_normals(target)
+    sweep(target, secs, material)
+    if carry:
+        restore_normals(target)
+    return secs
+
+
+def tow_strap(target, root, direction, length=0.10, width=0.035, strap=(0.022, 0.004), segments=20, material='Chrome',
+              side=None):
     """A tow hook loop: a flat strap bent into a racetrack loop `length` m long and `width` wide from
     `root` (where it leaves the panel, a few mm inside it) along `direction`, the strap `strap`
     (width, thickness) m in section, its broad face across the loop's plane. Track cars carry one in a
     lower intake (the Wendt Strom's Track Wild, passenger side). Carries authored normals."""
     d = Vector(direction).normalized()
-    side = d.cross(Vector((0, 0, 1))).normalized()
+    # `side` sets the loop's plane (with `direction`); a webbing strap hanging down passes the car's
+    # forward axis so its two layers lie front and back and its broad face looks ahead.
+    side = Vector(side).normalized() if side is not None else d.cross(Vector((0, 0, 1))).normalized()
     if side.length < 1e-6:
         side = Vector((1, 0, 0))
     up = side.cross(d).normalized()

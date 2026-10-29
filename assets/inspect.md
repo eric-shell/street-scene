@@ -14,11 +14,11 @@ Authored cars: albrechtKombi, daltonFiend, kazamaRotor, nakayaHorizon, tachibana
 | nakayaHorizon | 222.1 KB |
 | tachibanaRunabout | 141.7 KB |
 | tachibanaZenith | 261.9 KB |
-| wendtStrom | 1560.0 KB |
+| wendtStrom | 1565.6 KB |
 
 ## Material vocabulary
 
-Source materials are renamed using `materialMap` in scripts/assetConfig.json to: `Paint`, `Trim`, `Black`, `Chrome`, `Glass`, `Rim`, `Tire`, `HeadLight`, `TailLight`, `Light`, `Interior`, `Grille`, `RimLip`, `RimCap`, `Lens`, `Reflector`, `BrakeLight`, `ClearLens`.
+Source materials are renamed using `materialMap` in scripts/assetConfig.json to: `Paint`, `Trim`, `Black`, `Chrome`, `Glass`, `Rim`, `Tire`, `HeadLight`, `TailLight`, `Light`, `Interior`, `Grille`, `RimLip`, `RimCap`, `Lens`, `Reflector`, `BrakeLight`, `ClearLens`, `Strap`.
 
 ```json
 {
