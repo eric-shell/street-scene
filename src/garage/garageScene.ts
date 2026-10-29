@@ -3,13 +3,16 @@
  *  - Garage: the car on the turntable in the middle of the workshop
  *    (garage/showroom.ts), turning slowly under the fluorescent battens among
  *    the lifts and the other builds.
- *  - Dyno: the car strapped to the workshop's chassis dyno, its driven axle over
- *    the rollers (the customer's car and straps make way). Holding the gas runs
+ *  - Dyno: the car strapped to the workshop's chassis dyno, its driven axles
+ *    over the rollers (one set under the front or the rear pair, two for all
+ *    wheel drive; the customer's car and straps make way). Holding the gas runs
  *    a pull: the revs climb under load from idle to the redline in a few seconds
- *    (garage/revModel.ts), the driven wheels spin on the drum, the giant fan
- *    spools up and the wall screen draws the car's power and torque curves,
- *    from the sim's own torque curve (garage/dynoRun.ts), up to the peak
- *    figures, which a toast repeats.
+ *    (garage/revModel.ts), the driven wheels and the drums under them spin, the
+ *    giant fan spools up and the wall screen draws the car's power and torque
+ *    curves, from the sim's own torque curve (garage/dynoRun.ts), up to the
+ *    peak figures, which a toast repeats. Each pull reads a little different
+ *    and quick runs read lower with heat soak (garage/dynoSession.ts, display
+ *    only).
  *  - Street: the car cruising the event city (game/streetStage.ts, the same
  *    street and car the main menu shows); revving lifts the cruise toward a
  *    sprint, and the orbit camera rides along (game/streetCameras.ts).
@@ -33,9 +36,11 @@ import { CarPose, CarView, WHEEL_KEYS } from '../render/car/carView';
 import { CarAssetLibrary } from '../render/car/carAssets';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { BlipScript, REV_LEVEL, RevModel, revVoice, type TwoStep } from './revModel';
-import { PULL, pullLoad } from './dynoRun';
+import { pullLoad } from './dynoRun';
 import type { DynoSetup } from './dynoRun';
-import type { DynoPeaks, DynoRun } from './textures/effects';
+import { DynoSession } from './dynoSession';
+import { DYNO_DRUM } from './showroomProps';
+import type { DynoPeaks } from './textures/effects';
 import { ROOM, Showroom } from './showroom';
 import { FollowOrbit } from '../game/streetCameras';
 import type { StreetStage } from '../game/streetStage';
@@ -170,10 +175,10 @@ export class GarageScene {
   private readonly stand = { x: 0, y: 0, z: 0, yaw: 0 };
   /** Car space to world on the dyno (and scratch for the camera presets). */
   private readonly dynoFrame = new THREE.Matrix4();
-  /** The live pull the wall screen draws, which the showroom reads at each redraw. */
-  private readonly run: DynoRun = { progress: 0, power: () => 0, torque: () => 0, peaks: { hp: 0, lbft: 0, hpRpm: 0, lbftRpm: 0 }, rpm: 0 };
-  /** The pull in progress: the furthest the revs have climbed (0..1 of the range), whether it reached the redline, and its number. */
-  private pull = { max: 0, done: false, no: 1 };
+  /** The pulls' record (this pull's measured curves, the one before it, the run count, the heat soak): its `run` is what the wall screen draws. */
+  private readonly session = new DynoSession();
+  /** How far the dyno's drums have turned (rad); they follow the driven wheels' speed. */
+  private drumAngle = 0;
   /** Called once a pull reaches the redline, with its peak figures (the garage shows them as a toast). */
   onPull: ((peaks: DynoPeaks) => void) | null = null;
   private readonly pose: CarPose = { x: 0, y: ROOM.tableTop, z: 0, yaw: 0, pitch: 0, roll: 0, steer: 0, comp: [0, 0, 0, 0], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
@@ -230,7 +235,7 @@ export class GarageScene {
     this.mode = p;
     // The car changes places: onto the dyno's rollers, or back to the turntable.
     if (this.mounted) {
-      if (p === 'dyno') this.showroom.mountDyno(this.mounted, this.axleZ(this.mounted));
+      if (p === 'dyno') this.showroom.mountDyno(this.mounted, this.dynoSetup?.driven ?? 'rear');
       else if (was === 'dyno') this.showroom.releaseDyno(this.mounted);
     }
     this.applyMode();
@@ -244,14 +249,9 @@ export class GarageScene {
     // The engine turns the rollers on the dyno and revs free elsewhere; the wheels stand still off it.
     this.rev.load = dyno ? pullLoad(this.rev.idle, this.rev.redline) : null;
     this.pose.spin.fill(0);
-    this.showroom.setRun(dyno ? this.run : null);
+    this.showroom.setRun(dyno ? this.session.run : null);
     this.showroom.setFan(dyno ? 0 : null);
-    if (dyno) this.restartPull(false);
-  }
-
-  /** The driven axle's z in a car's own space (m): the front pair for a front drive, the rear otherwise. */
-  private axleZ(view: CarView): number {
-    return view.car.wheels[this.dynoSetup?.driven === 'front' ? 'FL' : 'RL'][2];
+    if (dyno) this.session.restart(false);
   }
 
   /** Car space to world: the turntable's matrix in the showroom, the parked car's on the dyno. */
@@ -260,7 +260,7 @@ export class GarageScene {
       this.showroom.turntable.updateMatrixWorld();
       return this.showroom.turntable.matrixWorld;
     }
-    this.showroom.dynoStand(this.car ? this.axleZ(this.car) : 0, this.stand);
+    this.showroom.dynoStand(this.stand);
     const s = this.stand;
     return this.dynoFrame.makeRotationY(s.yaw).setPosition(s.x, s.y, s.z);
   }
@@ -416,10 +416,10 @@ export class GarageScene {
     view.setLampLevel(PARKED_LAMPS);
     this.mounted?.dispose();
     this.mounted = view;
-    if (this.mode === 'dyno') {
-      this.showroom.mountDyno(view, this.axleZ(view));
-      this.retitle();
-    } else this.showroom.mount(view);
+    // A different car starts the dyno cold, on its first run.
+    this.session.setCar(view.car.id, view.car.displayName);
+    if (this.mode === 'dyno') this.showroom.mountDyno(view, this.dynoSetup?.driven ?? 'rear');
+    else this.showroom.mount(view);
     return view;
   }
 
@@ -432,58 +432,31 @@ export class GarageScene {
    * is open (null otherwise). Only on the turntable: the Street view's car is rolling, where no two-step arms.
    */
   setEngine(idle: number, redline: number, launch: TwoStep | null = null): void {
+    this.session.setRevs(idle, redline);
     this.rev.configure({ idle, redline, rest: this.restRpm(idle, redline), launch: this.mode === 'garage' ? launch : null, load: this.mode === 'dyno' ? pullLoad(idle, redline) : null });
   }
 
   /**
-   * The build's dyno figures (curves, peaks, pull gear, driven axle, wheel radius; garage/dynoRun.ts), taken
-   * whole so the scene never reads the tuning. A build whose peaks changed starts the screen's pull over.
+   * The build's dyno figures (curves, peaks, pull gear, driven axles, wheel radius; garage/dynoRun.ts), taken
+   * whole so the scene never reads the tuning. A build whose peaks changed starts the screen's pull over; one
+   * whose driven axles changed (a different drivetrain) gets a dyno cut for it.
    */
   setDyno(setup: DynoSetup): void {
-    const old = this.dynoSetup?.peaks;
+    const was = this.dynoSetup?.driven;
     this.dynoSetup = setup;
-    const r = this.run;
-    r.power = setup.power;
-    r.torque = setup.torque;
-    if (!old || old.hp !== setup.peaks.hp || old.lbft !== setup.peaks.lbft) {
-      Object.assign(r.peaks, setup.peaks);
-      this.restartPull(false);
-    }
-  }
-
-  /** The screen's heading: the car and the pull's number (rebuilt only when either changes). */
-  private retitle(): void {
-    this.run.title = `${(this.car?.car.displayName ?? '').toUpperCase()}  ·  PULL ${this.pull.no}`;
-  }
-
-  /** Start a pull's record over (a new pull; `next` counts it). */
-  private restartPull(next: boolean): void {
-    this.pull.max = 0;
-    this.pull.done = false;
-    if (next) this.pull.no++;
-    this.run.progress = 0;
-    this.retitle();
+    this.session.setBuild(setup);
+    if (was && was !== setup.driven && this.mode === 'dyno' && this.mounted) this.showroom.mountDyno(this.mounted, setup.driven);
   }
 
   /**
-   * Follow the pull: the furthest the revs have climbed is how much of the curves the screen draws; the pedal
-   * going down near idle starts the next pull over, and reaching the redline ends it and calls out the figures.
+   * Follow the pull (garage/dynoSession.ts): the furthest the revs have climbed is how much of the curves the
+   * screen draws; the pedal going down near idle starts the next pull over, and reaching the redline ends it and
+   * calls out the figures.
    */
-  private updatePull(): void {
+  private updatePull(dt: number): void {
     const rev = this.rev;
     const x = clamp01((rev.rpm - rev.idle) / Math.max(1, rev.redline - rev.idle));
-    const p = this.pull;
-    if (this.pedal > 0.5 && x < PULL.restartBelow && p.max > x + 0.05) this.restartPull(p.max > 0.15);
-    if (!p.done) {
-      p.max = Math.max(p.max, x);
-      if (x >= PULL.doneAt) {
-        p.max = 1;
-        p.done = true;
-        this.onPull?.(this.run.peaks);
-      }
-    }
-    this.run.progress = p.max;
-    this.run.rpm = rev.rpm;
+    if (this.session.update(dt, x, this.pedal, rev.rpm)) this.onPull?.(this.session.run.peaks);
     this.showroom.setFan(x);
   }
 
@@ -675,6 +648,8 @@ export class GarageScene {
     this.fitLens();
     this.updateEngine(dt);
     const rev = this.rev;
+    // The engine's heat bleeds off wherever the player is (the dyno's own update cools it on the dyno).
+    if (this.mode !== 'dyno') this.session.cool(dt);
     if (this.mode === 'street') {
       // Revving lifts the cruise toward a sprint, and the body rocks with the engine as in the showroom.
       const throttle = Math.max(0, Math.min(1, (rev.rpm - rev.rest) / Math.max(1, rev.redline - rev.rest)));
@@ -687,15 +662,16 @@ export class GarageScene {
     }
     const dyno = this.mode === 'dyno';
     if (this.spin && !dyno) this.showroom.turntable.rotation.y += dt * SPIN;
-    if (dyno) this.updatePull();
+    if (dyno) this.updatePull(dt);
     this.showroom.update(dt);
     const view = this.car;
     if (view) {
       // Parked in neutral: the wheels stay on the turntable while the body rocks with the revs.
-      // On the dyno the car stands strapped with its driven axle over the rollers and those wheels turn.
+      // On the dyno the car stands strapped with its driven axles over the rollers, and those wheels and the
+      // drums under them turn (the rest stand chocked).
       const p = this.pose;
       if (dyno) {
-        this.showroom.dynoStand(this.axleZ(view), this.stand);
+        this.showroom.dynoStand(this.stand);
         p.x = this.stand.x;
         p.y = this.stand.y;
         p.z = this.stand.z;
@@ -705,8 +681,13 @@ export class GarageScene {
           const x = (rev.rpm - rev.idle) / Math.max(1, rev.redline - rev.idle);
           // Rolling from just off idle (in gear, the wheels turn at the engine's speed over the pull gear's ratio).
           const omega = ((rev.rpm * TAU) / 60 / setup.overall) * smoothstep(0, WHEELS_ENGAGE, x);
-          const first = setup.driven === 'front' ? 0 : 2;
-          for (let i = first; i < first + 2; i++) p.spin[i] = (p.spin[i] + omega * dt) % TAU;
+          // The wheels and the drum under them share a surface speed, so the drum turns the other way and slower by the radii's ratio.
+          this.drumAngle = (this.drumAngle - ((omega * dt * setup.wheelRadius) / DYNO_DRUM.radius)) % TAU;
+          this.showroom.spinDrums(this.drumAngle);
+          for (let i = 0; i < 4; i++) {
+            const driven = setup.driven === 'all' || (setup.driven === 'front') === i < 2;
+            p.spin[i] = driven ? (p.spin[i] + omega * dt) % TAU : 0;
+          }
         }
       } else {
         p.x = 0;

@@ -51,7 +51,7 @@ describe('engine power curve (the garage dyno)', () => {
       const kmh = ((t.engine.redline * 2 * Math.PI) / 60 / d.overall) * d.wheelRadius * 3.6;
       expect(kmh).toBeGreaterThan(120);
       expect(kmh).toBeLessThan(210);
-      expect(d.driven).toBe(t.drivetrain.layout === 'fwd' ? 'front' : 'rear');
+      expect(d.driven).toBe(t.drivetrain.layout === 'fwd' ? 'front' : t.drivetrain.layout === 'awd' ? 'all' : 'rear');
       expect(d.peaks.hp).toBeGreaterThan(0);
     }
   });

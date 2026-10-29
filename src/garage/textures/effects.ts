@@ -40,116 +40,426 @@ export interface DynoPeaks {
   lbftRpm: number;
 }
 
+/** Where a pull stands: waiting for the gas, climbing the revs, or finished with its figures called out. */
+export type DynoState = 'ready' | 'pull' | 'done';
+
 /**
- * A pull the screen draws instead of its own fake one: the player's car on the
- * dyno. The curves are normalized to their peaks over the rpm axis (0 = idle,
- * 1 = redline) and drawn up to `progress`, the furthest rpm the pull has reached.
+ * A run the screen draws instead of its own fake one: the player's car on the
+ * dyno (garage/dynoSession.ts keeps it up to date; the screen only reads). The
+ * curves are shares of the build's rated peaks over the rpm axis (0 = idle,
+ * 1 = redline) as this pull measured them, so a hot or unlucky pull sits a
+ * little under 1 and the plot shows it. They are drawn up to `progress`, the
+ * furthest rpm the pull has reached.
  */
 export interface DynoRun {
-  /** How far along the rpm axis the curves are drawn (0..1); the pull is done at 1 and the peaks are called out. */
+  state: DynoState;
+  /** How far along the rpm axis the curves are drawn (0..1); the pull is done at 1. */
   progress: number;
-  /** Power and torque at a point on the rpm axis, each as a share of its own peak (0..1). */
+  /** Power and torque at a point on the rpm axis, each as a share of the build's rated peak (about 1 at the top). */
   power: (x: number) => number;
   torque: (x: number) => number;
-  /** The figures the shares scale to (the live readout reads them) and the call-out once the pull is done. */
+  /** The previous pull's curves ghosted behind this one (null before the second pull), and how far that pull got (0..1). */
+  ghostPower: ((x: number) => number) | null;
+  ghostTorque: ((x: number) => number) | null;
+  ghostProgress: number;
+  /** The build's rated peaks (hp, lb-ft, rpm): what the shares scale to. */
+  rated: DynoPeaks;
+  /** This pull's measured peaks so far (the peak-hold marker), final once the state is 'done'. */
   peaks: DynoPeaks;
-  /** The engine's rpm now, for the readout. */
+  /** The engine's rpm now, and the range the x axis spans. */
   rpm: number;
+  rpmIdle: number;
+  rpmRedline: number;
+  /** The pull's number on this car, and how long ago it finished (s; 0 until it has). */
+  runNo: number;
+  doneFor: number;
+  /** Heat soak, 0 (cold) to 1 (soaked), and the intake temperature it reads as (deg F). */
+  heat: number;
+  iatF: number;
   /** The heading, e.g. the car and the pull's number. */
   title?: string;
 }
 
-/** The screen's plot area on its canvas (px): left, right, top (of the 100%) and baseline. */
-const PLOT = { x0: 24, x1: 248, top: 28, base: 128 } as const;
+/** The screen's canvas is this many pixels per unit of its 256 x 144 layout (the layout below stays in those units). */
+const SCREEN = { w: 256, h: 144, scale: 1.5 } as const;
+/** The plot area (layout units): left, right, top and baseline; the panel of readouts starts at `panel`. */
+const PLOT = { x0: 28, x1: 162, top: 24, base: 110, panel: 178, right: 250 } as const;
+/** The y axis runs this far past the rated peak so a lucky pull's curve never clips the top. */
+const HEADROOM = 1.08;
+/** Samples a curve is drawn with, and the rev bar's segments. */
+const STEPS = 48;
+const SEGMENTS = 30;
+/** A sweep of the scan line across the idle plot (cycles per second), and the ready text's blink (Hz). */
+const SWEEP_HZ = 0.35;
+const BLINK_HZ = 1.1;
+/** The peak call-out stays up this long after a pull (s) and fades in over the first fraction of it. */
+const CALLOUT_S = 7;
+
+const FONT = (weight: number, px: number) => `${weight} ${px}px "Google Sans Flex", system-ui, sans-serif`;
+const F = { tiny: FONT(600, 6.5), small: FONT(700, 8), label: FONT(700, 7), mid: FONT(800, 11), big: FONT(800, 21), call: FONT(800, 8.5), ready: FONT(800, 17) } as const;
+const C = {
+  bg: '#05080c',
+  grid: 'rgba(120,220,232,0.12)',
+  frame: 'rgba(120,220,232,0.28)',
+  unlit: 'rgba(255,255,255,0.07)',
+  text: '#e9e7e0',
+  dim: 'rgba(233,231,224,0.45)',
+  orangeGhost: 'rgba(252,152,103,0.3)',
+  cyanGhost: 'rgba(120,220,232,0.3)',
+  orangeGlow: 'rgba(252,152,103,0.22)',
+  cyanGlow: 'rgba(120,220,232,0.2)',
+} as const;
+
+/** The thousands separator, as US readouts have it (6,400). */
+const thousands = (n: number): string => Math.round(n).toLocaleString('en-US');
 
 /**
- * The dyno screen on the wall: a run drawn as it happens on a small canvas,
- * power and torque climbing with the revs. With no run of its own (nobody on
- * the dyno) it fakes one from time t (s): a pull, the peak held for a few
- * seconds, then the next. Given a `DynoRun` it draws the player's live pull
- * from the sim's own curves instead and ends on the peak figures. `draw`
- * repaints; the showroom calls it a dozen times a second, so the upload is a
- * 256 x 144 texture now and then.
+ * The dyno screen on the wall: a run drawn as it happens on a small canvas.
+ * Power and torque draw live as the revs sweep, with big readouts ticking up,
+ * a peak-hold marker, the previous pull ghosted behind, a rev bar, the intake
+ * temperature with a heat soak warning, and at the end a PEAK call-out; between
+ * pulls it idles on a scan line and a blinking READY. With no run of its own
+ * (nobody on the dyno) it fakes one from time t (s): a pull, the figures held,
+ * then the next. `draw` repaints one canvas texture (384 x 216, the layout
+ * stays 256 x 144); the showroom calls it every frame during a live pull and
+ * a few times a second otherwise, so the upload is small and only paid when
+ * something moves. The static layer (grid, frames) is drawn once and blitted.
  */
 export function dynoScreen(): { texture: THREE.CanvasTexture; draw: (t: number, run?: DynoRun | null) => void } {
-  const [c, g] = canvas(256, 144);
+  const { w: W, h: H, scale: S } = SCREEN;
+  const { x0, x1, top, base } = PLOT;
+  const [c, g] = canvas(W * S, H * S);
   const texture = new THREE.CanvasTexture(c);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const fakePower = (x: number) => Math.min(1, x * 1.25) * (1 - 0.25 * Math.max(0, x - 0.8) / 0.2) * (0.9 + 0.1 * x);
-  const fakeTorque = (x: number) => 0.55 + 0.35 * Math.sin(Math.min(1, x) * Math.PI * 0.8) - 0.12 * x;
-  const draw = (t: number, run?: DynoRun | null) => {
-    const fakeP = Math.min(1, (t % 9) / 6);
-    const p = run ? run.progress : fakeP;
-    const power = run ? run.power : fakePower;
-    const torque = run ? run.torque : fakeTorque;
-    g.fillStyle = '#05080c';
-    g.fillRect(0, 0, 256, 144);
-    g.strokeStyle = 'rgba(120,220,232,0.15)';
+  texture.anisotropy = 4;
+  // The static layer: background, grid, the frames round the plot, the readouts and the rev bar.
+  const [layer, k] = canvas(W * S, H * S);
+  k.scale(S, S);
+  k.fillStyle = C.bg;
+  k.fillRect(0, 0, W, H);
+  k.lineWidth = 0.6;
+  k.strokeStyle = C.grid;
+  for (let i = 0; i <= 8; i++) {
+    const x = x0 + ((x1 - x0) * i) / 8;
+    k.beginPath();
+    k.moveTo(x, top);
+    k.lineTo(x, base);
+    k.stroke();
+  }
+  for (let i = 0; i <= 4; i++) {
+    const y = base - ((base - top) * i) / 4;
+    k.beginPath();
+    k.moveTo(x0, y);
+    k.lineTo(x1, y);
+    k.stroke();
+  }
+  k.strokeStyle = C.frame;
+  k.lineWidth = 0.8;
+  k.strokeRect(x0, top, x1 - x0, base - top);
+  k.strokeRect(PLOT.panel - 0.5, top, PLOT.right - PLOT.panel + 1, base - top);
+  for (const y of [top + 29, top + 58]) {
+    k.beginPath();
+    k.moveTo(PLOT.panel - 0.5, y);
+    k.lineTo(PLOT.right + 0.5, y);
+    k.stroke();
+  }
+  k.beginPath();
+  k.moveTo(0, 17);
+  k.lineTo(W, 17);
+  k.stroke();
+  k.fillStyle = 'rgba(255,255,255,0.025)';
+  for (let y = 0; y < H; y += 3) k.fillRect(0, y, W, 1);
+
+  const px = (x: number) => x0 + x * (x1 - x0);
+  const py = (share: number) => base - (share / HEADROOM) * (base - top);
+
+  /** One curve from idle up to `upTo` (0..1) of the rpm axis. */
+  const trace = (f: (x: number) => number, upTo: number): void => {
+    const n = Math.max(1, Math.ceil(STEPS * upTo));
+    g.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const x = Math.min(upTo, i / STEPS);
+      if (i === 0) g.moveTo(px(x), py(f(x)));
+      else g.lineTo(px(x), py(f(x)));
+    }
+  };
+  const stroke = (f: (x: number) => number, upTo: number, color: string, glow: string | null, width: number): void => {
+    if (upTo <= 0) return;
+    g.setLineDash([]);
+    g.lineJoin = 'round';
+    if (glow) {
+      trace(f, upTo);
+      g.strokeStyle = glow;
+      g.lineWidth = width * 3;
+      g.stroke();
+    }
+    trace(f, upTo);
+    g.strokeStyle = color;
+    g.lineWidth = width;
+    g.stroke();
+  };
+  const ghost = (f: (x: number) => number, upTo: number, color: string): void => {
+    if (upTo <= 0) return;
+    trace(f, upTo);
+    g.setLineDash([2.5, 2.5]);
+    g.strokeStyle = color;
     g.lineWidth = 1;
-    for (let x = 24; x < 250; x += 28) {
-      g.beginPath();
-      g.moveTo(x, 22);
-      g.lineTo(x, 128);
-      g.stroke();
+    g.stroke();
+    g.setLineDash([]);
+  };
+  const dot = (x: number, y: number, color: string, glow: string): void => {
+    g.fillStyle = glow;
+    g.beginPath();
+    g.arc(x, y, 5, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(x, y, 2.4, 0, Math.PI * 2);
+    g.fill();
+  };
+  /** A peak-hold marker: a diamond on the curve at its top and a dashed line back to the axis. */
+  const hold = (x: number, y: number, color: string, alpha: number): void => {
+    g.globalAlpha = alpha;
+    g.strokeStyle = color;
+    g.lineWidth = 0.6;
+    g.setLineDash([1.5, 2]);
+    g.beginPath();
+    g.moveTo(x0, y);
+    g.lineTo(x, y);
+    g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = color;
+    g.beginPath();
+    g.moveTo(x, y - 3.4);
+    g.lineTo(x + 3.4, y);
+    g.lineTo(x, y + 3.4);
+    g.lineTo(x - 3.4, y);
+    g.closePath();
+    g.fill();
+    g.globalAlpha = 1;
+  };
+
+  // The customer's pull when nobody is on the dyno: shaped curves climbing on the room's clock.
+  const fakePower = (x: number) => Math.min(1, x * 1.25) * (1 - (0.25 * Math.max(0, x - 0.8)) / 0.2) * (0.9 + 0.1 * x);
+  const fakeTorque = (x: number) => 0.55 + 0.35 * Math.sin(Math.min(1, x) * Math.PI * 0.8) - 0.12 * x;
+  const fakeGhostP = (x: number) => fakePower(x) * 0.985;
+  const fakeGhostT = (x: number) => fakeTorque(x) * 0.99;
+  const fake: DynoRun = {
+    state: 'ready',
+    progress: 0,
+    power: fakePower,
+    torque: fakeTorque,
+    ghostPower: null,
+    ghostTorque: null,
+    ghostProgress: 1,
+    rated: { hp: 412, lbft: 398, hpRpm: 6200, lbftRpm: 4300 },
+    peaks: { hp: 408, lbft: 396, hpRpm: 6200, lbftRpm: 4300 },
+    rpm: 1500,
+    rpmIdle: 1000,
+    rpmRedline: 7500,
+    runNo: 3,
+    doneFor: 0,
+    heat: 0.16,
+    iatF: 90,
+  };
+  const FAKE_CYCLE = 11;
+  const stepFake = (t: number): DynoRun => {
+    const cycle = t % FAKE_CYCLE;
+    const n = Math.floor(t / FAKE_CYCLE);
+    const p = Math.max(0, Math.min(1, (cycle - 0.8) / 5.2));
+    fake.progress = p;
+    fake.state = p <= 0 ? 'ready' : p >= 1 ? 'done' : 'pull';
+    fake.doneFor = p >= 1 ? cycle - 6 : 0;
+    const span = fake.rpmRedline - fake.rpmIdle;
+    fake.rpm = fake.rpmIdle + span * (p >= 1 ? Math.max(0, 1 - fake.doneFor / 3.5) : p) + 500;
+    // The peak hold follows the pull's best so far, as a live run's does.
+    let bp = 0;
+    let bt = 0;
+    for (let i = 0; i <= STEPS && i / STEPS <= p; i++) {
+      const x = i / STEPS;
+      if (fakePower(x) > fakePower(bp)) bp = x;
+      if (fakeTorque(x) > fakeTorque(bt)) bt = x;
     }
-    for (let y = 22; y <= 128; y += 21) {
-      g.beginPath();
-      g.moveTo(24, y);
-      g.lineTo(248, y);
-      g.stroke();
-    }
-    const at = (f: (x: number) => number, x: number): [number, number] => [PLOT.x0 + x * (PLOT.x1 - PLOT.x0), PLOT.base - f(x) * (PLOT.base - PLOT.top)];
-    const curve = (f: (x: number) => number, color: string) => {
-      g.strokeStyle = color;
-      g.lineWidth = 2;
-      g.beginPath();
-      const n = Math.ceil(60 * p);
-      for (let i = 0; i <= n; i++) {
-        const [px, py] = at(f, Math.min(p, i / 60));
-        if (i === 0) g.moveTo(px, py);
-        else g.lineTo(px, py);
-      }
-      g.stroke();
-    };
-    // The fake pull's curves run to the grid's top (x 100); a live pull's stop 8% under it so the peak marker stays in view.
-    const plot = (f: (x: number) => number) => (run ? (x: number) => f(x) * 0.92 : f);
-    const pw = plot(power);
-    const tq = plot(torque);
-    curve(pw, PALETTE.orange);
-    curve(tq, PALETTE.cyan);
-    g.fillStyle = '#e9e7e0';
-    g.font = '700 11px "Google Sans Flex", system-ui, sans-serif';
-    g.textAlign = 'left';
-    g.fillText(run?.title ?? 'DYNO CELL  ·  PULL 3', 6, 14);
-    g.textAlign = 'right';
-    g.fillStyle = PALETTE.orange;
-    g.font = '800 14px "Google Sans Flex", system-ui, sans-serif';
-    g.fillText(run ? `${Math.round(power(p) * run.peaks.hp)} HP` : `${Math.round(fakePower(p) * 412)} WHP`, 250, 14);
-    g.fillStyle = PALETTE.cyan;
-    g.font = '700 10px "Google Sans Flex", system-ui, sans-serif';
-    g.fillText(`${Math.round(run ? run.rpm : 1500 + p * 6000)} RPM`, 250, 140);
-    if (run && p >= 1) {
-      // Done: a dot on each curve at its peak and the figures under the plot.
-      const k = run.peaks;
-      for (const [f, color] of [
-        [pw, PALETTE.orange],
-        [tq, PALETTE.cyan],
-      ] as const) {
-        let best = 0;
-        for (let i = 1; i <= 60; i++) if (f(i / 60) > f(best)) best = i / 60;
-        const [px, py] = at(f, best);
-        g.fillStyle = color;
-        g.beginPath();
-        g.arc(px, py, 3, 0, Math.PI * 2);
-        g.fill();
-      }
-      g.textAlign = 'left';
-      g.font = '700 10px "Google Sans Flex", system-ui, sans-serif';
+    fake.peaks.hp = fakePower(bp) * fake.rated.hp;
+    fake.peaks.hpRpm = fake.rpmIdle + bp * span;
+    fake.peaks.lbft = fakeTorque(bt) * fake.rated.lbft;
+    fake.peaks.lbftRpm = fake.rpmIdle + bt * span;
+    fake.runNo = 3 + n;
+    fake.ghostPower = n > 0 ? fakeGhostP : null;
+    fake.ghostTorque = n > 0 ? fakeGhostT : null;
+    fake.title = `DYNO CELL  ·  RUN ${fake.runNo}`;
+    return fake;
+  };
+
+  const heatColor = (h: number) => (h < 0.3 ? '#a9dc76' : h < 0.6 ? '#ffd866' : '#ff6188');
+  const revColor = (f: number) => (f < 0.6 ? '#a9dc76' : f < 0.85 ? '#ffd866' : '#ff6188');
+
+  const draw = (t: number, live?: DynoRun | null): void => {
+    const r = live ?? stepFake(t);
+    const span = Math.max(1, r.rpmRedline - r.rpmIdle);
+    const p = r.progress;
+    const blink = Math.floor(t * BLINK_HZ * 2) % 2 === 0;
+    g.setTransform(S, 0, 0, S, 0, 0);
+    g.drawImage(layer, 0, 0, W, H);
+    g.textBaseline = 'alphabetic';
+
+    // Axes: hp down the left (orange), lb-ft down the right (cyan), the revs in thousands underneath.
+    g.font = F.tiny;
+    for (let i = 1; i <= 4; i++) {
+      const y = base - ((base - top) * i) / 4;
+      g.textAlign = 'right';
       g.fillStyle = PALETTE.orange;
-      g.fillText(`${Math.round(k.hp)} hp @ ${Math.round(k.hpRpm)}`, 24, 140);
+      g.fillText(String(Math.round((r.rated.hp * HEADROOM * i) / 4 / 5) * 5), x0 - 2.5, y + 2);
+      g.textAlign = 'left';
       g.fillStyle = PALETTE.cyan;
-      g.fillText(`${Math.round(k.lbft)} lb-ft @ ${Math.round(k.lbftRpm)}`, 112, 140);
+      g.fillText(String(Math.round((r.rated.lbft * HEADROOM * i) / 4 / 5) * 5), x1 + 2.5, y + 2);
     }
+    g.textAlign = 'center';
+    g.fillStyle = C.dim;
+    for (let rpm = Math.ceil(r.rpmIdle / 1000) * 1000; rpm <= r.rpmRedline; rpm += 1000) g.fillText(String(rpm / 1000), px((rpm - r.rpmIdle) / span), base + 8);
+    g.textAlign = 'right';
+    g.fillText('RPM', x0 - 2.5, base + 8);
+    g.textAlign = 'left';
+    g.fillText('x1000', x1 + 2.5, base + 8);
+
+    // Header: the car and the run, and where the pull stands.
+    g.fillStyle = C.text;
+    g.font = F.small;
+    g.fillText(r.title ?? 'DYNO', 6, 12, 150);
+    g.textAlign = 'right';
+    const badge = r.state === 'pull' ? 'PULLING' : r.state === 'done' ? 'COMPLETE' : 'READY';
+    const badgeColor = r.state === 'pull' ? PALETTE.orange : r.state === 'done' ? PALETTE.cyan : PALETTE.green;
+    g.fillStyle = badgeColor;
+    g.fillText(badge, PLOT.right, 12);
+    const bw = g.measureText(badge).width;
+    g.globalAlpha = r.state === 'ready' && !blink ? 0.25 : 1;
+    g.beginPath();
+    g.arc(PLOT.right - bw - 6, 9.2, 2.2, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = 1;
+
+    // The previous pull ghosted behind this one.
+    if (r.ghostPower && r.ghostTorque) {
+      ghost(r.ghostPower, r.ghostProgress, C.orangeGhost);
+      ghost(r.ghostTorque, r.ghostProgress, C.cyanGhost);
+    }
+
+    // The live curves, and the head of the pull: a cursor and a dot on each.
+    stroke(r.torque, p, PALETTE.cyan, C.cyanGlow, 1.5);
+    stroke(r.power, p, PALETTE.orange, C.orangeGlow, 1.7);
+    if (r.state === 'pull') {
+      g.strokeStyle = 'rgba(233,231,224,0.28)';
+      g.lineWidth = 0.6;
+      g.beginPath();
+      g.moveTo(px(p), top);
+      g.lineTo(px(p), base);
+      g.stroke();
+      dot(px(p), py(r.torque(p)), PALETTE.cyan, C.cyanGlow);
+      dot(px(p), py(r.power(p)), PALETTE.orange, C.orangeGlow);
+    }
+    // The peak-hold markers: where the pull's best sits so far (final when it is done).
+    if (p > 0.06) {
+      hold(px((r.peaks.hpRpm - r.rpmIdle) / span), py(r.peaks.hp / r.rated.hp), PALETTE.orange, 0.9);
+      hold(px((r.peaks.lbftRpm - r.rpmIdle) / span), py(r.peaks.lbft / r.rated.lbft), PALETTE.cyan, 0.9);
+    }
+
+    // Between pulls: a scan line sweeping the empty plot and a blinking READY.
+    if (r.state === 'ready') {
+      const sx = px((t * SWEEP_HZ) % 1);
+      const sweep = g.createLinearGradient(sx - 22, 0, sx, 0);
+      sweep.addColorStop(0, 'rgba(120,220,232,0)');
+      sweep.addColorStop(1, 'rgba(120,220,232,0.22)');
+      g.fillStyle = sweep;
+      g.fillRect(Math.max(x0, sx - 22), top, Math.min(22, sx - x0), base - top);
+      g.fillStyle = 'rgba(120,220,232,0.7)';
+      g.fillRect(sx - 0.5, top, 1, base - top);
+      g.textAlign = 'center';
+      g.globalAlpha = blink ? 1 : 0.2;
+      g.fillStyle = PALETTE.green;
+      g.font = F.ready;
+      g.fillText('READY', (x0 + x1) / 2, (top + base) / 2 + 3);
+      g.globalAlpha = 1;
+      g.font = F.label;
+      g.fillStyle = C.dim;
+      g.fillText('HOLD THE GAS FOR A PULL', (x0 + x1) / 2, (top + base) / 2 + 14);
+    }
+
+    // The call-out once a pull is in: the peaks, fading in, steady for a few seconds.
+    if (r.state === 'done' && r.doneFor < CALLOUT_S) {
+      const a = Math.min(1, r.doneFor * 3) * Math.min(1, (CALLOUT_S - r.doneFor) * 2);
+      const bx = x1 - 100;
+      const by = base - 33;
+      g.globalAlpha = a * 0.88;
+      g.fillStyle = '#05080c';
+      g.fillRect(bx, by, 96, 29);
+      g.globalAlpha = a * (0.55 + 0.45 * Math.sin(t * 5));
+      g.strokeStyle = PALETTE.orange;
+      g.lineWidth = 1;
+      g.strokeRect(bx + 0.5, by + 0.5, 95, 28);
+      g.globalAlpha = a;
+      g.textAlign = 'left';
+      g.font = F.call;
+      g.fillStyle = PALETTE.orange;
+      g.fillText(`PEAK ${Math.round(r.peaks.hp)} HP @ ${thousands(r.peaks.hpRpm)}`, bx + 5, by + 12, 88);
+      g.fillStyle = PALETTE.cyan;
+      g.fillText(`PEAK ${Math.round(r.peaks.lbft)} LB-FT @ ${thousands(r.peaks.lbftRpm)}`, bx + 5, by + 24, 88);
+      g.globalAlpha = 1;
+    }
+
+    // The readouts: big digits ticking up with the pull (the pull's peak once it is in).
+    const done = r.state === 'done';
+    const hp = done ? r.peaks.hp : r.power(p) * r.rated.hp;
+    const tq = done ? r.peaks.lbft : r.torque(p) * r.rated.lbft;
+    const live2 = r.state !== 'ready';
+    g.textAlign = 'left';
+    g.font = F.label;
+    g.fillStyle = C.dim;
+    g.fillText(done ? 'PEAK POWER · HP' : 'POWER · HP', PLOT.panel + 3, top + 8);
+    g.fillText(done ? 'PEAK TQ · LB-FT' : 'TORQUE · LB-FT', PLOT.panel + 3, top + 37);
+    g.textAlign = 'right';
+    g.font = F.big;
+    g.fillStyle = live2 ? PALETTE.orange : 'rgba(252,152,103,0.35)';
+    g.fillText(live2 ? String(Math.round(hp)) : '0', PLOT.right - 2, top + 26);
+    g.fillStyle = live2 ? PALETTE.cyan : 'rgba(120,220,232,0.35)';
+    g.fillText(live2 ? String(Math.round(tq)) : '0', PLOT.right - 2, top + 55);
+    // The intake: its temperature, and the heat soak warning once the last pulls have left it hot.
+    g.textAlign = 'left';
+    g.font = F.tiny;
+    g.fillStyle = C.dim;
+    g.fillText('INTAKE', PLOT.panel + 3, top + 66);
+    g.textAlign = 'right';
+    if (r.heat > 0.45) {
+      g.globalAlpha = blink || r.heat < 0.6 ? 1 : 0.35;
+      g.fillStyle = heatColor(r.heat);
+      g.fillText('HEAT SOAK', PLOT.right - 2, top + 66);
+      g.globalAlpha = 1;
+    } else g.fillText('COOL', PLOT.right - 2, top + 66);
+    g.textAlign = 'left';
+    g.font = F.mid;
+    g.fillStyle = heatColor(r.heat);
+    g.fillText(`${Math.round(r.iatF)}°F`, PLOT.panel + 3, top + 79);
+    g.fillStyle = C.unlit;
+    g.fillRect(PLOT.panel + 3, base - 5, PLOT.right - PLOT.panel - 6, 2.5);
+    g.fillStyle = heatColor(r.heat);
+    g.fillRect(PLOT.panel + 3, base - 5, (PLOT.right - PLOT.panel - 6) * Math.min(1, r.heat), 2.5);
+
+    // The rev bar along the bottom, red at the top, and the rpm.
+    const share = Math.max(0, Math.min(1, (r.rpm - r.rpmIdle) / span));
+    const barW = 168;
+    const segW = barW / SEGMENTS;
+    for (let i = 0; i < SEGMENTS; i++) {
+      g.fillStyle = (i + 0.5) / SEGMENTS <= share ? revColor(i / SEGMENTS) : C.unlit;
+      g.fillRect(x0 + i * segW, 125, segW - 0.9, 7);
+    }
+    g.textAlign = 'right';
+    g.font = F.small;
+    g.fillStyle = C.text;
+    g.fillText(`${thousands(r.rpm)} RPM`, PLOT.right, 132);
+    g.textAlign = 'left';
+    g.font = F.tiny;
+    g.fillStyle = C.dim;
+    g.fillText(r.state === 'done' ? `RUN ${r.runNo} COMPLETE  ·  LET IT COOL BETWEEN PULLS` : r.state === 'pull' ? `RUN ${r.runNo}` : `RUN ${r.runNo} NEXT`, x0, 141);
+
     texture.needsUpdate = true;
   };
   draw(0);

@@ -30,9 +30,10 @@
  * only: the garage scene (garageScene.ts) owns the camera, the spin and the
  * player's car; this owns the room. The dyno presentation borrows the room's
  * dyno cell: `mountDyno` takes the player's car onto the rollers (the customer's
- * car and straps hide, straps cut for this car replace them), `dynoStand` gives
- * its pose, `setFan` and `setRun` spool the fan and put the live pull on the wall
- * screen.
+ * car, deck and straps hide; a deck cut for this car's driven axles replaces
+ * them, with a roller set under each: one for a front or rear drive, two for
+ * all wheel drive), `dynoStand` gives its pose, `spinDrums` turns the rollers,
+ * `setFan` and `setRun` spool the fan and put the live pull on the wall screen.
  */
 import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
@@ -53,7 +54,9 @@ import {
   acMachine,
   banner,
   beerCooler,
+  DYNO_DRUM,
   dyno,
+  dynoDrum,
   dynoHalf,
   dynoStraps,
   bayNumber,
@@ -114,7 +117,7 @@ import {
   whiteboard,
   workbench,
 } from './showroomProps';
-import type { LiftFit, StrapFit } from './showroomProps';
+import type { DynoDrive, DynoFit, LiftFit, StrapFit } from './showroomProps';
 import { MAIN_SIGN, NEON, NeonSign, OPEN_SIGN } from './neonSign';
 import { Crew, liftHeight } from './showroomCrew';
 import { createShopState, shopSchedule } from './shopSchedule';
@@ -124,6 +127,7 @@ import { Disposer } from '../render/disposer';
 import { damp } from '../shared/anim';
 import type { Mats } from './props/materials';
 import type { DynoRun } from './textures/effects';
+import type { ManifestCar } from '../render/car/carAssets';
 
 /**
  * Per quality tier: the floor's reflection pass (render scale of the screen,
@@ -169,6 +173,9 @@ const LIFTS: { x: number; z: number; yaw: number; h: number; wheelsOff?: boolean
 
 /** The lift the crew's operator raises and lowers, and how high its car's ground goes (m). */
 const MOVING_LIFT = { index: 3, high: 1.75 } as const;
+
+/** How long the wall screen waits between redraws when nothing climbs (s): with the player's car on the dyno, and while it plays the customer's pull. */
+const SCREEN_IDLE = { live: 1 / 10, fake: 1 / 15 } as const;
 
 /** The dyno cell in the front right quadrant, beside the way in: where the car on it stands (m) and faces (rad: into the room, its tail and exhaust toward the door, the giant fan at its nose). */
 const DYNO = { x: 8.0, z: 6.6, yaw: Math.PI, fanR: 0.75 } as const;
@@ -285,14 +292,15 @@ export class Showroom {
   private run: DynoRun | null = null;
   /** The customer's car and straps on the dyno, hidden while the player's car takes their place. */
   private dynoCar: CarView | null = null;
-  private readonly customerStraps = new THREE.Group();
-  /** Straps cut for the player's car, and what built them (freed when it leaves). */
-  private playerStraps: THREE.Group | null = null;
-  private readonly strapOwner = new Disposer();
-  /** The dyno's frame: the deck's height, the drum's z (the customer car's rear axle, in the dyno's z), the customer car's length, the car box the camera ignores while the player's car is on. */
+  private readonly customerDyno = new THREE.Group();
+  /** The deck, rollers and straps cut for the player's car, the drums in it that spin, and what built them (freed when it leaves). */
+  private playerRig: THREE.Group | null = null;
+  private drums: THREE.Group[] = [];
+  private readonly rigOwner = new Disposer();
+  /** The dyno's frame: the deck's height, the customer car's length, the exhaust hose's vent (dyno frame), the car box the camera ignores while the player's car is on. */
   private deckY = 0;
-  private drumZ = 0;
   private dynoLength = 0;
+  private vent: [number, number, number] = [0, 0, 0];
   private dynoObstacle: THREE.Box3 | null = null;
   private occupied = false;
   private mats!: Mats;
@@ -374,24 +382,22 @@ export class Showroom {
     const vdx = 7.3 - DYNO.x;
     const vdz = H - 0.1 - DYNO.z;
     const vent: [number, number, number] = [Math.cos(DYNO.yaw) * vdx - Math.sin(DYNO.yaw) * vdz, 0.06, Math.sin(DYNO.yaw) * vdx + Math.cos(DYNO.yaw) * vdz];
-    const deck = dyno(
-      k,
-      DYNO.x,
-      DYNO.z,
-      DYNO.yaw,
-      { length: dynoCar.dimensions.length, width: dynoCar.dimensions.width, rearZ: dynoCar.wheels.RL[2], frontZ: dynoCar.wheels.FL[2], track: 2 * Math.abs(dynoCar.wheels.RL[0]) },
-      vent,
-    );
+    this.vent = vent;
+    // The customer's dyno is a group of its own (the player's car gets one cut for it): rear drive, the drum standing still.
+    const dk = new Kit(m);
+    const { deck, rollers } = dyno(dk, DYNO.x, DYNO.z, DYNO.yaw, dynoFitOf(dynoCar, 'rear'), vent);
+    dk.place(DYNO.x, 0, DYNO.z, DYNO.yaw);
+    for (const r of rollers) dynoDrum(dk, r.track, deck - DYNO_DRUM.radius + 0.01, r.z);
+    dk.build(this.customerDyno, track);
+    s.add(this.customerDyno);
     this.deckY = deck;
-    this.drumZ = dynoCar.wheels.RL[2];
     this.dynoLength = dynoCar.dimensions.length;
     this.dynoObstacle = this.obstacle(DYNO.x, DYNO.z, DYNO.yaw, 1.45, dynoCar.dimensions.length / 2 + 0.6, 1.6);
     if (q.dynoCar) {
-      // The customer's car and its straps, a small group of their own so the player's car can swap them out.
+      // The customer's car and its straps (in the customer's dyno group, so the player's car swaps them out together).
       const straps = new Kit(m);
       dynoStraps(straps, DYNO.x, DYNO.z, DYNO.yaw, { length: dynoCar.dimensions.length, width: dynoCar.dimensions.width, z: 0 }, dynoHalf(dynoCar.dimensions.length));
-      straps.build(this.customerStraps, track);
-      s.add(this.customerStraps);
+      straps.build(this.customerDyno, track);
       void this.loadParkedCar(assets, dynoBuild.carId, dynoBuild.visual, { x: DYNO.x, y: deck, z: DYNO.z, yaw: DYNO.yaw }, 0).then((v) => {
         this.dynoCar = v;
         if (v) v.root.visible = !this.occupied;
@@ -694,54 +700,72 @@ export class Showroom {
     this.shadow.scale.set(d.width * 1.32, 1, d.length * 1.16);
   }
 
-  /**
-   * Where the player's car stands on the dyno (m, rad) so its driven axle sits over the drum: the drum is at the
-   * customer car's rear axle, so the car's origin lies that far along the dyno's z from the axle's own z in car
-   * space (`axleZ`). The deck is `y`.
-   */
-  dynoStand(axleZ: number, out: { x: number; y: number; z: number; yaw: number }): void {
-    const along = this.drumZ - axleZ;
-    out.x = DYNO.x + along * Math.sin(DYNO.yaw);
+  /** Where the player's car stands on the dyno (m, rad): centred on it like the customer's, its axles over the rollers cut for it. The deck is `y`. */
+  dynoStand(out: { x: number; y: number; z: number; yaw: number }): void {
+    out.x = DYNO.x;
     out.y = this.deckY;
-    out.z = DYNO.z + along * Math.cos(DYNO.yaw);
+    out.z = DYNO.z;
     out.yaw = DYNO.yaw;
   }
 
   /**
    * Strap the player's car to the dyno: it leaves the turntable (or the dyno it already stands on, for a new
-   * car) for the room's scene, the customer's car and straps hide, and straps cut for this car replace them.
+   * car or drivetrain) for the room's scene, the customer's car, deck and straps hide, and a dyno cut for this
+   * car replaces them: the deck pitted under its driven axles (one roller set, or two for all wheel drive),
+   * chocks at the wheels that stand still, straps to its tow points, and the drums, which `spinDrums` turns.
    * The caller poses it (`dynoStand`).
    */
-  mountDyno(view: CarView, axleZ: number): void {
+  mountDyno(view: CarView, driven: DynoDrive): void {
     this.scene.add(view.root);
     this.occupied = true;
     this.shadow.visible = false;
     if (this.dynoCar) this.dynoCar.root.visible = false;
-    this.customerStraps.visible = false;
-    this.clearPlayerStraps();
-    const d = view.car.dimensions;
-    const kit = new Kit(this.mats);
-    dynoStraps(kit, DYNO.x, DYNO.z, DYNO.yaw, { length: d.length, width: d.width, z: this.drumZ - axleZ } satisfies StrapFit, dynoHalf(this.dynoLength));
+    this.customerDyno.visible = false;
+    this.clearPlayerRig();
+    const fit = dynoFitOf(view.car, driven);
+    const half = Math.max(dynoHalf(this.dynoLength), dynoHalf(fit.length));
     const group = new THREE.Group();
-    kit.build(group, this.strapOwner.track);
+    const kit = new Kit(this.mats);
+    const { rollers } = dyno(kit, DYNO.x, DYNO.z, DYNO.yaw, fit, this.vent, half);
+    dynoStraps(kit, DYNO.x, DYNO.z, DYNO.yaw, { length: fit.length, width: fit.width, z: 0 } satisfies StrapFit, half);
+    kit.build(group, this.rigOwner.track);
+    // A drum is a pivot at its axis in the dyno's frame, turned about the dyno's x as the wheels drive it.
+    for (const r of rollers) {
+      const pivot = new THREE.Group();
+      pivot.rotation.order = 'YXZ';
+      pivot.rotation.y = DYNO.yaw;
+      pivot.position.set(DYNO.x + r.z * Math.sin(DYNO.yaw), this.deckY - DYNO_DRUM.radius + 0.01, DYNO.z + r.z * Math.cos(DYNO.yaw));
+      const dk = new Kit(this.mats);
+      dk.place();
+      dynoDrum(dk, r.track);
+      dk.build(pivot, this.rigOwner.track);
+      group.add(pivot);
+      this.drums.push(pivot);
+    }
     this.scene.add(group);
-    this.playerStraps = group;
+    this.playerRig = group;
   }
 
-  /** Unstrap: the customer's car and straps are back, the player's car goes to the turntable. */
+  /** Unstrap: the customer's car, deck and straps are back, the player's car goes to the turntable. */
   releaseDyno(view: CarView): void {
     this.occupied = false;
     this.shadow.visible = true;
     if (this.dynoCar) this.dynoCar.root.visible = true;
-    this.customerStraps.visible = true;
-    this.clearPlayerStraps();
+    this.customerDyno.visible = true;
+    this.clearPlayerRig();
     this.mount(view);
   }
 
-  private clearPlayerStraps(): void {
-    this.playerStraps?.removeFromParent();
-    this.playerStraps = null;
-    this.strapOwner.dispose();
+  private clearPlayerRig(): void {
+    this.playerRig?.removeFromParent();
+    this.playerRig = null;
+    this.drums.length = 0;
+    this.rigOwner.dispose();
+  }
+
+  /** Turn the player's drums to this angle (rad, about their axis; the scene integrates it from the wheels' speed). */
+  spinDrums(angle: number): void {
+    for (const d of this.drums) d.rotation.x = angle;
   }
 
   /** Hand the wall screen a live pull to draw (null: back to the customer's fake one). The object is read at each redraw, so the caller may keep updating it. */
@@ -810,10 +834,11 @@ export class Showroom {
       this.crew.update(t);
       this.liftRig.position.y = liftHeight(this.crewLift, t);
     }
-    // The dyno redraws at about 12 Hz: enough for the curve to climb, one small texture upload each time.
+    // The wall screen redraws every frame while a live pull climbs, and a few times a second otherwise (the
+    // READY blink, the peak call-out, the customer's pull); each redraw is one 384 x 216 texture upload.
     this.dynoWait -= dt;
     if (this.dynoWait <= 0) {
-      this.dynoWait = 1 / 12;
+      this.dynoWait = this.run ? (this.run.state === 'pull' ? 0 : SCREEN_IDLE.live) : SCREEN_IDLE.fake;
       this.dyno.draw(t, this.run);
     }
   }
@@ -866,7 +891,7 @@ export class Showroom {
     this.disposed = true;
     this.reflector?.dispose();
     for (const v of this.liftCars) v.dispose();
-    this.strapOwner.dispose();
+    this.rigOwner.dispose();
     for (const sign of this.signs) sign.dispose();
     this.owned.dispose();
   }
@@ -929,6 +954,12 @@ function hubs(k: Kit, x: number, y: number, z: number, yaw: number, ...wheels: n
     k.cyl(m.steel, 0.07, 0.09, px * 0.97, py, pz, 'x', 10);
     k.box(m.red, 0.08, 0.17, 0.11, px * 0.89, py + 0.07, pz - 0.1);
   }
+}
+
+/** The dyno's fit of a car (m, car space; the car stands centred on the dyno) and the axles that drive it. */
+function dynoFitOf(car: Pick<ManifestCar, 'dimensions' | 'wheels'>, driven: DynoDrive): DynoFit {
+  const w = car.wheels;
+  return { length: car.dimensions.length, width: car.dimensions.width, rearZ: w.RL[2], frontZ: w.FL[2], rearTrack: 2 * Math.abs(w.RL[0]), frontTrack: 2 * Math.abs(w.FL[0]), driven };
 }
 
 /** A roller door on a wall: the curtain, its guides, the drum housing over it, and the street's light under it. */

@@ -2,7 +2,7 @@
  * What the garage's dyno presentation needs of a build, from its tuning: the
  * engine's power and torque curves as 0..1 shares of their peaks over the rpm
  * axis (what the wall screen draws), the peak figures in the units the game
- * speaks (hp, lb-ft), the gear the pull runs in and the axle that turns the
+ * speaks (hp, lb-ft), the gear the pull runs in and the axles that turn the
  * rollers. The curves are sampled by the sim (`sim/stats.ts powerCurve`, the
  * torque the physics itself applies), so the garage never disagrees with the
  * drive; the scene takes this whole and never reads the tuning. The pull's
@@ -14,6 +14,7 @@ import { powerCurve } from '../sim/stats';
 import { horsepower, poundFeet } from '../ui/kit/units';
 import type { DynoPeaks } from './textures/effects';
 import type { RevLoad } from './revModel';
+import type { DynoDrive } from './props/atmosphere';
 
 /** How the pull plays (presentation, not physics). */
 export const PULL = {
@@ -37,8 +38,8 @@ export interface DynoSetup {
   peaks: DynoPeaks;
   /** The pull gear's overall ratio (gear times final drive): engine turns per wheel turn. */
   overall: number;
-  /** The axle on the rollers: the front for a front drive, the rear for the rest (an all wheel drive car pulls on the rear drum). */
-  driven: 'front' | 'rear';
+  /** The axles on the rollers: the front for a front drive, the rear for a rear drive, both (two roller sets) for all wheel drive. */
+  driven: DynoDrive;
   /** The wheel's rolling radius (m). */
   wheelRadius: number;
 }
@@ -76,7 +77,7 @@ export function dynoSetup(t: CarTuning): DynoSetup {
     torque: share(c.torque, c.peakTorque),
     peaks: { hp: horsepower(c.peakPower), lbft: poundFeet(c.peakTorque), hpRpm: c.peakPowerRpm, lbftRpm: c.peakTorqueRpm },
     overall: pullRatio(t),
-    driven: t.drivetrain.layout === 'fwd' ? 'front' : 'rear',
+    driven: t.drivetrain.layout === 'fwd' ? 'front' : t.drivetrain.layout === 'awd' ? 'all' : 'rear',
     wheelRadius: t.geometry.wheelRadius,
   };
 }

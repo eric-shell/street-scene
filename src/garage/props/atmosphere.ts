@@ -218,17 +218,38 @@ export function beerCooler(k: Kit, x: number, z: number, yaw: number): void {
   k.plane(m.poolTube, 1.4, 1.2, 0, 0.012, d / 2 + 0.45, 0, -Math.PI / 2);
 }
 
-/** What the dyno needs of the car strapped to it (m, car space): its length and width, the rear axle's z and the wheels' track. */
+/** Which axles turn the rollers: the front pair, the rear pair, or both (all wheel drive: two roller sets). */
+export type DynoDrive = 'front' | 'rear' | 'all';
+
+/** What the dyno needs of the car on it (m, car space, the car centred on the dyno): its length and width, each axle's z and track, and the axles that drive. */
 export interface DynoFit {
   length: number;
   width: number;
   rearZ: number;
   frontZ: number;
+  rearTrack: number;
+  frontTrack: number;
+  driven: DynoDrive;
+}
+
+/** One roller set: where its drum lies along the dyno's z (m) and the track of the wheels that sit on it. */
+export interface DynoRoller {
+  z: number;
   track: number;
+}
+
+/** The roller sets a car needs under its driven axles, tail first. */
+export function dynoRollers(car: DynoFit): DynoRoller[] {
+  const rear = { z: car.rearZ, track: car.rearTrack };
+  const front = { z: car.frontZ, track: car.frontTrack };
+  return car.driven === 'front' ? [front] : car.driven === 'rear' ? [rear] : [rear, front];
 }
 
 /** The dyno deck (m): its height, its width and the length of the roller pit across it. */
 export const DYNO_DECK = { height: 0.22, width: 2.6, pit: 0.8 } as const;
+
+/** A roller drum's radius (m): its top is at the deck's height, so a tire on it sits level with the deck. */
+export const DYNO_DRUM = { radius: 0.3 } as const;
 
 /** Half the deck's length (m) for a customer car of this length: the car's own plus a ramp's reach at each end. */
 export const dynoHalf = (carLength: number): number => carLength / 2 + 0.55;
@@ -264,45 +285,53 @@ export function dynoStraps(k: Kit, x: number, z: number, yaw: number, car: Strap
 }
 
 /**
- * A roller dyno with the car's ground at its deck, the car along local +z:
- * the steel deck in two halves either side of the roller pit, the drum under
- * the rear wheels, the absorber housing beside it, ramps at the back, chocks
- * at the front wheels, ratchet straps from the deck to the car, the
- * operator's pendant on its stand and the exhaust hose from the tailpipe
- * along the floor to `vent` (the dyno's frame: under the door, so the fumes
- * go outside). Returns the deck's height.
+ * A roller dyno with the car's ground at its deck, the car along local +z and
+ * centred on it: the steel deck in pieces between the roller pits (one pit
+ * under the driven axle, two for all wheel drive), the absorber housing
+ * beside the tail drum, ramps at the back, chocks at the wheels that do not
+ * drive, the operator's pendant on its stand and the exhaust hose from the
+ * tailpipe along the floor to `vent` (the dyno's frame: under the door, so the
+ * fumes go outside). The drums are not part of it (`dynoDrum`: the player's
+ * spin, the customer's stand); `half` is the deck's half length. Returns the
+ * deck's height and where the roller sets lie.
  */
-export function dyno(k: Kit, x: number, z: number, yaw: number, car: DynoFit, vent: Vec): number {
+export function dyno(k: Kit, x: number, z: number, yaw: number, car: DynoFit, vent: Vec, half = dynoHalf(car.length)): { deck: number; rollers: DynoRoller[] } {
   const m = k.m;
   k.place(x, 0, z, yaw);
   const deck = DYNO_DECK.height;
-  const half = dynoHalf(car.length);
   const w = DYNO_DECK.width;
   const pit = DYNO_DECK.pit;
-  const rz = car.rearZ;
-  // The deck either side of the pit, its plate skin and yellow edges.
-  for (const [z0, z1] of [
-    [-half, rz - pit / 2],
-    [rz + pit / 2, half],
-  ] as const) {
+  const rollers = dynoRollers(car);
+  const rz = rollers[0].z;
+  // The deck between the pits, its plate skin and yellow edges.
+  const cuts = [-half, ...rollers.flatMap((r) => [r.z - pit / 2, r.z + pit / 2]), half];
+  for (let i = 0; i < cuts.length; i += 2) {
+    const z0 = cuts[i];
+    const z1 = cuts[i + 1];
     const len = z1 - z0;
+    if (len < 0.05) continue;
     const cz = (z0 + z1) / 2;
     k.box(m.gunmetal, w, deck - 0.01, len, 0, (deck - 0.01) / 2, cz);
     k.box(m.galv, w - 0.04, 0.01, len - 0.02, 0, deck - 0.005, cz);
     for (const s of [-1, 1]) k.box(m.yellow, 0.07, 0.012, len, s * (w / 2 - 0.035), deck + 0.001, cz);
   }
-  k.box(m.black, w - 0.2, deck - 0.02, pit, 0, (deck - 0.02) / 2, rz);
-  for (const s of [-1, 1]) k.box(m.gunmetal, 0.1, deck, pit, s * (w / 2 - 0.05), deck / 2, rz);
-  // The drum, its top at deck height, knurled where the tires sit; the absorber on the right.
-  k.cyl(m.chrome, 0.3, w - 0.24, 0, deck - 0.3 + 0.01, rz, 'x', 32);
-  for (const s of [-1, 1]) for (let i = 0; i < 5; i++) k.cyl(m.cast, 0.302, 0.012, s * (car.track / 2) + (i - 2) * 0.045, deck - 0.29, rz, 'x', 32);
+  for (const r of rollers) {
+    k.box(m.black, w - 0.2, deck - 0.02, pit, 0, (deck - 0.02) / 2, r.z);
+    for (const s of [-1, 1]) k.box(m.gunmetal, 0.1, deck, pit, s * (w / 2 - 0.05), deck / 2, r.z);
+  }
+  // The absorber on the right, by the tail drum.
   k.box(m.blue, 0.5, 0.5, 0.75, w / 2 + 0.3, 0.25, rz);
   k.box(m.black, 0.42, 0.18, 0.006, w / 2 + 0.3, 0.32, rz + 0.378);
   k.box(m.yellow, 0.2, 0.06, 0.006, w / 2 + 0.3, 0.12, rz + 0.378);
   // Ramps up onto it at the back.
-  for (const s of [-1, 1]) k.box(m.gunmetal, 0.7, 0.03, 1.0, s * (car.track / 2), deck / 2, -half - 0.48, 0, -Math.atan2(deck, 1.0));
-  // Chocks at the front wheels (the straps are dynoStraps).
-  for (const s of [-1, 1]) k.box(m.yellow, 0.28, 0.12, 0.18, s * (car.track / 2), deck + 0.06, car.frontZ + 0.45);
+  for (const s of [-1, 1]) k.box(m.gunmetal, 0.7, 0.03, 1.0, s * (car.rearTrack / 2), deck / 2, -half - 0.48, 0, -Math.atan2(deck, 1.0));
+  // Chocks at the wheels that stand still: in front of the front pair on a rear drive, behind the rear pair on a front drive (the straps are dynoStraps).
+  if (car.driven !== 'all') {
+    const front = car.driven === 'rear';
+    const track = front ? car.frontTrack : car.rearTrack;
+    const cz = front ? car.frontZ + 0.45 : car.rearZ - 0.45;
+    for (const s of [-1, 1]) k.box(m.yellow, 0.28, 0.12, 0.18, s * (track / 2), deck + 0.06, cz);
+  }
   // The pendant on its stand at the back right, its cable to the absorber.
   k.box(m.steel, 0.3, 0.02, 0.3, w / 2 + 0.35, 0.01, -half + 0.4);
   k.cyl(m.galv, 0.02, 1.1, w / 2 + 0.35, 0.56, -half + 0.4, 'y', 8);
@@ -312,5 +341,23 @@ export function dyno(k: Kit, x: number, z: number, yaw: number, car: DynoFit, ve
   const tz = -car.length / 2 - 0.25;
   k.cyl(m.galv, 0.11, 0.25, 0.35, deck + 0.28, tz, 'z', 14, 0.07);
   k.hose(m.galv, [[0.35, deck + 0.28, tz - 0.12], [0.35, 0.09, tz - 0.9], [vent[0], 0.08, (tz + vent[2]) / 2], vent], 0.07, 40);
-  return deck;
+  return { deck, rollers };
+}
+
+/**
+ * A roller drum on its axis (along x) at height y and place z of the current frame: a chrome cylinder across the
+ * deck with a dark knurled band under each tire and a dark stripe along its length (the marker an optical pickup
+ * would count), so a turning drum reads as turning. Two draw calls, whatever the drum is merged into.
+ */
+export function dynoDrum(k: Kit, track: number, y = 0, z = 0): void {
+  const m = k.m;
+  const r = DYNO_DRUM.radius;
+  k.cyl(m.chrome, r, DYNO_DECK.width - 0.24, 0, y, z, 'x', 32);
+  const ribs = 18;
+  for (const s of [-1, 1])
+    for (let i = 0; i < ribs; i++) {
+      const a = (i / ribs) * Math.PI * 2;
+      k.box(m.cast, 0.24, 0.016, 0.034, s * (track / 2), y + Math.cos(a) * r, z + Math.sin(a) * r, 0, a);
+    }
+  for (const a of [Math.PI / ribs, Math.PI / ribs + Math.PI]) k.box(m.cast, DYNO_DECK.width - 0.3, 0.012, 0.03, 0, y + Math.cos(a) * r, z + Math.sin(a) * r, 0, a);
 }
