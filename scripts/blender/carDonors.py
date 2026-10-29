@@ -89,6 +89,14 @@ DONORS = {
         # The rear wheel well liners sit on the tire's crown (an arch gap of -0.019): lifted clear,
         # as the shipped file was by hand on 2026-10-27.
         'liftLiners': True,
+        # The headlamp washer nozzles (on the bumper over each lower lamp) go as badges, but pressed
+        # flush the curved bumper crumpled round them: left as they were.
+        'press': lambda c: not (abs(abs(c.x) - 0.49) < 0.03 and c.y < -2.0 and 0.49 < c.z < 0.55),
+        # The lamps kept finer (the round fog lamps were octagons): a tighter error, the budget for
+        # it, and the car's total raised so the shell keeps its 13,500.
+        'lampBudget': 9000,
+        'lampError': 0.0012,
+        'carBudget': 25000,
         # What strip_wipers leaves of the wiper arms on the cowl, and the whip antenna on the roof.
         'islands': [lambda k, a, b, mats: set(mats) == {'Black'} and k < 400 and -1.12 < (a.y + b.y) / 2 < -0.86 and 0.84 < (a.z + b.z) / 2 < 0.95
                     and max(b - a) < 0.25,
@@ -913,7 +921,9 @@ def donor(cid, root):
         # 0.35 m) loose islands of any paint-free material, lying on a panel. Lamps and glass are not.
         badges += delete_islands(full, badge(lambda k, a, b, mats: k < 300 and not set(mats) & {'Glass', 'Paint', *LAMP_MATS}
                                              and sorted(b - a)[0] < 0.012 and sorted(b - a)[2] < 0.35 and (a.z + b.z) / 2 > 0.2))
-    pressed = press_recesses(full, gone) if R.get('press', True) else 0
+    # Recipe `press`: False presses nothing, a predicate on a box's center (Vector) only those.
+    press = R.get('press', True)
+    pressed = press_recesses(full, gone if press is True else [b for b in gone if press((b[0] + b[1]) / 2)]) if press else 0
     print(f'{cid}: pressed {pressed} badge recesses flush ({len(gone)} badge islands removed)')
     for lo, hi in R.get('bridges', ()):
         d, a, n = bridge_bars(full, lo, hi)
@@ -1530,8 +1540,19 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     them to what the two leave of CAR_BUDGET (at most `budget`). Prints the culling and how far the low vertices drift from the full surface (mean and
     95th percentile, mm)."""
     full = bpy.data.objects[f'donor:{cid}.Full']
+    lamps = DONORS[cid].get('lampBudget', lamps)
+    lamp_error = DONORS[cid].get('lampError', LAMP_ERROR)
+    car_budget = DONORS[cid].get('carBudget', CAR_BUDGET)
     skin = _copy(full, f'donor:{cid}.Skin')
-    _collapse(skin, mid)
+    # The lamps ride through the first collapse untouched (held), so their own pass works from
+    # the source's detail: collapsed to 60,000 with the rest, the Kombi's round fog lamps were
+    # already octagons before the lamp pass saw them.
+    held = lamp_faces(skin, DONORS[cid].get('lamps', ()))
+    skin.data.attributes.new('lamp', 'BOOLEAN', 'FACE').data.foreach_set('value', [p.index in held for p in skin.data.polygons])
+    _collapse(skin, mid, lock='lamp')
+    skin.data.attributes.remove(skin.data.attributes['lamp'])
+    for g in list(skin.vertex_groups):
+        skin.vertex_groups.remove(g)
     gone, flipped = cull_hidden(skin)
     # The cabin is reduced apart, to its own budget: it touches nothing of the shell, and in one
     # collapse its 30,000 triangles of seats and dash would starve the mirrors and handles.
@@ -1551,7 +1572,7 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     _delete_indices(lamp, lambda p: p.index not in lit)
     lamp_tris = tris(lamp)
     if lamp.data.polygons:
-        _collapse(lamp, lamps, finish=False, error=LAMP_ERROR, flags=('LockBorder',))
+        _collapse(lamp, lamps, finish=False, error=lamp_error, flags=('LockBorder',))
         shell = len(low.data.polygons)
         bm = bmesh.new()
         bm.from_mesh(low.data)
@@ -1569,7 +1590,7 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     # The shell takes what the cabin and the lamps leave of the car's budget, up to `budget`: a
     # fixed share set aside for lamps squeezed the Golf's shell (whose cabin is 938 triangles) to
     # 12,000 and its grille bars collapsed; squeezed to 10,000, the RX-7's doors fell inside its cabin.
-    shell = min(budget, CAR_BUDGET - kept - tris(cabin))
+    shell = min(budget, car_budget - kept - tris(cabin))
     _collapse(low, shell + kept, lock='lamp')
     if low.data.attributes.get('lamp'):
         low.data.attributes.remove(low.data.attributes['lamp'])
