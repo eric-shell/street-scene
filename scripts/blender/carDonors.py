@@ -136,6 +136,9 @@ DONORS = {
                     (lambda c, n, m: m in ('TailLight', 'Black') and math.hypot(abs(c.x) - 0.522, c.z - 0.674) < 0.03 and -1.93 < c.y < -1.9, 'Reflector'),
                     # The third brake light: the red strip across the top of the rear glass.
                     (lambda c, n, m: m == 'TailLight' and c.z > 1.2, 'BrakeLight'),
+                    # The side repeaters on the front fenders are clear (gray), the bumper corner
+                    # markers amber.
+                    (lambda c, n, m: m == 'Light' and abs(c.x) > 0.8 and -1.1 < c.y < -0.8 and 0.65 < c.z < 0.85, 'Chrome'),
                     # The tail lamps' bands by position, once the cuts have made them straight: the
                     # texture's streaks and stripes left them patchy (dark specks in the red, the
                     # reverse lamp's white spilling past its block). Every face of the lamp is red,
