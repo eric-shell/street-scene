@@ -154,6 +154,7 @@ WHEELS = {
     'tora': {'name': 'HRE P200', 'construction': 'single', 'uid': '7221bc7c423e401f83712d56e435a813', 'maker': 'HRE', **_J},
     'tsuchi': {'name': 'Fifteen52 Rally Sport', 'construction': 'single', 'uid': '1ed9ad4cbe5644ae831fe95bae84a0fc', 'maker': 'Fifteen52', **_J},
     'homura': {'name': 'SSR Koenig', 'construction': 'multi', 'uid': '391ab57dc25a4aa69771fbb9114f3d40', 'maker': 'SSR', **_J,
+              'bias': 25,   # the user, 2026-10-28: a flush face (seat at its front) reads deep at the car's target; 25 mm more out
               'cap_edge': 0.179},   # the cap is the KS plate (r 26.5 mm, 5 mm down) in its bezel of ten screws, ringed by a groove at 37 mm; the hub pad round it (one island with it, to 59 mm) is the wheel's. `cap_disc: 0.29` had painted the whole pad and more (2026-10-28)
     'hane': {'name': 'BBS E52', 'construction': 'multi', 'uid': '8168cc3dce114b19b617c17fea0ab364', 'maker': 'BBS', **_J,
              'offset': 'fixed',   # the user, 2026-10-28: the dome proud of the lip is the design (an old school European style), so it ships as modelled

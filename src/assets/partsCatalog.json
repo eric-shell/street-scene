@@ -742,6 +742,7 @@
       "group": "Hiryu",
       "construction": "multi",
       "offset": 0.04085,
+      "offsetBias": 25,
       "lip": "chrome",
       "carId": "universal",
       "slot": "wheels",
