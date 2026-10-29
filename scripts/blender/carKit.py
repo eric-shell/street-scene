@@ -1366,6 +1366,40 @@ def end_plate(target, edge, base, heights, thick=0.006, curl=0.025, curl_height=
     return secs
 
 
+def end_cap(surface, target, y, x_out, bot, ztop, toward, width=0.15, thick=0.004, samples=10, material='Black'):
+    """A flat panel closing a lip's open end at a wheel well, in the plane y (`toward` +1 or -1: the side
+    it is thickened to, away from the wheel): from the lip's outer edge `x_out` (sign gives the side)
+    `width` m inboard, its bottom on the lip's bottom `bot`, its top following the car's underside
+    (rays up through `surface`, a list of objects) and capped at `ztop` (where the air dam meets the
+    body), so the lip, its dam and the car's bottom read as one wrapped piece into the fender liner.
+    Built on both sides by the caller (x_out's sign). The Wendt Strom's Track Wild splitter and skirt
+    ends. Carries authored normals."""
+    from mathutils.bvhtree import BVHTree
+    import bmesh as _bm
+    bm = _bm.new()
+    for o in surface:
+        m2 = o.data.copy()
+        m2.transform(o.matrix_world)
+        bm.from_mesh(m2)
+        bpy.data.meshes.remove(m2)
+    t = BVHTree.FromBMesh(bm)
+    sx = 1 if x_out > 0 else -1
+    xs = [x_out - sx * width * k / (samples - 1) for k in range(samples)]
+    tops = []
+    for x in xs:
+        h = t.ray_cast(Vector((x, y, bot - 0.5)), Vector((0, 0, 1)), 1.0)
+        z = h[0].z if h[0] and h[0].z > bot else ztop
+        tops.append(min(max(z, bot + 0.004), ztop))
+    bm.free()
+    loop = [(xs[-1], bot), (xs[0], bot)] + list(zip(xs, tops))
+    secs = [[(x, y, z) for x, z in loop], [(x, y + toward * thick, z) for x, z in loop]]
+    carry = stash_normals(target)
+    sweep(target, secs, material)
+    if carry:
+        restore_normals(target)
+    return loop
+
+
 def drape_strap(surface, target, x, root, length=0.165, width=0.04, thick=0.003, sep=0.012, clear=0.003, step=0.006,
                 material='Strap'):
     """A webbing tow strap hanging as a flat loop from an eye bolt at (x, root y, root z) and draping
