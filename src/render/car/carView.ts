@@ -1022,6 +1022,18 @@ export class CarView {
     }
   }
 
+  /**
+   * The exhaust tips in the car's root frame (m; `tips` is the body's own), the body's ride height and rake
+   * applied: where something that attaches to the tailpipes stands, like the dyno's extraction funnels.
+   */
+  tipsOnRoot(): [number, number, number][] {
+    this.body.updateMatrix();
+    return this.tips.map((t) => {
+      const p = new THREE.Vector3(t[0], t[1], t[2]).applyMatrix4(this.body.matrix);
+      return [p.x, p.y, p.z];
+    });
+  }
+
   /** Ground height under each wheel, in the root's frame (m); scratch for update(). */
   private readonly groundY = [0, 0, 0, 0];
 

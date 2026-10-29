@@ -289,13 +289,13 @@ export function dynoStraps(k: Kit, x: number, z: number, yaw: number, car: Strap
  * centred on it: the steel deck in pieces between the roller pits (one pit
  * under the driven axle, two for all wheel drive), the absorber housing
  * beside the tail drum, ramps at the back, chocks at the wheels that do not
- * drive, the operator's pendant on its stand and the exhaust hose from the
- * tailpipe along the floor to `vent` (the dyno's frame: under the door, so the
- * fumes go outside). The drums are not part of it (`dynoDrum`: the player's
- * spin, the customer's stand); `half` is the deck's half length. Returns the
- * deck's height and where the roller sets lie.
+ * drive and the operator's pendant on its stand. The exhaust extraction is
+ * `dynoVents` (it follows the car's tips, so it is built apart). The drums are
+ * not part of it (`dynoDrum`: the player's spin, the customer's stand); `half`
+ * is the deck's half length. Returns the deck's height and where the roller
+ * sets lie.
  */
-export function dyno(k: Kit, x: number, z: number, yaw: number, car: DynoFit, vent: Vec, half = dynoHalf(car.length)): { deck: number; rollers: DynoRoller[] } {
+export function dyno(k: Kit, x: number, z: number, yaw: number, car: DynoFit, half = dynoHalf(car.length)): { deck: number; rollers: DynoRoller[] } {
   const m = k.m;
   k.place(x, 0, z, yaw);
   const deck = DYNO_DECK.height;
@@ -337,11 +337,64 @@ export function dyno(k: Kit, x: number, z: number, yaw: number, car: DynoFit, ve
   k.cyl(m.galv, 0.02, 1.1, w / 2 + 0.35, 0.56, -half + 0.4, 'y', 8);
   k.box(m.yellow, 0.12, 0.2, 0.06, w / 2 + 0.35, 1.18, -half + 0.43);
   k.hose(m.black, [[w / 2 + 0.35, 1.08, -half + 0.4], [w / 2 + 0.4, 0.2, -half + 0.8], [w / 2 + 0.35, 0.015, rz - 0.6], [w / 2 + 0.3, 0.2, rz - 0.3]], 0.008, 24);
-  // Exhaust: a funnel over the tailpipe, the hose down to the floor and out to the vent.
-  const tz = -car.length / 2 - 0.25;
-  k.cyl(m.galv, 0.11, 0.25, 0.35, deck + 0.28, tz, 'z', 14, 0.07);
-  k.hose(m.galv, [[0.35, deck + 0.28, tz - 0.12], [0.35, 0.09, tz - 0.9], [vent[0], 0.08, (tz + vent[2]) / 2], vent], 0.07, 40);
   return { deck, rollers };
+}
+
+/**
+ * The exhaust extraction: how far apart two tips (m, centre to centre) can be and still share one funnel (a twin
+ * tip muffler is one outlet to a shop's hose, tips on opposite sides are two), the funnel's mouth radius around a
+ * lone tip, how far behind the tip (or the tail, whichever is further back) the mouth stands, the funnel's length
+ * and the hose's radius (m), and how far apart the hoses end under the door.
+ */
+export const DYNO_VENT = { join: 0.2, mouth: 0.11, gap: 0.12, length: 0.25, hose: 0.07, spread: 0.3 } as const;
+
+/** One funnel's place: the point its mouth centres on (the car frame: the tips' centroid) and its mouth radius (m). */
+export interface DynoOutlet {
+  at: Vec;
+  r: number;
+}
+
+/**
+ * The funnels a car's exhaust tips need, left (+x) to right: tips within `DYNO_VENT.join` of each other share
+ * one, its mouth wide enough to take them all. Tips are in the car's frame (m, x left, y up, z forward).
+ */
+export function dynoOutlets(tips: readonly Vec[]): DynoOutlet[] {
+  const groups: Vec[][] = [];
+  const centre = (g: Vec[]): Vec => [g.reduce((a, t) => a + t[0], 0) / g.length, g.reduce((a, t) => a + t[1], 0) / g.length, g.reduce((a, t) => a + t[2], 0) / g.length];
+  for (const t of [...tips].sort((a, b) => b[0] - a[0])) {
+    const home = groups.find((g) => {
+      const c = centre(g);
+      return Math.hypot(t[0] - c[0], t[1] - c[1], t[2] - c[2]) < DYNO_VENT.join;
+    });
+    if (home) home.push(t);
+    else groups.push([t]);
+  }
+  return groups.map((g) => {
+    const at = centre(g);
+    return { at, r: DYNO_VENT.mouth + Math.max(...g.map((t) => Math.hypot(t[0] - at[0], t[1] - at[1], t[2] - at[2]))) };
+  });
+}
+
+/**
+ * The exhaust extraction for the car on the dyno, in the dyno frame at (x, z) turned by yaw: a funnel behind each
+ * outlet (`dynoOutlets`) with its hose down to the floor and out to `vent` (the dyno's frame: under the door, so
+ * the fumes go outside), the hoses ending side by side. `tips` are the car's tips in its own frame and `tail` its
+ * rearmost point (z, m): the mouth stands clear of the bumper, with the flames passing through it. Apart from
+ * `dyno()` so it is cut for whichever car stands there.
+ */
+export function dynoVents(k: Kit, x: number, z: number, yaw: number, tips: readonly Vec[], tail: number, vent: Vec): void {
+  const m = k.m;
+  const V = DYNO_VENT;
+  const outlets = dynoOutlets(tips);
+  k.place(x, 0, z, yaw);
+  outlets.forEach((o, i) => {
+    const y = DYNO_DECK.height + o.at[1];
+    const mouth = Math.min(o.at[2] - V.gap, tail - 0.03);
+    const zc = mouth - V.length / 2;
+    k.cyl(m.galv, o.r, V.length, o.at[0], y, zc, 'z', 14, V.hose);
+    const end: Vec = [vent[0] + (i - (outlets.length - 1) / 2) * V.spread, vent[1], vent[2]];
+    k.hose(m.galv, [[o.at[0], y, zc - V.length / 2 + 0.005], [o.at[0], 0.09, zc - 0.9], [end[0], 0.08, (zc + vent[2]) / 2], end], V.hose, 40);
+  });
 }
 
 /**

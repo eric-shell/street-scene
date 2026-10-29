@@ -59,6 +59,7 @@ import {
   dynoDrum,
   dynoHalf,
   dynoStraps,
+  dynoVents,
   bayNumber,
   calendar,
   cleanup,
@@ -385,7 +386,7 @@ export class Showroom {
     this.vent = vent;
     // The customer's dyno is a group of its own (the player's car gets one cut for it): rear drive, the drum standing still.
     const dk = new Kit(m);
-    const { deck, rollers } = dyno(dk, DYNO.x, DYNO.z, DYNO.yaw, dynoFitOf(dynoCar, 'rear'), vent);
+    const { deck, rollers } = dyno(dk, DYNO.x, DYNO.z, DYNO.yaw, dynoFitOf(dynoCar, 'rear'));
     dk.place(DYNO.x, 0, DYNO.z, DYNO.yaw);
     for (const r of rollers) dynoDrum(dk, r.track, deck - DYNO_DRUM.radius + 0.01, r.z);
     dk.build(this.customerDyno, track);
@@ -398,11 +399,13 @@ export class Showroom {
       const straps = new Kit(m);
       dynoStraps(straps, DYNO.x, DYNO.z, DYNO.yaw, { length: dynoCar.dimensions.length, width: dynoCar.dimensions.width, z: 0 }, dynoHalf(dynoCar.dimensions.length));
       straps.build(this.customerDyno, track);
+      // Its extraction funnels are cut to the tips of the car as loaded (the body's stance applied); the manifest's stand in if it fails.
       void this.loadParkedCar(assets, dynoBuild.carId, dynoBuild.visual, { x: DYNO.x, y: deck, z: DYNO.z, yaw: DYNO.yaw }, 0).then((v) => {
         this.dynoCar = v;
         if (v) v.root.visible = !this.occupied;
+        if (!this.disposed) this.cutVents(this.customerDyno, v ? v.tipsOnRoot() : dynoCar.exhaustTips ?? [], dynoCar.dimensions.length, track);
       });
-    }
+    } else this.cutVents(this.customerDyno, dynoCar.exhaustTips ?? [], dynoCar.dimensions.length, track);
     const fanAt = { x: DYNO.x, z: DYNO.z - dynoCar.dimensions.length / 2 - 1.25, yaw: 0 };
     const hub = drumFan(k, fanAt.x, fanAt.z, fanAt.yaw, DYNO.fanR);
     this.obstacle(fanAt.x, fanAt.z, 0, DYNO.fanR + 0.2, 0.4, 2 * DYNO.fanR + 0.3);
@@ -726,7 +729,8 @@ export class Showroom {
     const half = Math.max(dynoHalf(this.dynoLength), dynoHalf(fit.length));
     const group = new THREE.Group();
     const kit = new Kit(this.mats);
-    const { rollers } = dyno(kit, DYNO.x, DYNO.z, DYNO.yaw, fit, this.vent, half);
+    const { rollers } = dyno(kit, DYNO.x, DYNO.z, DYNO.yaw, fit, half);
+    dynoVents(kit, DYNO.x, DYNO.z, DYNO.yaw, view.tipsOnRoot(), -fit.length / 2, this.vent);
     dynoStraps(kit, DYNO.x, DYNO.z, DYNO.yaw, { length: fit.length, width: fit.width, z: 0 } satisfies StrapFit, half);
     kit.build(group, this.rigOwner.track);
     // A drum is a pivot at its axis in the dyno's frame, turned about the dyno's x as the wheels drive it.
@@ -754,6 +758,13 @@ export class Showroom {
     this.customerDyno.visible = true;
     this.clearPlayerRig();
     this.mount(view);
+  }
+
+  /** The exhaust extraction for a car's tips (car frame, m) and length, built into `into` (the customer's dyno group: it hides with it). */
+  private cutVents(into: THREE.Group, tips: readonly (readonly number[])[], length: number, track: Disposer['track']): void {
+    const kit = new Kit(this.mats);
+    dynoVents(kit, DYNO.x, DYNO.z, DYNO.yaw, tips as [number, number, number][], -length / 2, this.vent);
+    kit.build(into, track);
   }
 
   private clearPlayerRig(): void {
