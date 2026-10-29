@@ -21,8 +21,9 @@
  * moves with them (onStep; game/streetCameras.ts). Every step keeps the title
  * block on top (the boot splash lands on `.title-lockup`, see ui/splash/splash.ts);
  * The menu opens with its parts cascading in, the cards and then each place on home a beat apart
- * (`.menu.is-opening`, _menu.scss), as the transition that brought it starts to lift (uncovered) or at
- * once; under the boot splash the landing plays it instead (`.is-arriving`).
+ * (`.menu.is-opening`, _menu.scss). They hold on their first frame (`.is-held`) while a transition
+ * or the boot splash covers the menu, and go as it lifts (uncovered, the splash's landing), a beat late
+ * (`.is-behind`) so they rise where the cover has already cleared; with nothing covering it they go at once.
  * Escape or the back button goes back a step. Arrow keys walk the home list and
  * the race type grid (1 to 6 pick one); the ? in the bottom left (ui/panels/help.ts)
  * lists each step's keys and tips, with Hide the menu (H) as a button for touch
@@ -87,7 +88,7 @@ import type { BestRecord } from '../../replay/replay';
 import type { MusicPlayer } from '../../audio/musicPlayer';
 import type { SpecBadge } from '../../shared/carSpec';
 import { uiBlip, uiWhoosh } from '../../audio/uiSound';
-import { uncovered } from '../transitions/transitions';
+import { transitioning, uncovered } from '../transitions/transitions';
 import { accountRow } from '../screens/signIn';
 import { TAGLINE, titleWords } from './title';
 
@@ -188,8 +189,8 @@ const PLACES_INFO = {
   settings: { icon: SettingsIcon, label: 'Settings', hue: 'purple' },
 } as const;
 
-/** How long the menu's opening cascade runs (ms, _menu.scss), the last part's delay and its rise. */
-const OPEN_MS = 1000;
+/** How long the menu's opening cascade runs once released (ms, _menu.scss): the cover's beat, the last part's delay and its rise. */
+const OPEN_MS = 1400;
 /** Columns of the race step's type grid (`.mode-grid` in _mode-grid.scss): the arrow keys move a row by this many types. */
 const MODE_COLUMNS = 3;
 const GRID_MOVES: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: MODE_COLUMNS, ArrowUp: -MODE_COLUMNS };
@@ -683,11 +684,23 @@ export function mainMenu(o: MenuOptions): MainMenu {
     el.querySelector<HTMLElement>(focus)?.focus({ preventScroll: true });
   }
   go(o.step ?? 'home', false);
-  void uncovered().then(() => {
-    if (!root.isConnected || menu.classList.contains('is-pending')) return;
-    menu.classList.add('is-opening');
+  menu.classList.add('is-opening', 'is-held');
+  const covered = transitioning();
+  const release = (behind: boolean) => {
+    menu.classList.toggle('is-behind', behind);
+    menu.classList.remove('is-held');
     // Off once the last part has landed, so later redraws (the seed, the account row) stay still.
-    setTimeout(() => menu.classList.remove('is-opening'), OPEN_MS);
+    setTimeout(() => menu.classList.remove('is-opening', 'is-behind'), OPEN_MS);
+  };
+  void uncovered().then(() => {
+    // Under the boot splash (it holds the menu once this is built, before this runs): go as it lands.
+    if (!menu.classList.contains('is-pending')) return release(covered);
+    const watch = new MutationObserver(() => {
+      if (menu.classList.contains('is-pending')) return;
+      watch.disconnect();
+      release(true);
+    });
+    watch.observe(menu, { attributes: true, attributeFilter: ['class'] });
   });
 
   const onKey = (e: KeyboardEvent) => {

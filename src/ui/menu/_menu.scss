@@ -98,11 +98,12 @@
   }
 
 }
-/* The menu opening (menu.ts): as the transition that brought it lifts (.is-opening) or the boot splash lands
-   (.is-arriving, _splash.scss), its parts rise in a beat apart from the top, like the garage's groups: the step's
-   header, each card in its body (--at), on home each place in the list after the cards (--row), then the foot.
-   A step sliding in has its own entrance (.is-entering, _rail.scss). */
-.menu:is(.is-opening, .is-arriving) > .rail__step:not(.is-entering, .is-leaving) {
+/* The menu opening (menu.ts, .is-opening): its parts rise in a beat apart from the top, like the garage's groups:
+   the step's header, each card in its body (--at), on home each place in the list after the cards (--row), then
+   the foot. They hold unseen on their first frame while a transition or the boot splash covers the menu (.is-held)
+   and start as it lifts, a beat late when one did (.is-behind), so they rise where the cover has cleared rather
+   than under it. A step sliding in has its own entrance (.is-entering, _rail.scss). */
+.menu.is-opening > .rail__step:not(.is-entering, .is-leaving) {
   > * + * {
     --at: 1;
   }
@@ -125,8 +126,20 @@
   .menu-screen__body > :not(.nav-list),
   .nav-list > * {
     @include media.motion {
-      animation: rise-in 0.45s var(--ease-out) calc((var(--at, 0) + var(--row, 0)) * 50ms) both;
+      animation: rise-in 0.5s var(--ease-out) calc(var(--open-at, 0s) + (var(--at, 0) + var(--row, 0)) * 60ms) both;
     }
+  }
+}
+.menu.is-opening {
+  &.is-held > .rail__step:not(.is-entering, .is-leaving) {
+    > :not(.menu-screen__scroll),
+    .menu-screen__body > :not(.nav-list),
+    .nav-list > * {
+      animation-play-state: paused;
+    }
+  }
+  &.is-behind {
+    --open-at: 0.3s;
   }
 }
 /* Explore: the menu slides away to the left while the camera cranes up off the street for the drone (main.ts). */
