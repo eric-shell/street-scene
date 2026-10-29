@@ -6,12 +6,21 @@
  * three.js.
  *
  * A shape is a half profile in units of the tire it replaces: x is the distance from the tire's center
- * plane over the bead's (where the tire tucks under the wheel's lip, so the bead never moves), v the
- * height from the bead (0) to the tread (1). The outer radius never changes, so the sim's wheel radius and
- * the wheel size slider (wheelFit.ts) work the same on every shape. The profile has two runs: the `side`,
- * from the face side's bead up to the tread's shoulder, and the `tread`, from the shoulder in to where the
- * crown goes flat. The crown carries two circumferential grooves (`TREAD`), real geometry dipping a few
- * millimetres in, placed along the tread's arc length so every shape gets the same layout.
+ * plane over the stock bead's (where the house tire meets the wheel's lip), v the height from the bead (0)
+ * to the tread (1). The outer radius never changes, so the sim's wheel radius and the wheel size slider
+ * (wheelFit.ts) work the same on every shape. The profile has two runs: the `side`, from the face side's
+ * bead up to the tread's shoulder, and the `tread`, from the shoulder in to where the crown goes flat. The
+ * crown carries two circumferential grooves (`TREAD`), real geometry dipping a few millimetres in, placed
+ * along the tread's arc length so every shape gets the same layout.
+ *
+ * A stretched tire seats its face bead inboard of the stock one (`side[0]`'s x under 1), so the wheel's
+ * lip stands proud of the rubber and shows as a band of metal past the sidewall from straight ahead or
+ * behind, the way a stretched tire wears a wheel. Every shipped wheel's lip is a rounded bulb 1.7 cm wide
+ * whose top sits 1 cm inboard of the stock bead and whose dish drops away a further 1.5 cm behind it
+ * (measured over public/parts, 2026-10-28), so a bead up to 2 cm in still hides behind the bulb from the
+ * front, and it dips a hair under the bead radius (v below 0) to sit in the metal rather than on it. The
+ * back bead stays where the stock one is whatever the shape: the barrel behind the spokes must stay
+ * covered (wheelFit.tirePull), and nothing of the back shows.
  *
  * UVs: u runs once around the tire (the seam column is duplicated), v across the profile in three bands
  * (`TREAD.band`): the face side's sidewall, the tread, and a plain strip the back sidewall is pinned to,
@@ -34,10 +43,12 @@ interface ProfileDef {
  */
 const PROFILES: Record<TireShape, ProfileDef> = {
   standard: { side: [[1, 0], [1.19, 0.242], [1.238, 0.573], [1.167, 0.763]], tread: [[1, 0.963], [0.714, 1]] },
-  // Pulled a little tight: the bulge mostly gone, the shoulder tucked in, the tread a touch narrower.
-  mild: { side: [[1, 0], [1.05, 0.25], [1.02, 0.6], [0.92, 0.86]], tread: [[0.8, 0.97], [0.62, 1]] },
-  // Pulled tight over a wide wheel: a straight, steep sidewall and a narrow tread, the lip standing proud.
-  stretched: { side: [[1, 0], [0.78, 0.71]], tread: [[0.7, 0.92], [0.63, 0.99], [0.48, 1]] },
+  // Pulled a little tight: the bead in the lip's bulb so its edge shows, the bulge gone, the shoulder tucked in,
+  // the tread a touch narrower.
+  mild: { side: [[0.93, -0.03], [0.95, 0.25], [0.9, 0.6], [0.8, 0.86]], tread: [[0.72, 0.97], [0.56, 1]] },
+  // Pulled tight over a wide wheel: the bead at the back of the lip's bulb, a straight, steep sidewall leaning in
+  // to a narrow tread, the lip standing a modest band proud of the rubber.
+  stretched: { side: [[0.85, -0.03], [0.66, 0.7]], tread: [[0.56, 0.92], [0.5, 0.99], [0.38, 1]] },
 };
 
 /**
@@ -140,8 +151,8 @@ function fullProfile(shape: TireShape, fit: TireFit): ProfilePoint[] {
   for (let k = 1; k < sidePts.length; k++) sideArc.push(sideArc[k - 1] + Math.hypot(sidePts[k][0] - sidePts[k - 1][0], sidePts[k][1] - sidePts[k - 1][1]));
   const out: ProfilePoint[] = side.map(([x, r], k) => ({ x, r, v: (TREAD.band.sidewall * sideArc[k]) / sideArc[sideArc.length - 1] }));
   for (const p of tread) out.push({ x: p.x, r: p.r, v: TREAD.band.sidewall + p.t * (TREAD.band.tread - TREAD.band.sidewall) });
-  // The back sidewall is plain rubber: pinned to the plain strip.
-  for (let k = side.length - 1; k >= 0; k--) out.push({ x: -side[k][0], r: side[k][1], v: TREAD.band.plain });
+  // The back sidewall is plain rubber, pinned to the plain strip; its bead is the stock one's whatever the face's.
+  for (let k = side.length - 1; k >= 0; k--) out.push({ x: k === 0 ? -fit.beadX : -side[k][0], r: side[k][1], v: TREAD.band.plain });
   return out;
 }
 
