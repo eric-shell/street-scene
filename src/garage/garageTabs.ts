@@ -14,7 +14,7 @@ import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning'
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges } from '../shared/carSpec';
-import { h, segmented, toast } from '../ui/kit/dom';
+import { cycler, h, onOffSwitch, segmented, toast } from '../ui/kit/dom';
 import { ArrowUpDown, Car, Disc3, Gauge, Hammer, Layers, Moon, Paintbrush, RotateCcw, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { GaragePrefs, saveGaragePrefs } from './storage';
@@ -42,12 +42,12 @@ export const TABS: { id: Tab; label: string; icon: IconNode }[] = [
 export const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan', eshell: 'eshell' };
 
 /**
- * The Paint tab's surfaces, one on show at a time (like the Body tab's slots): the body, the trim, the wheels (the
+ * The Paint tab's surfaces, one on show at a time (like the Body tab's slots): the body, the wheels (the
  * face, the lip and the center cap), the hardware (the lug nuts and the bolts) and the calipers.
  */
-export const PAINT_SURFACES = ['body', 'trim', 'wheels', 'hardware', 'calipers'] as const;
+export const PAINT_SURFACES = ['body', 'wheels', 'hardware', 'calipers'] as const;
 export type PaintSurface = (typeof PAINT_SURFACES)[number];
-const SURFACE_LABELS: Record<PaintSurface, string> = { body: 'Body', trim: 'Trim', wheels: 'Wheels', hardware: 'Hardware', calipers: 'Calipers' };
+const SURFACE_LABELS: Record<PaintSurface, string> = { body: 'Body', wheels: 'Wheels', hardware: 'Hardware', calipers: 'Calipers' };
 
 /** The tire stretch as the Stance tab lists it (TIRE_SHAPES' order, render/car/tireShapes.ts draws them): none is the standard tire, full the stretched one. */
 const STRETCH_CHOICES: { value: TireShape; label: string }[] = [
@@ -55,11 +55,6 @@ const STRETCH_CHOICES: { value: TireShape; label: string }[] = [
   { value: 'mild', label: 'Mild' },
   { value: 'stretched', label: 'Full' },
 ];
-
-const ON_OFF = [
-  { value: 'off', label: 'Off' },
-  { value: 'on', label: 'On' },
-] as const;
 
 /**
  * What the tab builders need of the garage screen (garageUi.ts implements it): the build being edited
@@ -187,7 +182,7 @@ export function renderTabContent(host: TabHost): void {
       const linked = host.prefs.linkAxles;
       // Linked, one stretch sets both tires; unlinked, each axle picks its own.
       const stretchPick = (axle: Axle | null) =>
-        segmented(STRETCH_CHOICES, axle === 'rear' ? w.rearTire : w.tire, (t) => {
+        cycler(STRETCH_CHOICES, axle === 'rear' ? w.rearTire : w.tire, (t) => {
           if (axle !== 'rear') w.tire = t;
           if (axle !== 'front') w.rearTire = t;
           host.changed();
@@ -205,10 +200,10 @@ export function renderTabContent(host: TabHost): void {
           // Per build, not per axle: the brand's raised lettering on every tire's outer sidewall.
           field(
             'Lettering',
-            segmented(ON_OFF, w.lettering ? 'on' : 'off', (x) => {
-              w.lettering = x === 'on';
+            onOffSwitch(w.lettering, (on) => {
+              w.lettering = on;
               host.changed();
-            }),
+            }, 'Tire lettering'),
           ),
           note('Raised brand lettering on the outer sidewalls.'),
         ),
@@ -252,18 +247,18 @@ export function renderTabContent(host: TabHost): void {
       break;
     }
     case 'paint': {
-      // One surface at a time, like the Body tab's slots: the surfaces as a segmented pick, then its paint.
+      // One surface at a time, like the Body tab's slots: the surfaces on a cycler, then its paint.
       const surface = host.paintSurface;
       host.body.append(
         section(
           'Surface',
-          segmented(
+          cycler(
             PAINT_SURFACES.map((s) => ({ value: s, label: SURFACE_LABELS[s] })),
             surface,
             (s) => {
               host.paintSurface = s;
               host.reframe();
-              host.renderTab();
+              rerenderFromPicker(host);
             },
           ),
         ),
@@ -284,9 +279,6 @@ export function renderTabContent(host: TabHost): void {
         case 'body':
           // The body alone takes no chrome.
           host.body.append(section('Body paint', paintPicker(v.paint, PAINT_FINISHES, () => host.changed())));
-          break;
-        case 'trim':
-          host.body.append(section('Trim', paintPicker(v.trim, ACCENT_FINISHES, () => host.changed()), note('The carbon look pieces: aprons, splitters, wings and the like.')));
           break;
         case 'wheels':
           host.body.append(
@@ -360,12 +352,12 @@ export function renderTabContent(host: TabHost): void {
           'Underglow',
           field(
             'Lights',
-            segmented(ON_OFF, g.enabled ? 'on' : 'off', (x) => {
-              g.enabled = x === 'on';
+            onOffSwitch(g.enabled, (on) => {
+              g.enabled = on;
               host.changed();
-            }),
+            }, 'Underglow lights'),
           ),
-          segmented(
+          cycler(
             GLOW_PATTERNS.map((p) => ({ value: p, label: capital(p) })),
             g.pattern,
             (p) => {
@@ -410,7 +402,7 @@ export function renderTabContent(host: TabHost): void {
       break;
     }
     case 'body': {
-      // One part slot at a time: the slots as a segmented pick (a dot on those with a part fitted), then its parts.
+      // One part slot at a time: the slots on a cycler (a ringed dot on those with a part fitted), then its parts.
       const slots: PartSlot[] = ['body', ...BODY_PART_SLOTS];
       const slot = host.bodySlot;
       const parts = partsFor(b.carId, slot);
@@ -418,13 +410,13 @@ export function renderTabContent(host: TabHost): void {
       const items: { value: string | null; label: string; sub?: string }[] = [{ value: null, label: optional ? 'None' : 'Stock' }, ...parts.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` }))];
       const dev = [...host.assets.devParts.entries()].filter(([, d]) => d.slot === slot).map(([id, d]) => ({ value: id, label: d.name, sub: 'Dev preview' }));
       items.push(...dev);
-      const pick = segmented(
-        slots.map((s) => ({ value: s, label: `${SLOT_LABELS[s]}${v.parts[s] ? ' •' : ''}` })),
+      const pick = cycler(
+        slots.map((s) => ({ value: s, label: SLOT_LABELS[s], mark: !!v.parts[s] })),
         slot,
         (s) => {
           host.bodySlot = s;
           host.reframe();
-          host.renderTab();
+          rerenderFromPicker(host);
         },
       );
       host.body.append(
@@ -511,6 +503,17 @@ function wheelAxleTools(host: TabHost): Node[] {
           },
         ),
       ];
+}
+
+/**
+ * Re-render the tab for a pick on its leading cycler (the Paint tab's surface, the Body tab's slot), which the
+ * render replaces: keyboard and pad focus moves to the new one, so left and right keep stepping it.
+ */
+function rerenderFromPicker(host: TabHost): void {
+  const focused = document.activeElement?.classList.contains('cycler') ?? false;
+  host.renderTab();
+  const next = host.body.querySelector<HTMLElement>('.cycler');
+  if (focused) next?.focus({ preventScroll: true });
 }
 
 /** The Tune tab: the stat lines, launch control and the four setup sliders. */

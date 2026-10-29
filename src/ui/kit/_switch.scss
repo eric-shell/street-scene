@@ -1,0 +1,43 @@
+/* An on / off switch (ui/kit/dom.ts onOffSwitch): a chamfered track with a knob that slides right and fills the
+   track with the ink (--switch-ink, the accent unless a screen sets it) when on. */
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.switch {
+  @include mixins.chamfer(5px);
+  --switch-ink: var(--accent);
+  position: relative;
+  flex: none;
+  width: 46px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-sm);
+  background: palette.alpha(bg0, 0.55);
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast);
+  &__knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 16px;
+    clip-path: var(--chamfer-sm);
+    background: var(--muted);
+    transition: transform var(--t-med) var(--ease-out), background var(--t-fast);
+  }
+  &:hover .switch__knob {
+    background: var(--text);
+  }
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+  }
+  &[aria-checked='true'] {
+    border-color: var(--switch-ink);
+    background: var(--switch-ink);
+    .switch__knob {
+      transform: translateX(20px);
+      background: var(--on-accent);
+    }
+  }
+}

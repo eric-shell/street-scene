@@ -1,7 +1,7 @@
-/* A category's tab (garageUi.ts): seven tiles (eight with Vinyls) in two rows like the race types (_garage.scss lays
-   them out), the icon on a dim badge in the category's hue at rest (the hue table in _garage.scss keys it on
-   data-tab), lit with the tile's edge on hover; the open one fills with the hue's wash over a bar of it along the
-   bottom, its badge lit. */
+/* A category's tab (garageUi.ts): seven tiles (eight with Vinyls) stacked in a rail down the work area's left edge
+   (_garage.scss lays them out), each its icon over a small caption: the icon on a dim badge in the category's hue
+   at rest (the hue table in _garage.scss keys it on data-tab), lit with the tile's edge on hover; the open one
+   fills with the hue's wash beside a bar of it down its left edge, its badge lit. */
 @use '../ui/styles/abstracts/media';
 @use '../ui/styles/abstracts/mixins';
 .garage-tab {
@@ -12,10 +12,10 @@
   justify-content: center;
   gap: 5px;
   min-width: 0;
-  min-height: 62px;
-  padding: 8px 2px 7px;
-  font: 800 11px var(--font);
-  letter-spacing: 0.06em;
+  min-height: 54px;
+  padding: 7px 2px 6px;
+  font: 800 9px var(--font);
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--muted);
   cursor: pointer;
@@ -54,9 +54,9 @@
     color: var(--text);
     border-color: rgba(var(--hue-rgb), 0.7);
     background: linear-gradient(180deg, rgba(var(--hue-rgb), 0.28), rgba(var(--hue-rgb), 0.06)), var(--plate);
-    box-shadow: var(--edge), inset 0 -3px 0 var(--hue);
+    box-shadow: var(--edge), inset 3px 0 0 var(--hue);
     &:focus-visible {
-      box-shadow: var(--edge), inset 0 -3px 0 var(--hue), var(--ring);
+      box-shadow: var(--edge), inset 3px 0 0 var(--hue), var(--ring);
     }
     .garage-tab__badge {
       color: var(--on-accent);

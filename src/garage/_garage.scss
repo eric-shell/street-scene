@@ -1,6 +1,6 @@
 /* The garage (garageUi.ts): its rail, narrower than the menu's so the car has room, with its two steps down
-   the left (Builds: the build card, _car-card.scss, over the slots; Customize: the category tabs over the open
-   tab's groups), sliding like the menu's (.rail__step, ui/rail/), and the Save button under both. Like the main
+   the left (Builds: the build card, _car-card.scss, over the slots; Customize: the rail of category tabs beside the
+   open tab's groups), sliding like the menu's (.rail__step, ui/rail/), and the Save button under both. Like the main
    menu it draws no column, only a scrim: the cards, tabs and groups are plates of their own and the scene shows
    between them. Beside it the 3D view with the Garage / Street switch at the bottom center (_garage-stage.scss);
    the help stands beside the music player like on every screen (ui/panels/_help.scss). Phones get the rail as a sheet over the lower half.
@@ -142,19 +142,30 @@ $step-rise: 0.58s, 0.45s, 0.32s;
       @include mixins.ellipsis;
     }
   }
-  /* The tiles of categories (_garage-tab.scss) four to a row, so seven (eight with Vinyls) make two rows; a
-     short last row stretches its tiles to fill it. One scrolling row on a phone. */
-  &__tabs {
+  /* Customize's work area: the rail of categories (_garage-tab.scss) down its left edge beside the open tab's
+     groups, so the groups start at the top and keep the column's height. One scrolling row over them on a phone,
+     whose sheet is too short for the rail. */
+  &__work {
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    > .garage-tab {
-      flex: 1 1 calc(25% - 4px);
-    }
+    gap: 8px;
     @include media.narrow {
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      scrollbar-width: none;
+      flex-direction: column;
+    }
+  }
+  &__tabs {
+    flex: none;
+    width: 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    @include media.narrow {
+      width: auto;
+      flex-direction: row;
+      overflow: auto hidden;
       > .garage-tab {
         flex: 1 0 60px;
       }
@@ -210,6 +221,7 @@ $step-rise: 0.58s, 0.45s, 0.32s;
   /* The body's scroll hints (kit scrollHint) take the body's place in the step. */
   &__scroll {
     flex: 1 1 auto;
+    min-width: 0;
   }
   /* The open tab's groups (_garage-section.scss), scrolling under the tabs. A new tab's groups cascade in
      (setTab adds .is-switching for the switch only). */
@@ -237,8 +249,14 @@ $step-rise: 0.58s, 0.45s, 0.32s;
     input[type='range'] {
       accent-color: var(--hue);
     }
-    /* Picks in a segmented control and toggles that are on (linked, match body, mirrored) take the tab's
-       hue; the screen's actions (Export) stay orange. */
+    /* Picks in a segmented control, cyclers, switches and toggles that are on (linked, match body, mirrored)
+       take the tab's hue; the screen's actions (Export) stay orange. */
+    .cycler {
+      --cycler-ink: var(--hue);
+    }
+    .switch {
+      --switch-ink: var(--hue);
+    }
     .segmented__option.is-selected,
     .btn--primary.garage-toggle {
       background: linear-gradient(100deg, var(--hue) 55%, color-mix(in srgb, var(--hue), #fff 22%));

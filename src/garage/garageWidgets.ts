@@ -13,7 +13,7 @@ import { tuningForBuild } from '../sim/build';
 import type { SpecBadge } from '../shared/carSpec';
 import { measureStats, statBars } from '../sim/stats';
 import type { CarStats } from '../sim/stats';
-import { btn, h, segmented, sheen, specChip } from '../ui/kit/dom';
+import { btn, cycler, h, sheen, specChip } from '../ui/kit/dom';
 import { KMH_PER_MPH, horsepower } from '../ui/kit/units';
 import { Paintbrush, IconNode } from '../ui/kit/icons';
 
@@ -182,7 +182,7 @@ export function paintPicker<F extends AccentFinish>(paint: Paint<F>, finishes: r
                     onChange();
                   }),
                 ]),
-            segmented(
+            cycler(
               finishes.map((f) => ({ value: f, label: capital(f) })),
               paint.finish,
               (f) => {
@@ -191,7 +191,11 @@ export function paintPicker<F extends AccentFinish>(paint: Paint<F>, finishes: r
                 paint.finish = f;
                 if (f === 'chrome') paint.color = CHROME_COLOR;
                 onChange();
-                if (swap) draw();
+                if (!swap) return;
+                // The redraw replaces the cycler: focus follows to the new one, so the keys keep stepping it.
+                const focused = root.contains(document.activeElement);
+                draw();
+                if (focused) root.querySelector<HTMLElement>('.cycler')?.focus({ preventScroll: true });
               },
             ),
           ]),

@@ -9,7 +9,7 @@
  * is a modifier of the helper's block, so `btn(icon, 'Race', go, '--primary
  * event-card__go')` is a `btn btn--primary event-card__go`.
  */
-import { ChevronDown, ChevronUp, icon, type IconNode } from './icons';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, icon, type IconNode } from './icons';
 import type { SpecBadge } from '../../shared/carSpec';
 
 type Child = Node | string | null | undefined | false;
@@ -106,6 +106,70 @@ export function segmented<T extends string>(options: readonly { value: T; label:
     return b;
   });
   return Object.assign(wrap, { set });
+}
+
+/**
+ * A cycler: one pick among a few options on a single line whatever their number, the pick named between a
+ * previous and a next arrow (wrapping round) over a row of dots, one per option, that jump straight to it.
+ * An option's `mark` rings its dot (a part slot that has a part). It is one stop for the keyboard and the pad:
+ * left and right step it like a slider, and the drive keys never see them. Returns a Segmented, so it drops
+ * in where a segmented control was. `cls`: modifiers and extra classes.
+ */
+export function cycler<T extends string>(options: readonly { value: T; label: string; mark?: boolean }[], value: T, onChange: (v: T) => void, cls = ''): Segmented<T> {
+  let at = Math.max(0, options.findIndex((o) => o.value === value));
+  const name = h('span', { class: 'cycler__value' });
+  const dots = options.map((o, i) => h('button', { class: bem('cycler__dot', o.mark ? '--marked' : ''), type: 'button', tabindex: '-1', title: o.label, 'aria-hidden': 'true', onclick: () => pick(i) }));
+  const step = (d: -1 | 1, label: string, ico: IconNode) =>
+    h('button', { class: 'cycler__step', type: 'button', tabindex: '-1', title: label, 'aria-hidden': 'true', onclick: () => pick(wrapIndex(at + d)) }, icon(ico, { size: 18 }));
+  const wrap = h(
+    'div',
+    { class: bem('cycler', cls), role: 'slider', tabindex: '0', 'aria-valuemin': '0', 'aria-valuemax': String(options.length - 1) },
+    step(-1, 'Previous', ChevronLeft),
+    h('span', { class: 'cycler__face' }, name, h('span', { class: 'cycler__dots' }, ...dots)),
+    step(1, 'Next', ChevronRight),
+  );
+  const wrapIndex = (i: number) => (i + options.length) % options.length;
+  const show = () => {
+    name.textContent = options[at].label;
+    dots.forEach((d, i) => d.classList.toggle('is-selected', i === at));
+    wrap.setAttribute('aria-valuenow', String(at));
+    wrap.setAttribute('aria-valuetext', options[at].label);
+  };
+  const pick = (i: number) => {
+    if (i === at) return;
+    at = i;
+    show();
+    // The face pulses on a pick (.is-picked), restarted so quick steps each show.
+    wrap.classList.remove('is-picked');
+    void wrap.offsetWidth;
+    wrap.classList.add('is-picked');
+    onChange(options[i].value);
+  };
+  wrap.addEventListener('keydown', (e) => {
+    const d = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    e.stopPropagation();
+    pick(wrapIndex(at + d));
+  });
+  show();
+  return Object.assign(wrap, {
+    set(v: T) {
+      at = Math.max(0, options.findIndex((o) => o.value === v));
+      show();
+    },
+  });
+}
+
+/** An on / off switch: a track and knob that slides across, `aria-checked` its state. `label` names it for assistive tech. */
+export function onOffSwitch(on: boolean, onChange: (on: boolean) => void, label: string, cls = ''): HTMLButtonElement {
+  const b = h('button', { class: bem('switch', cls), type: 'button', role: 'switch', 'aria-label': label, 'aria-checked': String(on) }, h('span', { class: 'switch__knob' }));
+  b.addEventListener('click', () => {
+    on = !on;
+    b.setAttribute('aria-checked', String(on));
+    onChange(on);
+  });
+  return b;
 }
 
 /** A small label chip: an optional icon and a short text. `cls`: modifiers (`--accent`, `--ink`, `--mode`, `--small`) and extra classes. */

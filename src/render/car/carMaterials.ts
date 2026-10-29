@@ -1,8 +1,8 @@
 /**
  * Runtime materials for the shared material vocabulary. Any mesh whose source
  * material is named e.g. "Paint" gets the player's paint, so new parts pick up
- * paint, trim and glass tint automatically. Lamp colors are fixed, not a build choice.
- * The body, the trim, the wheels and their trims and the calipers are all paints (a color and a finish, applyPaint).
+ * paint and glass tint automatically. Lamp colors are fixed, not a build choice.
+ * The body, the wheels and their trims and the calipers are all paints (a color and a finish, applyPaint).
  */
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
@@ -26,6 +26,11 @@ const PAINT_ENV = { Paint: 1.9, Trim: 1.3, Rim: 1.8, RimLip: 1.8, RimCap: 1.8, C
  * in the chrome studio (chromeEnv.ts), whose radiance is already set for a mirror.
  */
 const CHROME = { color: 0xdedede, env: 2.2, wheelEnv: 0.45, surface: { metalness: 1, roughness: 0.12, clearcoat: 0, clearcoatRoughness: 0, iridescence: 0, sheen: 0, specularIntensity: 1 } } as const;
+/**
+ * The trim's one look (the carbon look pieces): gloss near black. No shipped car or part carries Trim faces, so the
+ * build has no trim paint; the material keeps the name for parts that may.
+ */
+const TRIM_PAINT: Paint<AccentFinish> = { color: '#15161a', finish: 'gloss' };
 /** Plain chrome as a paint: what a stock polished lip wears. */
 const CHROME_PAINT: Paint<AccentFinish> = { color: CHROME_COLOR, finish: 'chrome' };
 
@@ -104,7 +109,7 @@ export function setTireLettering(m: CarMaterialSet, lettering: boolean): void {
 export function createCarMaterials(envMap: THREE.Texture | null = null, tread = false): CarMaterialSet {
   const m = {} as CarMaterialSet;
   m.Paint = new THREE.MeshPhysicalMaterial({ name: 'Paint', color: 0xd11f3f, metalness: 0.7, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05 });
-  // Physical like the body: the trim (the carbon look pieces) takes every paint finish, chrome among them.
+  // Physical like the body, in TRIM_PAINT's gloss (applyVisualToMaterials).
   m.Trim = new THREE.MeshPhysicalMaterial({ name: 'Trim', color: 0x15161a, metalness: 0, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.05 });
   m.Black = new THREE.MeshStandardMaterial({ name: 'Black', color: 0x0b0b0d, roughness: 0.65 });
   m.Chrome = new THREE.MeshStandardMaterial({ name: 'Chrome', color: 0xdedede, metalness: 1, roughness: 0.12 });
@@ -249,7 +254,7 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, stockL
   axle(accent(v.wheels.paint), stockLips[0], m.RimLip, m.RimCap, m.Lug, m.Hardware);
   axle(accent(v.wheels.rearPaint), stockLips[1], m.RimLipRear, m.RimCapRear, m.LugRear, m.HardwareRear);
   applyPaint(m.Caliper as THREE.MeshPhysicalMaterial, accent(v.calipers), PAINT_ENV.Caliper * envScale);
-  applyPaint(m.Trim as THREE.MeshPhysicalMaterial, v.trim, PAINT_ENV.Trim * envScale);
+  applyPaint(m.Trim as THREE.MeshPhysicalMaterial, TRIM_PAINT, PAINT_ENV.Trim * envScale);
   const glass = m.Glass as THREE.MeshPhysicalMaterial;
   glass.color.set(v.tint.color).lerp(new THREE.Color(0x8fa0b0), 1 - v.tint.darkness);
   glass.opacity = 0.35 + v.tint.darkness * 0.62;

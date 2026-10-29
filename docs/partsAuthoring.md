@@ -38,12 +38,12 @@ The easiest workflow for an authored car: open `assets/source/eshell/<carId>/<ca
 
 ## 3. Material names
 
-Parts must use the shared material names. The game swaps each one for a runtime material, so a new bumper automatically takes the player's paint, finish and trim color:
+Parts must use the shared material names. The game swaps each one for a runtime material, so a new bumper automatically takes the player's paint and finish:
 
 | Name | Used for | Driven by |
 |---|---|---|
 | `Paint` | Body color panels | Paint color and finish (gloss, metallic, matte, pearl, candy) |
-| `Trim` | Secondary panels, carbon look | Trim paint (color and finish, chrome included) |
+| `Trim` | Secondary panels, carbon look | Fixed gloss near black (no build paint; no shipped part uses it yet) |
 | `Black` | Grilles, vents, undertray | fixed |
 | `Chrome` | Exhaust tips, badges | fixed |
 | `Glass` | Windows | Window tint |

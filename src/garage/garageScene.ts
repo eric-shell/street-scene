@@ -99,7 +99,6 @@ const FRAMES: Record<TabFrame, { shot: string | CameraPreset; spin: boolean }> =
   stance: { shot: 'Low side', spin: false },
   wheels: { shot: 'Wheel', spin: false },
   'paint:body': { shot: 'Three quarter', spin: true },
-  'paint:trim': { shot: 'Three quarter', spin: true },
   'paint:wheels': { shot: 'Wheel', spin: false },
   'paint:calipers': { shot: 'Wheel', spin: false },
   'paint:hardware': { shot: 'Wheel', spin: false },

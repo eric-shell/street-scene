@@ -18,7 +18,9 @@
  * Saving is explicit: edits show live and drive the races, but the slot in
  * localStorage only changes on Save. Anything that leaves the build (another
  * slot, a new one, an import, the menu) asks first while it has unsaved
- * changes, so only the slot in use is ever a draft. Share and import live in a
+ * changes, so only the slot in use is ever a draft. Back from Customize is
+ * cancel: it discards the draft, after a prompt that can save it instead, so
+ * the Builds step shows what the slots hold. Share and import live in a
  * dialog off the build card and the Builds header.
  *
  * It speaks the main menu's language (the partials beside this file): chamfered
@@ -266,7 +268,7 @@ export class GarageScreen implements TabHost {
         this.scene.touch();
         if (e.key === 'Escape') {
           e.preventDefault();
-          if (this.step === 'build') this.go('builds');
+          if (this.step === 'build') this.backToBuilds();
           else this.exit();
         } else if (e.code === 'KeyC') this.nextCamera();
         else if (this.step === 'builds' && /^[1-9]$/.test(e.key) && this.garage.slots[Number(e.key) - 1]) this.pickSlot(Number(e.key) - 1);
@@ -435,7 +437,28 @@ export class GarageScreen implements TabHost {
   /** Step two: the build's name, the tabs and the open tab's groups. */
   private buildStep(): HTMLElement[] {
     this.setTab(this.tab);
-    return [screenHead({ icon: Hammer, title: 'Customize', back: () => this.go('builds'), backLabel: 'Back to your builds (Esc)', aside: progress(2, chip(this.build.name, undefined, '--accent garage__build-chip')) }), this.tabBar, this.bodyView];
+    return [screenHead({ icon: Hammer, title: 'Customize', back: () => this.backToBuilds(), backLabel: 'Back to your builds (Esc)', aside: progress(2, chip(this.build.name, undefined, '--accent garage__build-chip')) }), h('div', { class: 'garage__work' }, this.tabBar, this.bodyView)];
+  }
+
+  /**
+   * Back to the Builds step. Back is cancel: unsaved edits are discarded, after a prompt that also offers to
+   * save them or keep editing, so the build card and the slots only ever show what the slot holds.
+   */
+  private backToBuilds(): void {
+    if (!this.isDirty()) return this.go('builds');
+    const act = (fn: () => void) => () => {
+      this.closeDialog();
+      fn();
+      this.go('builds');
+    };
+    const discard = btn(Undo2, 'Discard', act(() => this.revert()), '--primary');
+    this.openDialog(
+      Undo2,
+      'Discard changes?',
+      h('div', { class: 'muted' }, `Going back discards the changes to "${this.build.name}" since it was last saved.`),
+      h('div', { class: 'row' }, discard, btn(Save, 'Save', act(() => this.save())), btn(null, 'Keep editing', () => this.closeDialog())),
+    );
+    discard.focus();
   }
 
   /**

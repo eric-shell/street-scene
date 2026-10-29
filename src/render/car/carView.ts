@@ -552,7 +552,7 @@ export class CarView {
       });
     }
     for (const [src, copy] of this.wheelCopies) {
-      // Trim follows the build's trim color; the rest of what the copies share never changes.
+      // Each copy follows its source's color (the paints set it); the rest of what the copies share never changes.
       const color = (src as THREE.MeshStandardMaterial).color;
       if (color) (copy as THREE.MeshStandardMaterial).color.copy(color);
     }

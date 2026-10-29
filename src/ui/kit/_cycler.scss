@@ -1,0 +1,101 @@
+/* A cycler (ui/kit/dom.ts cycler): one pick on a single line, the chamfered well of a segmented control with the
+   pick's name centered between two arrow cells and a row of dots under it, the picked dot a lit dash in the ink
+   (--cycler-ink, the accent unless a screen sets it), a marked one ringed. Focused, the well takes the ring; a
+   pick nudges the name in. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.cycler {
+  @include mixins.chamfer(6px);
+  --cycler-ink: var(--accent);
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-sm);
+  background: palette.alpha(bg0, 0.55);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  &:hover {
+    border-color: color-mix(in srgb, var(--cycler-ink) 45%, var(--line-control));
+  }
+  &:focus-visible {
+    outline: none;
+    border-color: var(--cycler-ink);
+    box-shadow: var(--ring);
+  }
+  &__step {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    padding: 0;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    transition: color var(--t-fast), background var(--t-fast);
+    &:hover {
+      color: var(--on-accent);
+      background: var(--cycler-ink);
+    }
+    &:active > svg {
+      transform: scale(0.85);
+    }
+  }
+  &__face {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 5px 4px;
+  }
+  &__value {
+    max-width: 100%;
+    font: 700 13px var(--font);
+    letter-spacing: 0.04em;
+    color: var(--text);
+    @include mixins.ellipsis;
+  }
+  &__dots {
+    display: flex;
+    gap: 4px;
+  }
+  /* A dot is a 6 px pip; the pick stretches into a dash. */
+  &__dot {
+    width: 6px;
+    height: 6px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: palette.alpha(text, 0.22);
+    background-clip: content-box;
+    cursor: pointer;
+    transition: width var(--t-med) var(--ease-out), background var(--t-fast);
+    &:hover {
+      background-color: palette.alpha(text, 0.55);
+    }
+    &--marked {
+      box-shadow: 0 0 0 1.5px var(--cycler-ink);
+    }
+    &.is-selected {
+      width: 16px;
+      background-color: var(--cycler-ink);
+    }
+  }
+  &.is-picked .cycler__value {
+    @include media.motion {
+      animation: cycler-in 0.22s var(--ease-out);
+    }
+  }
+}
+
+@keyframes cycler-in {
+  from {
+    opacity: 0.2;
+    transform: translateY(3px);
+  }
+}

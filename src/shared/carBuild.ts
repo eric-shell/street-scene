@@ -17,7 +17,7 @@ export const PAINT_FINISHES = ['gloss', 'metallic', 'matte', 'pearl', 'candy'] a
 export type PaintFinish = (typeof PAINT_FINISHES)[number];
 
 /**
- * Every surface but the body (the trim, the wheel faces, lips, center caps and lug nuts, the calipers) also takes
+ * Every surface but the body (the wheel faces, lips, center caps and lug nuts, the calipers) also takes
  * chrome: one look, polished metal in CHROME_COLOR, never tinted. A chrome paint's color is always CHROME_COLOR
  * (validPaint), and the garage offers no color pick for it. The body keeps to PAINT_FINISHES.
  */
@@ -26,7 +26,7 @@ export type AccentFinish = (typeof ACCENT_FINISHES)[number];
 /** Plain chrome's color (the Chrome material's, render/car/carMaterials.ts): the only color a chrome finish has. */
 export const CHROME_COLOR = '#dedede';
 
-/** A painted surface: the body, the trim, each axle's wheels and their trims, and the calipers all take a color and a finish. */
+/** A painted surface: the body, each axle's wheels and their trims, and the calipers all take a color and a finish. */
 export interface Paint<F extends AccentFinish = PaintFinish> {
   color: string;
   finish: F;
@@ -117,8 +117,6 @@ export const STANCE_LIMITS = {
 
 export interface VisualBuild {
   paint: Paint;
-  /** The trim's paint (the carbon look pieces); builds from before trim finishes saved one `trimColor`. */
-  trim: Paint<AccentFinish>;
   /** partId per slot; null means stock (base meshes) or none for optional slots. */
   parts: Partial<Record<PartSlot, string | null>>;
   wheels: {
@@ -180,7 +178,6 @@ export interface CarBuild {
 export function defaultVisual(): VisualBuild {
   return {
     paint: { color: '#d11f3f', finish: 'metallic' },
-    trim: { color: '#15161a', finish: 'gloss' },
     parts: {},
     wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'stock', color: '#c9ced8', finish: 'metallic' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, hardware: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' } },
     calipers: { color: '#c41e3a', finish: 'gloss', match: false },
@@ -303,8 +300,7 @@ export function validateVisual(v: unknown): VisualBuild {
   };
   return {
     paint: validPaint(o.paint, d.paint, PAINT_FINISHES),
-    // Builds from before trim finishes saved one trimColor; it keeps the color in the default finish.
-    trim: validPaint(o.trim, { color: hexColor(o.trimColor, d.trim.color), finish: d.trim.finish }, ACCENT_FINISHES),
+    // Builds from before the trim paint was dropped still carry `trim` (or `trimColor`); nothing reads it.
     parts,
     wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire), lettering: wheels.lettering === true, lip: validTrim(wheels.lip, d.wheels.lip, 'lip'), cap: validTrim(wheels.cap, d.wheels.cap, 'cap'), lugNuts, hardware: validTrim(wheels.hardware, d.wheels.hardware, 'hardware') },
     calipers: validAccent(o.calipers, d.calipers, ACCENT_FINISHES),

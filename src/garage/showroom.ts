@@ -936,7 +936,6 @@ function liftBuilds(n: number, rnd: () => number = Math.random): { carId: string
     const v = defaultVisual();
     const [color, finish] = pick(LIFT_PAINTS);
     v.paint = { color, finish };
-    v.trim = rnd() < 0.7 ? { color: '#111215', finish: 'gloss' } : { color: pick(['#c9a227', '#c9ced8', color]), finish: pick(['chrome', 'gloss']) };
     v.tint.darkness = range(0.4, 0.85);
     for (const slot of PART_SLOTS) {
       const list = partsFor(carId, slot);
