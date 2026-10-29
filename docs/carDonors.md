@@ -56,7 +56,8 @@ Only the big lamps glow in the game; everything else is an unlit lens. A donor w
 | A tail lamp's own lens (the round lenses, not the bar over them) | `TailLight` | always, brighter braking |
 | The third brake light | `BrakeLight` | only braking |
 | A clear cover over a lamp, a reverse or fog lamp, an unlit bulb | `Lens` | no; see-through |
-| Indicators, side markers, repeaters | `Light` | no; amber |
+| Indicators, side markers, repeaters | `Light` | no; amber (a faint emissive so it reads orange at night) |
+| White side markers and repeaters | `ClearLens` | no; white |
 | Red reflectors and markers, a red strip that is not a brake light | `Reflector` | no; red |
 | Housings, bezels, buckets | `Black` (or `Paint` where the car is body colour) | no |
 

@@ -54,6 +54,7 @@ Parts must use the shared material names. The game swaps each one for a runtime 
 | `BrakeLight` | The third brake light | dark red lens, glows only when braking |
 | `Light` | Indicators, side markers | amber lens, unlit |
 | `Reflector` | Red reflectors and markers | red lens, unlit |
+| `ClearLens` | White side markers and repeaters | white lens, unlit |
 | `Lens` | Clear lamp covers, reverse and fog lamps | clear, see-through, unlit |
 | `Interior` | Seats, dash | fixed |
 

@@ -30,10 +30,11 @@ export const SLOT_LABELS: Record<PartSlot, string> = {
  * lamps glow (`HeadLight`, `TailLight`, and `BrakeLight`, the third brake light,
  * only under braking); the other lamp lenses are unlit: `Light`
  * the amber indicators and side markers, `Reflector` red reflectors and markers,
- * `Lens` the clear covers and unlit clear lamps (reverse, fog), see-through so a
+ * `ClearLens` white side markers and repeaters, `Lens` the clear covers and unlit
+ * clear lamps (reverse, fog), see-through so a
  * lamp's reflectors and bulbs show behind it.
  */
-export const MATERIAL_NAMES = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap', 'Lens', 'Reflector', 'BrakeLight'] as const;
+export const MATERIAL_NAMES = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap', 'Lens', 'Reflector', 'BrakeLight', 'ClearLens'] as const;
 export type MaterialName = (typeof MATERIAL_NAMES)[number];
 
 /** Triangle budgets per slot used by validation. */

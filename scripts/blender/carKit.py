@@ -20,10 +20,10 @@ from mathutils.bvhtree import BVHTree
 from mathutils.geometry import intersect_point_line
 
 REPO = globals().get('REPO') or os.getcwd()
-SHARED = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap', 'Lens', 'Reflector', 'BrakeLight']
+SHARED = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap', 'Lens', 'Reflector', 'BrakeLight', 'ClearLens']
 # Every lamp material: only HeadLight, TailLight and BrakeLight (under braking) glow in the game; Light (amber indicators and markers),
 # Reflector (red) and Lens (the clear covers, see-through) are unlit lenses (src/shared/parts.ts).
-LAMP_MATS = ('HeadLight', 'TailLight', 'BrakeLight', 'Light', 'Lens', 'Reflector')
+LAMP_MATS = ('HeadLight', 'TailLight', 'BrakeLight', 'Light', 'Lens', 'Reflector', 'ClearLens')
 
 
 # ----- scene ---------------------------------------------------------------

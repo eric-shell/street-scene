@@ -135,6 +135,7 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   // (see-through, so the reflectors and bulbs behind read as the lamp's detail, the way the window glass shows the cabin).
   // The amber carries a faint emissive of its own so it reads orange at night, far below a lamp's glow (it lights nothing).
   m.Light = new THREE.MeshPhysicalMaterial({ name: 'Light', color: 0xff8a1a, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05, emissive: 0xff7a10, emissiveIntensity: 0.12 });
+  m.ClearLens = new THREE.MeshPhysicalMaterial({ name: 'ClearLens', color: 0xf2f4f6, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
   m.Reflector = new THREE.MeshPhysicalMaterial({ name: 'Reflector', color: 0x7a0610, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
   m.Lens = new THREE.MeshPhysicalMaterial({ name: 'Lens', color: 0xdfe6ee, metalness: 0, roughness: 0.03, transparent: true, opacity: 0.22, depthWrite: false });
   m.Interior = new THREE.MeshStandardMaterial({ name: 'Interior', color: 0x1a1a1e, roughness: 0.8 });
