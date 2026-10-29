@@ -61,7 +61,7 @@ Most wheels need none. The fields:
 | `cap` | the turned hub cap's radius, in shares of the lip, where the round test stops short of an opening a dropped logo cap covered (`momiji` 0.235) |
 | `turn` | a share of the lip: on a multi-piece wheel, turn the face's surfaces of revolution joined to faces outside it, as on a one-piece, where a round flange the spokes stand on crumples in the collapse (`mio` 0.6) |
 | `cap_fill` | `True` closes a cap ring's open center, so the whole center takes the cap's paint (`sora`, `shizuku`) |
-| `lugs` | `0` when no lug circle shows (a cap or a solid face hides it), or `(count, r)` for the circle to take where the innermost is a decoration |
+| `lugs` | `0` when no lug circle shows (a cap or a solid face hides it), or `(count, r)` for the circle to take where the innermost is a decoration; a third item `{'at': deg}` places the circle from the recipe's count and r without measuring it (`asahi`, `shirabe`: the depth image cannot read their hubs) |
 | `keep` | a regex of names the junk words would drop that are the wheel (`hibiki`: its spokes sit under a node named `DISK`, and the whole face went as a brake disc) |
 | `chunks` | `True` for a scan cut into chunks that each run from the hub to the lip: its islands are no parts, so ring, bolt and decal islands all join the face and the lip is turned out of it as on a one-piece (`kaminari`, `fuuga`, `hinoko`) |
 
@@ -407,6 +407,19 @@ The user sent 30 links; 12 were refused before import (no licence or not downloa
 - **Lugs.** `fit_lugs` found no circle on akane, hibiki, himawari, kazakiri and namida: a center cover hides them on akane, kazakiri and namida, and the pockets on hibiki and himawari sit at 0.28 to 0.34 of the lip, past `LUG['band']`, with too much noise for a blob even when the band is widened. They ship without house nuts.
 - `checkWheelFacing`: all twelve `front` 0.97 to 1.00, depth 0.02 to 0.32.
 
+### Two more (2026-10-28)
+
+Two links, both CC BY 4.0 and downloadable; 113 wheels. **Konig** is a new maker: **Kodama**.
+
+| Wheel | Donor | Author | Group | Recipe and notes |
+|---|---|---|---|---|
+| Shirabe | Konig Countergram 5x120 Wheel / FREE MODEL | shevchenkovisuals | Kodama (Konig; new) | `drop: 'Tire\|Text\|Lug Nuts'`, `lugs: (5, 0.2217, {'at': 0})`; 1.08M faces, 45 s a build, 10,928 triangles |
+| Asahi | Enkie Rpf1 (Enkei RPF1) | astrubal | Kohaku | `face: -1, chunks: True`, `lugs: (5, 0.2207, {'at': 0})`, `drop` of the corner's other materials; 5,347 triangles |
+
+- **Shirabe**: a one-piece nine spoke, so no lip bolts and a `rim` stock lip. Its tire, valve, the lettering on the dish wall and the nuts are separate nodes; the faces, the stepped lip and the black center cap all arrive as one island and one cap, and the lip is turned from 29 points. The donor's nuts were tall closed ones standing on a bare chrome hub round the cap (no hole, no pocket), so `fit_lugs` found no circle; its recipe gives the five nuts' own circle (read from the dropped mesh: r 45.9 mm, the first straight up), and `_seat_x` seats them on the hub (x 38 mm). Checked with 16 mm hex prisms at the catalog positions: all five stand on the hub clear of the cap.
+- **Asahi**: the model is a whole corner (wheel, 17,881 face tire, calipers, rotor, hub, pad clips), and the tire is the biggest round thing in it, so the first build took it for the lip (scale x0.80, a wheel with a barrel 0.45 m long). The wheel is the one `Metal` mesh; the recipe drops everything else by material name. It is two islands, a face that carries the lip's front flange and a barrel behind it, so a `ring` island's front edge sat 0.2 m behind the face and the face stood detached in front of the lathe; `chunks: True` merges them and the lip is turned out of both (96 faces turned, no sliver). The vote was wrong (`face: 1` put the spokes at 0.93 of the way down the barrel); `face: -1` reads 0.12 (`checkWheelFacing`, front 1.00). The five stud holes are 16 mm deep pockets round a recessed plate; the house cap's disc covers the inner edge of two, so the depth image split one pocket in two and lost another (r .192 and .244 against .21 to .22), and no circle of five formed. The new `lugs` option `at` places the circle from the donor's own holes (measured on the mesh: r 45.7 mm, 11.7 mm holes).
+- The shipped GLBs read `front` 1.00, depth 0.12 (asahi) and 0.20 (shirabe), none wound, no RimCap face toward -X.
+
 ## Credits
 
 All by **jonver87** on Sketchfab, CC BY 4.0: WORK VS-TX, Work Equip 03, Work Equip 40, WORK EMITZ, WORK VS-KF, Work VS XV, WORK VS-XX, WORK ZISTANCE W5S, WORK Schwert SC2, Work Equip 02, Work Euroline DH, WORK IMPORT LABEL AL4, WORK LS CHIAREZZA SUV, Rotiform ZMO, Aerodisc, VCE, SIX, AVS, KB1, USF, MLW, OZR, BM1, WRO, CCV, LHR, LSR, KLU, SNA, KPS and PNT, 3D Vossen LC104T, Vossen LC109T, VPS302, VPS301, ERA3, GNS-1, VPS 315T and CG203, HRE P200, Fifteen52 Rally Sport, SSR Koenig, BBS E52, Volk Rays 21C. Each is kept as its face, lip and barrel, reduced, with its bolts, badges and tire replaced by the house's.
@@ -416,3 +429,5 @@ Enkei Nt03+m Wheels by **flathat3d** and BBS CH-R + Goodyear Eagle F1 Supercar 3
 The Fifty-six more set (2026-10-28), CC BY 4.0, kept the same way: 33 more by **jonver87** (HRE TUSK, Advan A3A, Velare VLR F1, Rotiform WRG, IHR, HVN, SEA, RSC and EMA, Kyusha Shoes Meteor FF, Brixton Forged TR06, VL7, PF6 and CM16, Avant Garde F450 and F142, HRE FF04 and 522M, Vossen VFS4, LC106, LC108T, VPS 310T, CG207, VFS2, VFS1 and HC-1, Vossen-x-Work VWS3, VIP Modular VXS410, VX510 and VXS610, Volk TE37SL 3spoke, Volk Rays 21A, Enkei Riverge), "fifteen52 Turbomac" by **portfoliorodrigues**, "Work Meister S1 3P" by **alexanderlyreo** and 18 wheels from 16 models by **dermaks** (WORK MEISTER CR01, SSR Minerva, RAYS nismo LMGT1, SSR COLLECTION (three wheels), SSR Longchamp XR4, Budnik Tusk, Weds Kranze Bazreia, BRABUS MONOBLOCK M, Devil Japan IF, WORK Equip 05, KANSEI TANDEM, O.Z MAE, WORK EMOTION T5R 2P, RAYS TE037, SSR Starshark, MAE CROWN JEWEL). The settings' credits list each one (`DONOR_CREDITS`).
 
 Twelve more (2026-10-28), CC BY 4.0, kept the same way: "Spoon SW388 (Low&High Poly)" by **TinoD2**, "Racing Wheel - Work Emotion CR-KAI" by **gordeykomark**, "Rotiform DAB" and "WEDS Kranze LXZ [Mid-Poly]" by **blakebella**, "[FREE] BBS LM Gold Wheels - Low poly" by **zxargon**, "S13 Teardrops Rims" by **Once_a_goat_death**, "SSR Hasemi Prot-S" by **techtackofficial**, "Rotiform CVT" by **niev**, and "RAYS GramLights 57DR", "Rays Gramlights 57CR", "RAYS G025" and "RAYS HOMURA 2x7" by **ilvskf** (their barrels apparently from jonver87's WORK VS-XX); their tires, stands, stickers and valves left out.
+
+Two more (2026-10-28), CC BY 4.0, kept the same way: "Konig Countergram 5x120 Wheel / FREE MODEL" by **shevchenkovisuals** and "Enkie Rpf1" by **astrubal** (their tires, lettering, calipers and rotor left out).

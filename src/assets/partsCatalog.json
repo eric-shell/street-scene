@@ -116,6 +116,31 @@
       "generated": true
     },
     {
+      "id": "wheel_asahi",
+      "displayName": "Asahi",
+      "group": "Kohaku",
+      "lip": "rim",
+      "lugs": {
+        "count": 5,
+        "r": 0.04573,
+        "phase": -1.25664,
+        "x": 0.03342,
+        "size": 0.0125
+      },
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_asahi.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "RimLip",
+        "RimCap",
+        "Tire"
+      ],
+      "tris": 5347,
+      "generated": true
+    },
+    {
       "id": "wheel_ayame",
       "displayName": "Ayame",
       "group": "Kitsune",
@@ -1925,6 +1950,31 @@
         "Tire"
       ],
       "tris": 9989,
+      "generated": true
+    },
+    {
+      "id": "wheel_shirabe",
+      "displayName": "Shirabe",
+      "group": "Kodama",
+      "lip": "rim",
+      "lugs": {
+        "count": 5,
+        "r": 0.04594,
+        "phase": -1.25664,
+        "x": 0.03798,
+        "size": 0.0095
+      },
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_shirabe.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "RimCap",
+        "RimLip",
+        "Tire"
+      ],
+      "tris": 10928,
       "generated": true
     },
     {

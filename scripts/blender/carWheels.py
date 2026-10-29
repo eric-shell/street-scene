@@ -68,7 +68,7 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
           'SSR': 'Hiryu', 'BBS': 'Suzaku', 'Volk': 'Genbu', 'Enkei': 'Kohaku',
           'Advan': 'Kitsune', 'Avant Garde': 'Tengu', 'Brixton Forged': 'Oni', 'Kyusha Shoes': 'Tanuki', 'Velare': 'Yamabiko',
           'VIP Modular': 'Baku', 'Weds': 'Fujin', 'Brabus': 'Nue', 'Budnik': 'Orochi',
-          'Devil Japan': 'Shuten', 'Kansei': 'Nekomata', 'MAE': 'Kamaitachi', 'Spoon': 'Kappa',
+          'Devil Japan': 'Shuten', 'Kansei': 'Nekomata', 'MAE': 'Kamaitachi', 'Spoon': 'Kappa', 'Konig': 'Kodama',
           'Rays': 'Genbu',   # Volk is a Rays brand: one group
           'Vossen-x-Work': 'Seiryu'}   # a Vossen collaboration, listed with Vossen
 
@@ -268,6 +268,14 @@ WHEELS = {
             'chunks': True},   # a scan in chunks, as the 57CR
     'hinoko': {'name': 'RAYS HOMURA 2x7', 'uid': 'f2da4e9b0d04418aa1b53022d692ea6b', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
              'chunks': True},   # a scan in chunks, as the 57CR
+    # 2026-10-28, two more (CC BY 4.0)
+    'shirabe': {'name': 'Konig Countergram 5x120 Wheel / FREE MODEL', 'uid': 'c3bffbcaafbe4f5388f14feed6b38cca', 'maker': 'Konig', 'author': 'shevchenkovisuals', 'license': 'CC Attribution',
+                'drop': r'Tire|Text|Lug Nuts',   # its own tire, the lettering and the donor's nuts (nodes named for them)
+                'lugs': (5, 0.2217, {'at': 0})},   # the dropped nuts stood on a bare chrome hub round the black cap: no hole or pocket for the depth image to read, so the circle is the nuts' own (r 45.9 mm, the first straight up)
+    'asahi': {'name': 'Enkie Rpf1', 'uid': '43182083d4134e918a81f115905d5483', 'maker': 'Enkei', 'author': 'astrubal', 'license': 'CC Attribution',
+              'face': -1, 'chunks': True,   # the lip flange is in the face's island and the barrel a separate one: as chunks the lip is turned out of both
+              'lugs': (5, 0.2207, {'at': 0}),   # five pockets 16 mm deep in a recessed plate, read by the donor's own holes (r 45.7 mm); the depth image splits one and misses another
+              'drop': r'Rubber|San_Francisco|Metallic_Simple|black|Car_paint|Black_Metal|Charcoal|Silver|free-enkei'},   # a full corner: its tire (read as the lip), calipers, rotor, hub and clips; the wheel is the one `Metal` mesh
 }
 
 
@@ -1014,20 +1022,27 @@ def fit_lugs(o, want=None):
     where two circles share a radius, a dual drilled hub (zan: five stud holes and five bores between them);
     `seat` (m) seats the nuts on the surface on a ring of that radius round each lug and sets the washer to
     it, where the floor `_recess` finds is not the seat (a countersink's cone, a ledge above a deeper tube:
-    tsume, yoake). Returns the circle as (count, r over the lip, kind) or None."""
+    tsume, yoake); `at` (deg, the catalog's phase of the first lug) places the circle from the recipe's count and
+    r without measuring it, for a hub the depth image cannot read (asahi), with `rad` the lug's radius over the lip. Returns the circle as (count, r over the lip, kind) or None."""
     L = TIRE_R * BEAD
     if 'lugs' in o.keys():
         del o['lugs']
     if want == 0:
         return None
-    circles = _lug_circles(_lug_blobs(_depth_image(o, L)))
     opt = want[2] if want and len(want) > 2 else {}
-    if want:
+    if opt.get('at') is not None:   # a circle the depth image cannot find (the RPF1's pockets: a cap over their inner edge, one split by a floor hole): count and radius from the recipe, the first lug at `at` degrees (the catalog's phase), each lug opt['rad'] (share of the lip, 0.06) wide
+        n = want[0]
+        pts = [math.radians(opt['at']) + 2 * math.pi * k / n for k in range(n)]
+        circles = [{'n': n, 'r': want[1], 'spread': 0, 'members': [{'y': -want[1] * math.sin(a), 'z': want[1] * math.cos(a), 'r': want[1], 'a': math.atan2(want[1] * math.cos(a), -want[1] * math.sin(a)),
+                                                                    'rad': opt.get('rad', 0.06), 'kind': 'pocket', 's': None} for a in pts]}]
+    else:
+        circles = _lug_circles(_lug_blobs(_depth_image(o, L)))
+    if opt.get('at') is None and want:
         circles = sorted((c for c in circles if c['n'] == want[0]), key=lambda c: abs(c['r'] - want[1]))
         if 'phase' in opt:
             near = [c for c in circles if abs(c['r'] - want[1]) < 0.02]
             circles = sorted(near, key=lambda c: _phase_gap(c, opt['phase']))
-    else:
+    elif opt.get('at') is None:
         # At one radius a through hole is the surest lug, a nut standing proud the least (a raised boss looks the same).
         circles.sort(key=lambda c: (round(c['r'] / 0.03), ('hole', 'pocket', 'nut').index(c['members'][0]['kind']), c['spread']))
     if not circles:
@@ -1037,9 +1052,9 @@ def fit_lugs(o, want=None):
     # The n-fold circular mean of the members' angles: the first nut's angle, off the noise of any one.
     phase = math.atan2(sum(math.sin(n * m['a']) for m in members), sum(math.cos(n * m['a']) for m in members)) / n
     seats = sorted(m['s'] for m in members if m['s'] is not None)
-    x = seats[len(seats) // 2]
     rad = sorted(m['rad'] for m in members)[len(members) // 2] * L
     size = min(max(rad * 1.05, LUG['size'][0]), LUG['size'][1])
+    x = seats[len(seats) // 2] if seats else _seat_x(o, [(m['y'] * L, m['z'] * L) for m in members], size)
     # The donor's nuts: Chrome hardware within each lug's radius, or face standing proud of the seat within
     # what the house nut covers (a wider cut would open the face round it).
     me = o.data

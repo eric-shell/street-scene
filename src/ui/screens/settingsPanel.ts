@@ -391,6 +391,8 @@ const DONOR_CREDITS: { use: string; title: string; uid: string; author: string }
   { use: 'Kaminari wheels', title: 'Rays Gramlights 57CR', uid: '47063c38bdaa46ebaf2d2af2079c7118', author: 'ilvskf' },
   { use: 'Fuuga wheels', title: 'RAYS G025', uid: '8b14891bb44b43729d07f1e4e2744488', author: 'ilvskf' },
   { use: 'Hinoko wheels', title: 'RAYS HOMURA 2x7', uid: 'f2da4e9b0d04418aa1b53022d692ea6b', author: 'ilvskf' },
+  { use: 'Shirabe wheels', title: 'Konig Countergram 5x120 Wheel / FREE MODEL', uid: 'c3bffbcaafbe4f5388f14feed6b38cca', author: 'shevchenkovisuals' },
+  { use: 'Asahi wheels', title: 'Enkie Rpf1', uid: '43182083d4134e918a81f115905d5483', author: 'astrubal' },
 ];
 
 /** One credit in a credits group: what it is in the game, beside the work (linked) over its author and licence. */
