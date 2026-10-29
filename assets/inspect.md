@@ -10,7 +10,7 @@ Authored cars: brandtKombi, hinodeHorizon, kazamaRotor, ridgewayFiend, tachibana
 |---|---|
 | brandtKombi | 264.8 KB |
 | hinodeHorizon | 231.4 KB |
-| kazamaRotor | 279.0 KB |
+| kazamaRotor | 266.7 KB |
 | ridgewayFiend | 270.0 KB |
 | tachibanaRunabout | 141.7 KB |
 | tachibanaZenith | 261.9 KB |
@@ -76,7 +76,7 @@ Source: `assets/source/eshell/hinodeHorizon/hinodeHorizon.blend` (authored in ca
 
 Source: `assets/source/eshell/kazamaRotor/kazamaRotor.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/kazamaRotor.glb`: 279.0 KB, 20590 tris, nodes `Body`.
+- Base car `public/cars/kazamaRotor.glb`: 266.7 KB, 19841 tris, nodes `Body`.
 - Parts: .
 - WARNING: wheel radius 0.327 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.327 m, width 0.24 m, wheelbase 2.425 m, track 1.447 m.

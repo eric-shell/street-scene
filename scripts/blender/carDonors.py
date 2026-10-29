@@ -116,14 +116,14 @@ DONORS = {
         # both sides) over a black bucket, the bezel round the lamp. The bucket's ceiling behind the
         # lens lies a few mm under the lid, and the lamps' collapse pushed it through in black
         # patches: it is paint (the bezel's top lip, ahead of the lens, stays black). The pop-ups'
-        # chrome reflector and the round bulb in front of it are what glow, behind their clear
-        # covers.
+        # lamps glow whole: cover, reflector and bulb.
         'recolor': [(lambda c, n, m: m == 'Black' and POPUP(c) and c.y > -1.74 and c.z > 0.765 and abs(n.z) > 0.5, 'Paint'),
-                    (lambda c, n, m: m == 'Chrome' and 0.48 < abs(c.x) < 0.7 and -1.75 < c.y < -1.69 and 0.63 < c.z < 0.79, 'HeadLight'),
-                    (lambda c, n, m: m == 'Lens' and POPUP(c) and c.y > -1.7, 'HeadLight'),
-                    # The bulb of each bumper lamp's inner (clear) round lamp, behind its lens (the
-                    # lens ends at y -1.895); the outer one sits behind the amber indicator, unlit.
-                    (lambda c, n, m: m == 'Lens' and math.hypot(abs(c.x) - 0.5735, c.z - 0.4715) < 0.013 and -1.893 < c.y < -1.865, 'HeadLight')],
+                    (lambda c, n, m: m in ('Lens', 'Chrome') and POPUP(c), 'HeadLight'),
+                    # Each bumper lamp's inner (clear) round lamp glows whole too: lens, reflector
+                    # and bulb, about its own center (the donor's left lamp sits 6 mm further out
+                    # than the right one's mirror). The outer, amber one is the indicator, unlit.
+                    (lambda c, n, m: m in ('Lens', 'Chrome') and math.hypot(c.x - (0.5736 if c.x > 0 else -0.58), c.z - 0.4716) < 0.04
+                     and -1.9 < c.y < -1.865, 'HeadLight')],
         # The third brake light: the donor's four red blocks in the black pocket mid tail bar give
         # way to one thin strip arched along its top edge (6 mm under it), lit only under braking,
         # as on the car.
