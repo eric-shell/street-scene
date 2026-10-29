@@ -1292,7 +1292,7 @@ def canard(src, target, side, a0, a1, z0, rise=0.03, width=(0.06, 0.02), thick=0
 
 
 def side_lip(body, target, y0, y1, top, thick=0.013, proud=0.02, tuck=0.04, chamfer=0.006, dam=0.0,
-             filler=0.0, filler_inset=0.015, stations=11, scan=0.15, material='Black'):
+             filler=0.0, filler_inset=0.015, dam_tol=0.003, smooth=0, stations=11, scan=0.15, material='Black'):
     """A side skirt lip carrying a front splitter's line down the sill, both sides: a flat sheet from
     y0 to y1 (between the wheels) with its top at `top` (the splitter's own height, so the line runs
     on), standing `proud` m out from the sill's face (its most outward point within `scan` m above the
@@ -1317,7 +1317,10 @@ def side_lip(body, target, y0, y1, top, thick=0.013, proud=0.02, tuck=0.04, cham
             if h[0]:
                 prof.append((zz, h[0].x))
         xf = max(x for _, x in prof)
-        zl, xl = next((p for p in prof if p[1] >= xf - 0.003), prof[-1])
+        # The dam's top: the lowest height the face comes within `dam_tol` of its most outward point.
+        # 3 mm finds the sill's lower crease; 12 mm its bottom edge, a shorter dam under the sill's own
+        # line (Track Wild's skirts after the user asked for a thinner one that follows the body line).
+        zl, xl = next((p for p in prof if p[1] >= xf - dam_tol), prof[-1])
         out = xf + proud
         if filler > 0:
             xi = xf - filler_inset
@@ -1332,6 +1335,12 @@ def side_lip(body, target, y0, y1, top, thick=0.013, proud=0.02, tuck=0.04, cham
         else:
             secs.append([(xf - tuck, y, top), (out - chamfer, y, top), (out, y, top - chamfer), (out, y, bot),
                          (xf - tuck, y, bot)])
+    if dam > 0 and filler <= 0 and smooth:
+        # The dam's top smoothed along the car, so it reads as one line like the body's.
+        zs = [s[0][2] for s in secs]
+        for _ in range(smooth):
+            zs = [zs[0]] + [zs[i - 1] * 0.25 + zs[i] * 0.5 + zs[i + 1] * 0.25 for i in range(1, len(zs) - 1)] + [zs[-1]]
+        secs = [[(p[0], p[1], zs[i]) if k < 2 else p for k, p in enumerate(s)] for i, s in enumerate(secs)]
     carry = stash_normals(target)
     sweep(target, secs, material)
     sweep(target, [[(-x, y, z) for x, y, z in s] for s in secs], material)
