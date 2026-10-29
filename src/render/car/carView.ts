@@ -364,10 +364,10 @@ export class CarView {
           vec2 e = abs(vPos) / planeHalf;
           glow *= 1.0 - smoothstep(0.6, 0.98, max(e.x, e.y));
           vec3 c = color1;
-          if (mode > 3.5 && mode < 4.5) {
+          if (mode > 2.5 && mode < 3.5) {
             // alternate: whole car switches between the two colors
             c = mix(color1, color2, step(0.5, fract(time * 0.5)));
-          } else if (mode > 5.5) {
+          } else if (mode > 4.5) {
             // chase: the two colors run around the car
             float a = atan(vPos.x, vPos.y) / 6.2831853 + 0.5;
             c = mix(color1, color2, smoothstep(0.35, 0.65, fract(a * 2.0 - time * 0.6)));
@@ -965,15 +965,15 @@ export class CarView {
     const t = time * g.speed;
     let k = 1;
     const c1 = GLOW_C1.set(g.color);
-    if (g.pattern === 'pulse') k = 0.45 + 0.55 * Math.abs(Math.sin(t * 3));
-    else if (g.pattern === 'breathe') k = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * 1.3));
+    // Pulse is a 2 s sine at 1x, so the Speed slider runs it from a fast throb (0.67 s) to a slow breath (8 s).
+    if (g.pattern === 'pulse') k = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * Math.PI));
     else if (g.pattern === 'strobe') k = Math.sin(t * 18) > 0.3 ? 1 : 0.08;
-    else if (g.pattern === 'wave') c1.offsetHSL((t * 0.12) % 1, 0, 0);
+    else if (g.pattern === 'rainbow') c1.offsetHSL((t * 0.12) % 1, 0, 0);
     const u = this.underglowMat.uniforms;
     u.color1.value.copy(c1);
     u.color2.value.set(g.color2);
     u.intensity.value = 1.5 * g.brightness * k * this.airFade;
-    // The shader picks the pattern by its index in GLOW_PATTERNS (4 alternate, 6 chase).
+    // The shader picks the pattern by its index in GLOW_PATTERNS (3 alternate, 5 chase).
     u.mode.value = GLOW_PATTERNS.indexOf(g.pattern);
     u.time.value = t;
     this.underglow.scale.set(g.size, 1, g.size);
