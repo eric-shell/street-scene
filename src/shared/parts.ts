@@ -43,6 +43,20 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   wheels: 12000,
 };
 
+/** The lug circle of a wheel GLB, in the GLB's own space (glTF frame, meters, axle along X, face toward +X); render/car/lugNuts.ts seats the house nuts on it. */
+export interface WheelLugs {
+  /** Number of nuts. */
+  count: number;
+  /** Bolt circle radius, m. */
+  r: number;
+  /** Angle of the first nut about the axle, rad: atan2(z, y) in the glTF frame; the others follow every 2π/count. */
+  phase: number;
+  /** X of the seat the nut's base sits on, m; the nut stands toward +X. */
+  x: number;
+  /** Seat radius, m: the nut's washer must cover a hole this wide. */
+  size: number;
+}
+
 export interface PartEntry {
   id: string;
   displayName: string;
@@ -50,6 +64,8 @@ export interface PartEntry {
   group?: string;
   /** Wheels: how the lip ships, polished ('chrome') or in the face's paint ('rim'); missing reads 'rim'. */
   lip?: 'chrome' | 'rim';
+  /** Wheels: the lug circle the house lug nuts sit on; missing: no lug nuts (a solid face hides the hub). */
+  lugs?: WheelLugs;
   /** Car id, or "universal" (wheels). */
   carId: string;
   slot: PartSlot;

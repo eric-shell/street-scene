@@ -9,7 +9,7 @@
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { AXLES, Axle, AxleStance, CarBuild, GLOW_PATTERNS, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
+import { AXLES, Axle, AxleStance, CarBuild, GLOW_PATTERNS, LUG_FINISHES, LugFinish, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
@@ -327,6 +327,7 @@ export function renderTabContent(host: TabHost): void {
           // The lip and the center cap are per build, both axles: the paint picker shows only while the mode is 'paint'.
           trimSection(host, 'Lip', w.lip, [{ value: 'stock', label: 'Stock' }, { value: 'face', label: 'Face' }, { value: 'chrome', label: 'Chrome' }, { value: 'paint', label: 'Paint' }]),
           trimSection(host, 'Center cap', w.cap, [{ value: 'face', label: 'Face' }, { value: 'chrome', label: 'Chrome' }, { value: 'paint', label: 'Paint' }]),
+          lugSection(host, w),
           // One caliper paint for all four corners, whatever the axle switch says.
           section('Calipers', paintPicker(v.calipers, PRESETS.calipers, () => host.changed(), { body: v.paint })),
         );
@@ -538,6 +539,20 @@ function trimSection(host: TabHost, name: string, trim: WheelTrim, modes: { valu
       host.renderTab();
     }),
     ...(trim.mode === 'paint' ? [paintPicker(trim, PRESETS.wheels, () => host.changed())] : []),
+    h('div', { class: 'muted garage-note' }, 'Both axles.'),
+  );
+}
+
+const LUG_LABELS: Record<LugFinish, string> = { chrome: 'Chrome', black: 'Black', gold: 'Gold', red: 'Red', blue: 'Blue', cap: 'Cap' };
+
+/** The lug nuts' finish (render/car/lugNuts.ts draws the nuts on wheels that ship a lug circle): one pick, both axles; 'Cap' wears the center cap's finish. */
+function lugSection(host: TabHost, w: CarBuild['visual']['wheels']): HTMLElement {
+  return section(
+    'Lug nuts',
+    segmented(LUG_FINISHES.map((value) => ({ value, label: LUG_LABELS[value] })), w.lugNuts, (f) => {
+      w.lugNuts = f;
+      host.changed();
+    }),
     h('div', { class: 'muted garage-note' }, 'Both axles.'),
   );
 }

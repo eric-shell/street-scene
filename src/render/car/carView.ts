@@ -16,6 +16,7 @@ import { BRAKE, brakeDepth, brakeReach, buildCaliperGeometry, buildRotorGeometry
 import { damp } from '../../shared/anim';
 import { latheTire, measureTire } from './tireShapes';
 import { PLATE, buildPlateGeometry, createPlateMaterial, drawPlate, plateTexture, seatPlate } from './plate';
+import { lugsGeometry } from './lugNuts';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 import { Disposer } from '../disposer';
 import { WheelClip } from './wheelClip';
@@ -297,7 +298,7 @@ export class CarView {
   ) {
     this.materials = createCarMaterials(opts.envMap ?? null, opts.tread ?? true);
     const m = this.materials;
-    this.paintedWheelMats = new Set([m.Rim, m.RimRear, m.RimLip, m.RimLipRear, m.RimCap, m.RimCapRear]);
+    this.paintedWheelMats = new Set([m.Rim, m.RimRear, m.RimLip, m.RimLipRear, m.RimCap, m.RimCapRear, m.Lug, m.LugRear]);
     this.car = manifestCar(carId);
     this.roadLift = opts.roadLift ?? 0;
     this.brakesOn = opts.brakes ?? true;
@@ -320,7 +321,7 @@ export class CarView {
     const { track } = this.owned;
     this.clip = track(new WheelClip(this.car, this.body));
     // Tire and wheel paints are the wheels' alone; the clip goes straight on them.
-    for (const m of [this.materials.Tire, this.materials.Rim, this.materials.RimRear, this.materials.RimLip, this.materials.RimLipRear, this.materials.RimCap, this.materials.RimCapRear]) this.clip.clipMaterial(m);
+    for (const m of [this.materials.Tire, this.materials.Rim, this.materials.RimRear, this.materials.RimLip, this.materials.RimLipRear, this.materials.RimCap, this.materials.RimCapRear, this.materials.Lug, this.materials.LugRear]) this.clip.clipMaterial(m);
     // Underglow: a shader glow on the road around the footprint, plus an optional real light.
     this.underglowMat = track(new THREE.ShaderMaterial({
       uniforms: {
@@ -699,6 +700,22 @@ export class CarView {
       maskVehicleMesh(out);
       baked.add(out);
     });
+    // The house lug nuts: one more mesh on the face, baked and remapped like the wheel's own, but left out of the
+    // profile and spoke measurements below (they sit in front of the spokes' back, so the width remap spares them).
+    const lugs = partById(model.userData.partId as string)?.lugs;
+    if (lugs) {
+      const geo = lugsGeometry(lugs);
+      geo.applyMatrix4(toWheel);
+      const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+      const nrm = geo.getAttribute('normal') as THREE.BufferAttribute;
+      geo.userData.basePos = Float32Array.from(pos.array as ArrayLike<number>);
+      geo.userData.baseNrm = Float32Array.from(nrm.array as ArrayLike<number>);
+      geo.userData.isTire = false;
+      const out = new THREE.Mesh(geo, axle === 1 ? this.materials.LugRear : this.materials.Lug);
+      out.name = 'Lug';
+      maskVehicleMesh(out);
+      baked.add(out);
+    }
     const profile = detectProfile(tireR, otherR);
     this.wheelProfiles[axle] = profile;
     // The spokes' back: the innermost point of the spoke zone (between the center bore, which can run

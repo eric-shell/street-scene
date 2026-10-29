@@ -6,7 +6,7 @@
  */
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
-import type { AccentPaint, Paint, PaintFinish, VisualBuild, WheelTrim } from '../../shared/carBuild';
+import type { AccentPaint, LugFinish, Paint, PaintFinish, VisualBuild, WheelTrim } from '../../shared/carBuild';
 import { BRAKE, caliperLogoTexture, rotorTexture } from './brakes';
 import { TIRE_BUMP, acquireTireTexture, releaseTireTexture, tireShader } from './tireTread';
 
@@ -14,13 +14,21 @@ import { TIRE_BUMP, acquireTireTexture, releaseTireTexture, tireShader } from '.
  * The shared runtime materials, plus the rear axle's own wheel material so front and rear wheel colors
  * can differ, and the brake unit's rotor and caliper (brakes.ts), which no part GLB names.
  */
-export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material; RimLipRear: THREE.Material; RimCapRear: THREE.Material; Rotor: THREE.Material; Caliper: THREE.Material };
+export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material; RimLipRear: THREE.Material; RimCapRear: THREE.Material; Rotor: THREE.Material; Caliper: THREE.Material; Lug: THREE.Material; LugRear: THREE.Material };
 
 /** Each painted material's environment reflection strength (the boost createCarMaterials gives it); candy raises it. */
 const PAINT_ENV = { Paint: 1.9, Rim: 1.8, RimLip: 1.8, RimCap: 1.8, Caliper: 1.2 } as const;
 
 /** The polished look of the Chrome material (createCarMaterials), which a chrome lip or cap wears. */
 const CHROME = { color: 0xdedede, env: 2.2, surface: { metalness: 1, roughness: 0.12, clearcoat: 0, clearcoatRoughness: 0, iridescence: 0, sheen: 0, specularIntensity: 1 } } as const;
+
+/** The painted lug nut finishes (chrome polishes like the Chrome material; 'cap' wears the axle's center cap). */
+const LUG_LOOK: Record<Exclude<LugFinish, 'chrome' | 'cap'>, { color: number; metalness: number; roughness: number }> = {
+  black: { color: 0x111214, metalness: 0.6, roughness: 0.25 },
+  gold: { color: 0xd4a537, metalness: 1, roughness: 0.22 },
+  red: { color: 0xc0182c, metalness: 1, roughness: 0.22 },
+  blue: { color: 0x2563d6, metalness: 1, roughness: 0.22 },
+};
 
 /** Car space meters per UV unit on Grille faces (GRILLE_UV in scripts/blender/carDonors.py). */
 const GRILLE_UV_SPAN = 3;
@@ -137,6 +145,9 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   m.RimRear = m.Rim.clone();
   m.RimLipRear = m.RimLip.clone();
   m.RimCapRear = m.RimCap.clone();
+  // The house lug nuts (lugNuts.ts): runtime materials, painted from the build, not part of the GLB vocabulary.
+  m.Lug = new THREE.MeshPhysicalMaterial({ name: 'Lug', color: CHROME.color, metalness: 1, roughness: 0.12, envMap, envMapIntensity: CHROME.env });
+  m.LugRear = m.Lug.clone();
   // Brakes: the drilled face darkens the holes and the bump map dents them; the rotor glows while braking.
   const rotor = rotorTexture();
   m.Rotor = new THREE.MeshStandardMaterial({ name: 'Rotor', color: 0xc4c7cc, metalness: 0.7, roughness: 0.45, map: rotor, bumpMap: rotor, bumpScale: 1.2, emissive: 0xff6a1a, emissiveIntensity: 0, envMap, envMapIntensity: 1.4 });
@@ -213,6 +224,19 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, stockL
   trim(m.RimLipRear, v.wheels.lip, faces[1], stockLips[1], false);
   trim(m.RimCap, v.wheels.cap, faces[0], stockLips[0], true);
   trim(m.RimCapRear, v.wheels.cap, faces[1], stockLips[1], true);
+  const lug = (mat: THREE.Material, face: Paint, stock: 'chrome' | 'rim'): void => {
+    const f = v.wheels.lugNuts;
+    if (f === 'cap') return trim(mat, v.wheels.cap, face, stock, true);
+    const pm = mat as THREE.MeshPhysicalMaterial;
+    if (f === 'chrome') return applyChrome(pm);
+    const look = LUG_LOOK[f];
+    pm.setValues({ ...CHROME.surface, metalness: look.metalness, roughness: look.roughness });
+    pm.color.set(look.color);
+    pm.envMapIntensity = PAINT_ENV.Rim * envScale;
+    pm.needsUpdate = true;
+  };
+  lug(m.Lug, faces[0], stockLips[0]);
+  lug(m.LugRear, faces[1], stockLips[1]);
   applyPaint(m.Caliper as THREE.MeshPhysicalMaterial, accent(v.calipers), PAINT_ENV.Caliper * envScale);
   (m.Trim as THREE.MeshStandardMaterial).color.set(v.trimColor);
   const glass = m.Glass as THREE.MeshPhysicalMaterial;
@@ -252,6 +276,8 @@ export function disposeCarMaterials(m: CarMaterialSet): void {
   m.RimRear.dispose();
   m.RimLipRear.dispose();
   m.RimCapRear.dispose();
+  m.Lug.dispose();
+  m.LugRear.dispose();
   (m.Rotor as THREE.MeshStandardMaterial).map?.dispose();
   m.Rotor.dispose();
   (m.Caliper as THREE.MeshStandardMaterial).map?.dispose();

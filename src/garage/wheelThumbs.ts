@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { CarAssetLibrary } from '../render/car/carAssets';
+import { lugsGeometry } from '../render/car/lugNuts';
 import type { PartEntry } from '../shared/parts';
 
 /** The thumbnail's size (px, square; the tile shows it at about half for a sharp image on 2x screens) and its view. */
@@ -109,11 +110,15 @@ export class WheelThumbs {
     const c = Math.cos(THUMB.pitch);
     this.camera.position.set(Math.cos(THUMB.yaw) * c, Math.sin(THUMB.pitch), Math.sin(THUMB.yaw) * c).multiplyScalar(dist).add(center);
     this.camera.lookAt(center);
+    // The house lug nuts, chrome, on the lug circle the catalog measured (the model is in the same space).
+    const lugGeo = entry.lugs ? lugsGeometry(entry.lugs) : null;
+    if (lugGeo) model.add(new THREE.Mesh(lugGeo, this.materials.Chrome));
     this.scene.add(model);
     r.render(this.scene, this.camera);
     // Read in the same task as the draw: the drawing buffer is not kept past it.
     const url = r.domElement.toDataURL('image/png');
     this.scene.remove(model);
+    lugGeo?.dispose();
     return url;
   }
 

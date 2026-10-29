@@ -40,6 +40,7 @@ Wheel space (exportCar.py): center at the origin, axle along X, the face toward 
 scales a wheel so the tire's outer radius meets the car's wheel radius and remaps the wheel for
 the size slider from where the Tire mesh meets the rest (src/render/car/wheelFit.ts).
 """
+import json
 import re
 
 TIRE_R = 0.28        # m, house tire outer radius (standardWheel)
@@ -79,6 +80,7 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
 # faces whose base colour texture is darker go (a tire welded to the wheel in one textured mesh).
 # `pick` (axis, lo, hi): keep only the faces whose centre lies between lo and hi on that axis of the import's frame (a scene holding several wheels).
 # `cap` the turned hub cap's radius (share of the lip) where the round test stops short of an opening a dropped logo cap covered.
+# `lugs` 0 when no lug circle shows (a cap or a solid face hides it), or (count, r over the lip) for the circle to take where the innermost is a decoration.
 _J = {'author': 'jonver87', 'license': 'CC Attribution'}
 WHEELS = {
     'kumo': {'name': 'Work VS-TX', 'uid': '31c76095a0754cb1b08591d63973a2c2', 'maker': 'Work', **_J},
@@ -708,6 +710,193 @@ def retrofit_hub(name):
     return lip, len(lathe), pts
 
 
+# House lug nuts (2026-10-28): the game draws one lug nut model on every wheel (src/render/car/lugNuts.ts) at
+# the circle measured here, so the donor's own nuts go. In shares of the lip radius unless marked.
+LUG = {
+    'ext': 0.46,          # the depth image covers the hub out to here
+    'step': 0.004,        # its pixel
+    'tol': 0.003,         # m, a pixel this far off its ring's median depth is a nut (proud) or a pocket (sunk)
+    'band': (0.13, 0.32), # a lug's center lies between: inside is the cap, outside rivets and spoke windows
+    'blob': (0.02, 0.1),  # a lug's hole, pocket or nut radius (rivets are smaller, windows larger)
+    'counts': (6, 5, 4),
+    'spacing': 4.0,       # deg, how far a lug may sit off its equal spacing
+    'size': (0.010, 0.016),  # m, the nut's seat radius: covers the hole it sits on, within a nut's sizes
+}
+
+
+def _depth_image(o, L):
+    """The first surface rays down -X meet over the hub, in a square grid: the x hit, -9 for a ray that
+    passes through, None outside the disc. The tire is not in it."""
+    me = o.data
+    names = [m.name for m in me.materials]
+    tree = BVHTree.FromPolygons([v.co for v in me.vertices], [p.vertices[:] for p in me.polygons if names[p.material_index] != 'Tire'])
+    ext, step = LUG['ext'], LUG['step']
+    N = int(2 * ext / step) + 1
+    X = [[None] * N for _ in range(N)]
+    for i in range(N):
+        y = (-ext + i * step) * L
+        for j in range(N):
+            z = (-ext + j * step) * L
+            if y * y + z * z <= (ext * L) ** 2:
+                h = tree.ray_cast(Vector((0.3, y, z)), Vector((-1, 0, 0)))[0]
+                X[i][j] = h.x if h else -9
+    return X
+
+
+def _lug_blobs(X):
+    """Candidate lugs: closed blobs of pixels proud of their ring's median depth (a nut), sunk below it (a
+    pocket) or open (a through hole), each with its center, radius and kind; and the ring medians."""
+    ext, step, tol = LUG['ext'], LUG['step'], LUG['tol']
+    N = len(X)
+    ring = lambda i, j: int(math.hypot(-ext + i * step, -ext + j * step) / 0.005)
+    bins = {}
+    for i in range(N):
+        for j in range(N):
+            if X[i][j] is not None and X[i][j] != -9:
+                bins.setdefault(ring(i, j), []).append(X[i][j])
+    med = {k: sorted(v)[len(v) // 2] for k, v in bins.items()}
+    masks = {k: [[False] * N for _ in range(N)] for k in ('nut', 'pocket', 'hole')}
+    for i in range(N):
+        for j in range(N):
+            x = X[i][j]
+            if x is None:
+                continue
+            s = med.get(ring(i, j))
+            kind = 'hole' if x == -9 else None if s is None else 'nut' if x > s + tol else 'pocket' if x < s - tol else None
+            if kind:
+                masks[kind][i][j] = True
+    out = []
+    for kind, m in masks.items():
+        seen = set()
+        for i in range(N):
+            for j in range(N):
+                if not m[i][j] or (i, j) in seen:
+                    continue
+                stack, px = [(i, j)], []
+                seen.add((i, j))
+                while stack:
+                    a, b = stack.pop()
+                    px.append((a, b))
+                    for c in range(a - 1, a + 2):
+                        for d in range(b - 1, b + 2):
+                            if 0 <= c < N and 0 <= d < N and m[c][d] and (c, d) not in seen:
+                                seen.add((c, d))
+                                stack.append((c, d))
+                ys = [-ext + a * step for a, b in px]
+                zs = [-ext + b * step for a, b in px]
+                cy, cz = sum(ys) / len(ys), sum(zs) / len(zs)
+                rad = max(math.hypot(y - cy, z - cz) for y, z in zip(ys, zs)) + step / 2
+                r = math.hypot(cy, cz)
+                closed = max(math.hypot(y, z) for y, z in zip(ys, zs)) < ext - 0.02
+                if closed and LUG['band'][0] < r < LUG['band'][1] and LUG['blob'][0] < rad < LUG['blob'][1] and len(px) * step * step > 0.3 * math.pi * rad * rad:
+                    out.append({'y': cy, 'z': cz, 'r': r, 'a': math.atan2(cz, cy), 'rad': rad, 'kind': kind, 's': med.get(int(r / 0.005))})
+    return out
+
+
+def _lug_circles(blobs):
+    """Every set of 4, 5 or 6 blobs at one radius (within 0.02) and equal angles (within LUG spacing), the
+    highest count an anchor allows, one per radius."""
+    found = []
+    for anchor in blobs:
+        for n in LUG['counts']:
+            members = [anchor]
+            for k in range(1, n):
+                want = anchor['a'] + 2 * math.pi * k / n
+                near = [c for c in blobs if abs(c['r'] - anchor['r']) < 0.02 and abs((c['a'] - want + math.pi) % (2 * math.pi) - math.pi) < math.radians(LUG['spacing'])]
+                if not near:
+                    break
+                members.append(min(near, key=lambda c: abs(c['r'] - anchor['r'])))
+            else:
+                r = sum(m['r'] for m in members) / n
+                # One per circle: the same count, radius and angles (two circles at one radius, the bosses
+                # between the holes, are both kept).
+                same = lambda c: c['n'] == n and abs(c['r'] - r) < 0.01 and abs((n * (c['members'][0]['a'] - anchor['a']) + math.pi) % (2 * math.pi) - math.pi) < n * math.radians(LUG['spacing'])
+                if not any(same(c) for c in found):
+                    found.append({'n': n, 'r': r, 'members': members, 'spread': sum(abs(m['r'] - r) for m in members)})
+                break
+    return found
+
+
+def _seat_x(o, centers, size):
+    """Where a nut's base sits: the median, over the lugs, of the surface just round each one (the upper
+    quartile of 16 rays down -X on a circle 1.3 seat radii from its center, `centers` (y, z) in m; through
+    kasumi's mesh face the median sank its nuts 21 mm). The ring's median depth over the
+    whole circle ran up spokes and down windows: a nut stood 6 mm proud of the face round its hole on yari."""
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    tree = BVHTree.FromPolygons([v.co for v in me.vertices], [p.vertices[:] for p in me.polygons if names[p.material_index] != 'Tire'])
+    xs = []
+    for cy, cz in centers:
+        hits = sorted(h.x for h in (tree.ray_cast(Vector((0.3, cy + 1.3 * size * math.cos(2 * math.pi * k / 16), cz + 1.3 * size * math.sin(2 * math.pi * k / 16))), Vector((-1, 0, 0)))[0] for k in range(16)) if h is not None)
+        if hits:
+            xs.append(hits[(3 * len(hits)) // 4])   # the upper quartile: rays through a mesh face's openings fall past the seat
+    return sorted(xs)[len(xs) // 2] if xs else None
+
+
+def fit_lugs(o, want=None):
+    """Measure the wheel's lug circle and make way for the house nuts: the donor's nuts (Chrome, or face
+    standing proud of the hub within a lug's radius) go, and the object's `lugs` property (JSON, the
+    catalog's `WheelLugs`) records the circle in the GLB's own frame (glTF: y up is Blender z, z is
+    -Blender y): count, radius r (m), the first nut's angle phase (rad, atan2(z, y)), the seat's x (m,
+    the surface round the lugs, `_seat_x`) and the seat radius size (m).
+
+    The lugs are holes, pockets or nuts in a depth image of the hub (`_lug_blobs`) on a circle of 4 to 6
+    (`_lug_circles`); the innermost circle wins, since decorative windows and spoke gaps sit further
+    out. `want` is the recipe's `lugs`: 0 for none (a solid face or a cap hides them), or (count, r) to
+    take the circle of that count nearest that radius where the innermost is a decoration. Returns the
+    circle as (count, r over the lip, kind) or None."""
+    L = TIRE_R * BEAD
+    if 'lugs' in o.keys():
+        del o['lugs']
+    if want == 0:
+        return None
+    circles = _lug_circles(_lug_blobs(_depth_image(o, L)))
+    if want:
+        circles = sorted((c for c in circles if c['n'] == want[0]), key=lambda c: abs(c['r'] - want[1]))
+    else:
+        # At one radius a through hole is the surest lug, a nut standing proud the least (a raised boss looks the same).
+        circles.sort(key=lambda c: (round(c['r'] / 0.03), ('hole', 'pocket', 'nut').index(c['members'][0]['kind']), c['spread']))
+    if not circles:
+        return None
+    c = circles[0]
+    n, members = c['n'], c['members']
+    # The n-fold circular mean of the members' angles: the first nut's angle, off the noise of any one.
+    phase = math.atan2(sum(math.sin(n * m['a']) for m in members), sum(math.cos(n * m['a']) for m in members)) / n
+    seats = sorted(m['s'] for m in members if m['s'] is not None)
+    x = seats[len(seats) // 2]
+    rad = sorted(m['rad'] for m in members)[len(members) // 2] * L
+    size = min(max(rad * 1.05, LUG['size'][0]), LUG['size'][1])
+    # The donor's nuts: Chrome hardware within each lug's radius, or face standing proud of the seat within
+    # what the house nut covers (a wider cut would open the face round it).
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]   # Chrome.001 in a file the set was appended to
+    _carry_normals(o)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    gone = []
+    for f in bm.faces:
+        mat = names[f.material_index]
+        if mat not in ('Chrome', 'Rim', 'Black'):
+            continue
+        p = f.calc_center_median()
+        reach = [(math.hypot(p.y - m['y'] * L, p.z - m['z'] * L), m['rad'] * L * 1.1) for m in members]
+        if any(d < cr for d, cr in reach) if mat == 'Chrome' else (p.x > x + 0.0015 and all(v.co.x > x + 0.0005 for v in f.verts) and any(d < 0.9 * size for d, cr in reach)):
+            gone.append(f)
+    bmesh.ops.delete(bm, geom=gone, context='FACES')
+    sn = bm.loops.layers.float_vector['src_normal']
+    out = [l[sn].copy() if l[sn].length > 0.5 else f.normal.copy() for f in bm.faces for l in f.loops]
+    bm.to_mesh(me)
+    bm.free()
+    me.normals_split_custom_set(out)
+    me.attributes.remove(me.attributes['src_normal'])
+    remap_materials(o)
+    by, bz = c['r'] * L * math.cos(phase), c['r'] * L * math.sin(phase)
+    x = _seat_x(o, [(m['y'] * L, m['z'] * L) for m in members], size) or x
+    o['lugs'] = json.dumps({'count': n, 'r': round(c['r'] * L, 5), 'phase': round(math.atan2(-by, bz), 5), 'x': round(x, 5),
+                            'size': round(size, 5)})
+    return n, round(c['r'], 3), members[0]['kind'], len(gone)
+
+
 def _ring_profile(o, L, planes=12, rays=480):
     """The lip and barrel's visible surface as (x, r) points from the lip edge inward and back:
     rays from a viewpoint in front of the wheel, swept in the plane through the axle from the lip
@@ -1109,12 +1298,13 @@ def wheel(name, root):
     remap_materials(o)
     cap_pts = clean_cap(o)
     hub_r = 0 if cap_pts else hub_cap(o, R0.get('cap'))
+    lugs = fit_lugs(o, R0.get('lugs'))
     o['lip'] = lip
     o['displayName'] = name.capitalize()
     o['group'] = GROUPS[R0['maker']]
     print(f'wheel_{name}: {R0["name"]} ({R0["author"]}); islands {kinds}; face {"+" if sign > 0 else "-"}X, scaled x{k:.3f}, '
           f'barrel squeezed x{squeeze:.2f}, lip {lip}' + (f' turned from {len(ring_prof)} points' if ring_prof else '') + ', ' + (f'{len(circle[0])} house bolts at r {circle[1]:.3f}' if circle else 'no bolt circle') +
-          (f', house cap r {cap_r:.3f}' if cap_r else '') + (f', cap turned from {cap_pts} points' if cap_pts else f', hub turned as a cap to r {hub_r:.2f}' if hub_r else '') + f'; {src_tris} -> {tris(o)} tris ({culled} hidden culled, {loose} loose, {gone["bolt"]} of bolts and {gone["decal"]} of decals replaced)')
+          (f', house cap r {cap_r:.3f}' if cap_r else '') + (f', cap turned from {cap_pts} points' if cap_pts else f', hub turned as a cap to r {hub_r:.2f}' if hub_r else '') + (f', {lugs[0]} lugs at r {lugs[1]:.3f}' if lugs else ', no lugs') + f'; {src_tris} -> {tris(o)} tris ({culled} hidden culled, {loose} loose, {gone["bolt"]} of bolts and {gone["decal"]} of decals replaced)')
     return o
 
 
