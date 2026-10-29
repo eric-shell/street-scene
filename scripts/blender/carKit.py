@@ -974,11 +974,15 @@ def punch_holes(o, holes, r, depth=0.015, sides=16, wall='Black', back='Black', 
 
 
 def sheet_lip(src, target, center=(0, -1.55), angles=(0, 20, 40, 52, 62, 70, 76, 82), band=(0.165, 0.235), thick=0.013,
-              proud=0.04, end_proud=0.025, taper_from=70, tuck=0.04, butt=0.004, chamfer=0.006, full=True, material='Black'):
+              proud=0.03, end_proud=0.012, taper_from=70, tuck=0.04, butt=0.004, chamfer=0.006, full=True,
+              from_face=True, face_band=0.4, material='Black'):
     """A flat splitter cut from sheet stock (half inch HDPE) under a front bumper: top and bottom flat
-    all the way round at the height of the bumper's underside at the nose, its outline the bumper's
-    bottom edge offset `proud` m and taken in straight runs between `angles` (degrees about `center`,
-    one half, mirrored), with a 45 degree `chamfer` on the top front edge. Each run is its own sweep,
+    all the way round at the height of the bumper's underside at the nose, its outline taken in straight
+    runs between `angles` (degrees about `center`, one half, mirrored), with a 45 degree `chamfer` on the
+    top front edge. `proud` is how far it stands ahead of the bumper's face (`from_face`: the face's
+    most forward point within `face_band` m above the bottom, per station), not of its bottom edge:
+    the Wendt Strom's face overhangs its bottom edge by 5 cm across the nose and 3 cm on the sides, so
+    a sheet 5 cm past the bottom edge sat flush with the face and the user asked for more. Each run is its own sweep,
     so its faces are flat and the joints crisp like a cut sheet, not smooth like `bumper_lip`. Past
     `taper_from` degrees the proud edge narrows to `end_proud` at the last angle. A bumper's bottom
     dips toward the arches, below a sheet at the nose's height: with `full` (the user wanted it along
@@ -991,8 +995,19 @@ def sheet_lip(src, target, center=(0, -1.55), angles=(0, 20, 40, 52, 62, 70, 76,
     keep = [i for i, e in enumerate(E) if full or e.z >= top + 0.001 or i == 0]
     E = [E[i] for i in keep]
     A = [angles[i] for i in keep]
+    over = [0.0] * len(E)
+    if from_face:
+        from mathutils.bvhtree import BVHTree
+        t = BVHTree.FromObject(src, bpy.context.evaluated_depsgraph_get())
+        c = Vector((center[0], center[1], 0))
+        for i, (e, a) in enumerate(zip(E, A)):
+            d = Vector((math.sin(math.radians(a)), -math.cos(math.radians(a)), 0))
+            r = max(((h[0] - c).to_2d().length for h in (t.ray_cast(c + d * 3 + Vector((0, 0, band[0] + 0.005 * j)), -d, 3)
+                                                     for j in range(int(face_band / 0.005))) if h[0]), default=0.0)
+            over[i] = max(0.0, r - (e - c).to_2d().length)
     E = [Vector((-e.x, e.y, e.z)) for e in reversed(E[1:])] + E
     A = [-a for a in reversed(A[1:])] + A
+    over = list(reversed(over[1:])) + over
     bot = top - thick
     secs = []
     for i, (e, a) in enumerate(zip(E, A)):
@@ -1004,7 +1019,7 @@ def sheet_lip(src, target, center=(0, -1.55), angles=(0, 20, 40, 52, 62, 70, 76,
         n3 = Vector((n.x, n.y, 0))
         last = max(abs(x) for x in A)
         k = 0.0 if abs(a) <= taper_from or last <= taper_from else (abs(a) - taper_from) / (last - taper_from)
-        ext = proud + (end_proud - proud) * k
+        ext = over[i] + proud + (end_proud - proud) * k
         tk = tuck if e.z >= top + 0.001 else butt
         base = Vector((e.x, e.y, 0))
         secs.append([tuple(base - n3 * tk + Vector((0, 0, top))),
@@ -1021,13 +1036,14 @@ def sheet_lip(src, target, center=(0, -1.55), angles=(0, 20, 40, 52, 62, 70, 76,
 
 
 def canard(src, target, side, a0, a1, z0, rise=0.03, width=(0.06, 0.02), thick=0.004, embed=0.006,
-           center=(0, -1.55), stations=5, material='Black'):
+           chamfer=0.0, center=(0, -1.55), stations=5, material='Black'):
     """A canard (dive plane) on a bumper's corner: a thin plate standing out of the corner face from
     `a0` to `a1` degrees about `center` (plan, 0 toward -y; `side` +1 the car's left, -1 its right), its
     root following the face (plan rays at each station) from height z0 at the front end to z0 + `rise`
     at the back, so it angles up toward the rear; `width` (front, back) is how far it stands out, the
-    root sunk `embed` m into the face so no seam shows. The Wendt Strom's Track bumper carries two a
-    side where the amber markers were. Carries authored normals."""
+    root sunk `embed` m into the face so no seam shows, and `chamfer` a 45 degree bevel on its top
+    outer edge (cut sheet, like `sheet_lip`). The Wendt Strom's Track bumper carries two a side where
+    the amber markers were. Carries authored normals."""
     from mathutils.bvhtree import BVHTree
     t = BVHTree.FromObject(src, bpy.context.evaluated_depsgraph_get())
     c = Vector((center[0], center[1], 0))
@@ -1044,7 +1060,12 @@ def canard(src, target, side, a0, a1, z0, rise=0.03, width=(0.06, 0.02), thick=0
         w = width[0] + (width[1] - width[0]) * f
         s = h[0]
         up = Vector((0, 0, thick / 2))
-        secs.append([tuple(s - n * embed + up), tuple(s + n * w + up), tuple(s + n * w - up), tuple(s - n * embed - up)])
+        if chamfer > 0:
+            ch = Vector((0, 0, chamfer))
+            secs.append([tuple(s - n * embed + up), tuple(s + n * (w - chamfer) + up), tuple(s + n * w + up - ch),
+                         tuple(s + n * w - up), tuple(s - n * embed - up)])
+        else:
+            secs.append([tuple(s - n * embed + up), tuple(s + n * w + up), tuple(s + n * w - up), tuple(s - n * embed - up)])
     carry = stash_normals(target)
     sweep(target, secs, material)
     if carry:
