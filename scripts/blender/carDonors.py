@@ -181,6 +181,10 @@ DONORS = {
                   # The three lower intakes (rims and pockets) likewise, so they come out clean
                   # and mirror side to side: in the shell's collapse their rims went jagged.
                   lambda c, n, m: m in ('Paint', 'Black') and abs(c.x) < 0.8 and c.y < -1.85 and 0.17 < c.z < 0.46],
+        # The door handles and the mirrors: reduced and mirrored with the lamps, so they match
+        # side to side (the shell's collapse cut each its own way).
+        'details': [lambda c, n, m: 0.74 < abs(c.x) < 0.88 and 0.14 < c.y < 0.44 and 0.72 < c.z < 0.84,
+                    lambda c, n, m: 0.69 < abs(c.x) < 1.02 and -0.76 < c.y < -0.5 and 0.85 < c.z < 1.06],
         # A black panel behind the grille, wider and taller than its opening, so nothing shows
         # through past the piece's own back panel from an angle.
         'backPanels': [(-0.42, 0.42, -1.95, 0.55, 0.72)],
@@ -1599,6 +1603,67 @@ def _mirror_x(o):
     o.data.update()
 
 
+def mirror_normals(o):
+    """Give every -x face that has an exact mirror twin at +x (the mirrored lamps and details) the
+    twin's corner normals, mirrored. shade_from_source takes each side's normals from that side of
+    the skin, and a donor a few mm off mirror shaded the Golf's left door handle with the wrong
+    surface's normals: dark teeth on a handle whose geometry matched. Returns the faces set."""
+    from mathutils.kdtree import KDTree
+    me = o.data
+    normals = [c.vector.copy() for c in me.corner_normals]
+    plus = [p for p in me.polygons if p.center.x > 1e-4]
+    tree = KDTree(len(plus))
+    for k, p in enumerate(plus):
+        tree.insert(p.center, k)
+    tree.balance()
+    done = 0
+    for p in me.polygons:
+        c = p.center
+        if c.x > -1e-4:
+            continue
+        _, k, d = tree.find(Vector((-c.x, c.y, c.z)))
+        if k is None or d > 1e-5:
+            continue
+        g = plus[k]
+        twin = {tuple(round(v, 5) for v in me.vertices[me.loops[li].vertex_index].co): li for li in g.loop_indices}
+        for li in p.loop_indices:
+            co = me.vertices[me.loops[li].vertex_index].co
+            lj = twin.get((round(-co.x, 5), round(co.y, 5), round(co.z, 5)))
+            if lj is not None:
+                n = normals[lj]
+                normals[li] = Vector((-n.x, n.y, n.z))
+        done += 1
+    me.normals_split_custom_set(normals)
+    me.update()
+    return done
+
+
+def wind_to_shading(o):
+    """Turn every face whose winding points against its own corner normals (the source's shading,
+    which faces out) so the two agree. The collapse and the seam welds leave a few such faces
+    (83 on the Golf); drawn double sided, they read as dark teeth (the rear end of its left door
+    handle). The corner normals ride through. Returns the faces turned."""
+    me = o.data
+    cn = me.corner_normals
+    keep = {(p.index, me.loops[li].vertex_index): cn[li].vector.copy() for p in me.polygons for li in p.loop_indices}
+    turn = []
+    for p in me.polygons:
+        avg = sum((cn[li].vector for li in p.loop_indices), Vector())
+        if avg.length > 0 and p.normal.dot(avg.normalized()) < -0.5:
+            turn.append(p.index)
+    if not turn:
+        return 0
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.faces.ensure_lookup_table()
+    bmesh.ops.reverse_faces(bm, faces=[bm.faces[i] for i in turn])
+    bm.to_mesh(me)
+    bm.free()
+    me.normals_split_custom_set([keep[(p.index, me.loops[li].vertex_index)] for p in me.polygons for li in p.loop_indices])
+    me.update()
+    return len(turn)
+
+
 def _snap_lamp_seams(bm, nshell, snap=0.012):
     """Weld the mirrored lamps' open edges to the shell's: on the -x side the shell's hole is the
     donor's own outline, a few mm off the mirror. Each shell vertex on an open edge moves onto the
@@ -1696,7 +1761,8 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     # The lamps ride through the first collapse untouched (held), so their own pass works from
     # the source's detail: collapsed to 60,000 with the rest, the Kombi's round fog lamps were
     # already octagons before the lamp pass saw them.
-    held = lamp_faces(skin, DONORS[cid].get('lamps', ()))
+    extra = tuple(DONORS[cid].get('lamps', ())) + tuple(DONORS[cid].get('details', ()))
+    held = lamp_faces(skin, extra)
     skin.data.attributes.new('lamp', 'BOOLEAN', 'FACE').data.foreach_set('value', [p.index in held for p in skin.data.polygons])
     _collapse(skin, mid, lock='lamp')
     skin.data.attributes.remove(skin.data.attributes['lamp'])
@@ -1715,7 +1781,9 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     cabin = _copy(skin, f'donor:{cid}.Cabin')
     lamp = _copy(skin, f'donor:{cid}.Lamps')
     ii = [i for i, m in enumerate(low.data.materials) if m and m.name.split('.')[0] == 'Interior']
-    lit = lamp_faces(skin, DONORS[cid].get('lamps', ()))
+    # Recipe `details`: small parts that must match side to side (door handles, mirrors) join the
+    # lamps' pass: reduced at its finer error and mirrored.
+    lit = lamp_faces(skin, extra)
     _delete_indices(low, lambda p: p.index in lit or low.data.materials[p.material_index].name.split('.')[0] == 'Interior')
     delete_faces(cabin, lambda c, n, m: m != 'Interior')
     _delete_indices(lamp, lambda p: p.index not in lit)
@@ -1795,6 +1863,9 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
         bm.free()
         _set_custom_normals(low)
     bpy.data.objects.remove(cabin)
+    if mirrored:
+        print(f'{cid}: {mirror_normals(low)} mirrored faces given their twin\'s shading')
+    print(f'{cid}: {wind_to_shading(low)} faces turned to face their shading')
     tree = surface_tree([full])
     d = sorted((tree.find_nearest(v.co)[3] or 0) for v in low.data.vertices)
     # Drift only sees the low vertices: a part collapsed away leaves none behind to measure. Lost

@@ -72,7 +72,7 @@ The pipeline then does the rest:
 - those are reduced first at `LAMP_ERROR`, welded back and held while the shell collapses (Run, step 3);
 - nothing under a cover is taken for a badge.
 
-**Lamps always mirror side to side.** The +x half of the lamps (cut exactly at x = 0) is reduced and copied across, welded at the seam, and the -x shell's open edge snaps onto it (within 12 mm: donors are often a few mm off mirror). So a recipe's lamp rules need only be right on one side, and the two sides match to the vertex (recipe `mirrorLamps: False` to opt out). Reduced whole, the collapse cut each side its own way: the Golf's headlamp bowls and the Kombi's fog lamps came out unalike.
+**Lamps always mirror side to side**, and so does whatever the recipe's `details` names (door handles, mirrors). The +x half of the lamps (cut exactly at x = 0) is reduced and copied across, welded at the seam, and the -x shell's open edge snaps onto it (within 12 mm: donors are often a few mm off mirror). So a recipe's lamp rules need only be right on one side, and the two sides match to the vertex (recipe `mirrorLamps: False` to opt out). Reduced whole, the collapse cut each side its own way: the Golf's headlamp bowls and the Kombi's fog lamps came out unalike.
 
 Two traps seen on the RX-7:
 - **Layers a few mm apart fold through each other** at the lamps' error (13 mm): the pop-up bucket's ceiling came through the lid in black patches. Recolour the hidden layer to the colour of the one over it, and keep anything seen from the front (the bezel's lip) as it was: `c.y` past the lens is a good split.
@@ -106,6 +106,7 @@ A recipe adds only what that donor needs:
 | `liftLiners` | `True`: raise wheel well liners on or through the tire clear of it after the reduction (`lift_liners`; the Albrecht Kombi's rear) |
 | `pieces` | `True`: splice the car's kept hand-made pieces (`save_pieces`, `<cid>.pieces.glb`) into the reduced shell, for work no rule can express (the Golf's grille and lower intake) |
 | `discs` | `(center, radius, material)`: a flat round lens added after the reduction, for a round lamp the collapse leaves polygonal (cull the donor's own); a round part is rebuilt, never collapsed (the RX-7's bumper lamps) |
+| `details` | predicates `(center, normal, material)` for small parts that must match side to side (door handles, mirrors): they join the lamps' pass, reduced at its finer error and mirrored |
 | `lowCull` | predicates `(center, normal, material)` for faces of the reduced shell to delete after the pieces are spliced in: slivers the collapse makes beside a cut (the Golf's lip under its grille) |
 | `mirrorLamps` | `False` to keep a donor's lamps as they are; by default the +x lamps are reduced and mirrored across, so the two sides match to the vertex |
 | `strips` | `(points, height, material)`: a thin lamp strip along a curve, mirrored across the middle, added after the reduction (the RX-7's third brake light in place of the donor's four blocks) |
@@ -166,6 +167,8 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 - **Don't fix the same thing twice.** A `bridges` loft and a piece over the same bars welded the bumper's lip up into a wedge; with the piece there, the bridge went. A `lowCull` deletes what the collapse makes beside a cut, after the pieces.
 - **Paint is never grille.** `grille_surface` blackens what it finds surrounded by grille; a body colour strut between two openings is surrounded too, and the Golf's lower intake dividers came out black-spiked. Paint is now left alone, for every car.
 - **Back a see-through opening.** A `backPanels` quad, wider and taller than the opening, behind a grille whose own back panel lets light through from an angle (the Golf's upper grille).
+- **Details mirror too.** The recipe's `details` (door handles, mirrors) join the lamps' pass: reduced at its error and mirrored, so the two sides match. Two more steps make the mirrored half shade like its twin: `mirror_normals` gives every -x face its +x twin's corner normals, mirrored (shade_from_source had taken them from the donor's own -x surface, a few mm off), and `wind_to_shading` turns any face wound against its own corner normals (the collapse and the seam welds leave a few dozen; drawn double sided, they read as dark teeth on the Golf's left handle).
+- **Budgets.** A car's `carBudget` is what its lamps, details and cabin need plus 13,500 or so of shell: the Golf sits at 28,000 (12,000 of lamps, handles, mirrors and intake rims), the Kombi at 25,000, the RX-7 at 20,000. The GLB with authored normals runs 0.6 to 0.8 MB. The cost per frame is modest beside the city (a race's ten cars at 28,000 are 280,000 triangles against a 1.1 to 1.35 million triangle scene at Medium), but it is paid on the player's and every rival's body with no impostor or LOD, so keep a car under 30,000 and raise the budget only for parts that read wrong at the shell's error.
 - **Fit the donor, or drop it.** A coarse donor (the R33, 30,000 triangles, unfinished headlamps) cannot be rescued by the pipeline; the car was hidden (`selectable: false`) until a better donor.
 
 ### Hand edits go in the recipe
