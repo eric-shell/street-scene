@@ -72,8 +72,18 @@ const SPLASH = {
   /** The load the rule shows once the fonts are in, and once the flash-in has played (boot.ts then runs the game) (0..1). */
   fontsLoad: 0.1,
   playedLoad: 0.2,
-  /** The rule's fill eases to each step this fast (_splash.scss's transition); the flight waits this long for a bar it has to finish (s). */
-  ruleFill: 0.4,
+  /**
+   * The rule's fill glides on one smooth curve per step, never stopping: it closes on the step with time constant
+   * `ruleRise` (s) while creeping on towards `ruleCreep` of what is left of the load with time constant
+   * `ruleCreepTau` (s), over `ruleCreepFor` (s); the last step (1) closes in `ruleFinish` (s), which the flight waits for.
+   */
+  ruleRise: 0.3,
+  ruleCreep: 0.3,
+  ruleCreepTau: 4,
+  ruleCreepFor: 12,
+  ruleFinish: 0.6,
+  /** Keyframes sampled along each step's curve, packed towards its start where it moves fastest. */
+  ruleSamples: 40,
   /** The menu city's nitrous on landing: its peak warp (the top stage's), the stage climbing 1 to 3 over `climb` (s), held at full for `hold` (s), then easing out at `out` (1/s) like a burn ending. */
   nitroPeak: 1.4,
   nitroClimb: 0.45,
@@ -116,7 +126,9 @@ export function showSplash(parent: HTMLElement): Splash {
   let n = 0;
   const letters = titleWords((t) => t.split('').map((ch) => h('span', { class: 'splash__letter', style: `--i:${n++}` }, ch)));
   const logo = h('h1', { class: 'logo splash__logo', 'data-text': TITLE }, ...titleWords());
-  const rule = h('div', { class: 'title-lockup__rule splash__rule', 'aria-hidden': 'true' }, h('div', { class: 'splash__rule-fill' }));
+  const bar = h('div', { class: 'splash__rule-bar' });
+  const fill = h('div', { class: 'splash__rule-fill' }, bar);
+  const rule = h('div', { class: 'title-lockup__rule splash__rule', 'aria-hidden': 'true' }, fill);
   const title = h(
     'div',
     { class: 'title-lockup__title splash__title' },
@@ -137,14 +149,43 @@ export function showSplash(parent: HTMLElement): Splash {
   /** When the landing started (performance.now() ms), null before it or with reduced motion. */
   let landedAt: number | null = null;
 
+  // The fill is a window sliding in from the left over a bar sliding the other way, so the bar's gradient stays
+  // put; both are transforms run by the compositor, so the fill keeps gliding while the game's boot holds the main thread.
   let loaded = 0;
-  /** When the fill last moved (performance.now() ms). */
-  let filledAt = 0;
+  let fillAnims: Animation[] = [];
+  const at = (p: number) => [{ transform: `translateX(${(p - 1) * 100}%)` }, { transform: `translateX(${(1 - p) * 100}%)` }];
+  const shown = () => {
+    const w = fill.offsetWidth;
+    return w ? 1 + new DOMMatrix(getComputedStyle(fill).transform).m41 / w : 0;
+  };
   const progress = (f: number) => {
     if (f <= loaded) return;
     loaded = Math.min(1, f);
-    filledAt = performance.now();
-    rule.style.setProperty('--load', String(loaded));
+    const p0 = shown();
+    const to = Math.max(p0, loaded);
+    for (const a of fillAnims) a.cancel();
+    if (reduced) {
+      [fill.style.transform, bar.style.transform] = at(to).map((k) => k.transform);
+      return;
+    }
+    // Two exponential approaches, each normalized to land exactly at the end: onto the step, and the slow creep beyond it.
+    const last = loaded >= 1;
+    const dur = last ? SPLASH.ruleFinish : SPLASH.ruleCreepFor;
+    const rise = last ? SPLASH.ruleFinish / 4 : SPLASH.ruleRise;
+    const creep = last ? 0 : (1 - to) * SPLASH.ruleCreep;
+    const ease = (t: number, tau: number) => (1 - Math.exp(-t / tau)) / (1 - Math.exp(-dur / tau));
+    const fillKeys: Keyframe[] = [];
+    const barKeys: Keyframe[] = [];
+    for (let i = 0; i <= SPLASH.ruleSamples; i++) {
+      const u = (i / SPLASH.ruleSamples) ** 2;
+      const t = u * dur;
+      const p = p0 + (to - p0) * ease(t, rise) + creep * (last ? 0 : ease(t, SPLASH.ruleCreepTau));
+      const [fk, bk] = at(p);
+      fillKeys.push({ ...fk, offset: u });
+      barKeys.push({ ...bk, offset: u });
+    }
+    const timing: KeyframeAnimationOptions = { duration: dur * 1000, fill: 'forwards' };
+    fillAnims = [fill.animate(fillKeys, timing), bar.animate(barKeys, timing)];
   };
   let from = '';
   let markPlayed!: () => void;
@@ -194,8 +235,7 @@ export function showSplash(parent: HTMLElement): Splash {
       const anims: Animation[] = [];
       // The bar finishes filling before the title flies.
       progress(1);
-      const filling = SPLASH.ruleFill * 1000 - (performance.now() - filledAt);
-      if (!reduced && filling > 0) await delay(filling);
+      await Promise.all(fillAnims.map((a) => a.finished.catch(() => undefined)));
       menu?.classList.remove('is-pending');
       if (menu && head && !reduced) {
         // The rest of the menu assembles around the title while it flies in.

@@ -51,10 +51,11 @@
     pointer-events: none;
   }
   /* The menu's title rule as the loading bar: drawn out from the left as a ghost of itself, then filled to the
-     menu's full strength as the boot reports its steps (--load, 0..1, set by splash.ts). The fill is clipped,
-     not scaled, so its gradient sits where the menu's does. */
+     menu's full strength as the boot reports its steps. splash.ts slides the fill window in from the left and
+     the bar inside it back the other way, so the gradient sits where the menu's does (not squeezed). */
   &__rule {
     position: relative;
+    overflow: hidden;
     background: none;
     transform: scaleX(0);
     transform-origin: 0 50%;
@@ -68,15 +69,19 @@
       opacity: 0.22;
     }
   }
-  &__rule-fill {
+  &__rule-fill,
+  &__rule-bar {
     position: absolute;
     inset: 0;
-    border-radius: inherit;
+    will-change: transform;
+  }
+  &__rule-fill {
+    overflow: hidden;
+    transform: translateX(-100%);
+  }
+  &__rule-bar {
     background: var(--rule);
-    clip-path: inset(0 calc((1 - var(--load, 0)) * 100%) 0 0);
-    @include media.motion {
-      transition: clip-path 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
-    }
+    transform: translateX(100%);
   }
   /* Shrink-wrapped like .title-lockup, so the title wraps onto the same lines; JS centers and scales it. */
   &__block {
