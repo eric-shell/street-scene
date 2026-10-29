@@ -1222,6 +1222,46 @@ def canard(src, target, side, a0, a1, z0, rise=0.03, width=(0.06, 0.02), thick=0
     return secs
 
 
+def side_lip(body, target, y0, y1, top, thick=0.013, proud=0.02, tuck=0.04, chamfer=0.006, dam=0.0,
+             stations=11, scan=0.15, material='Black'):
+    """A side skirt lip carrying a front splitter's line down the sill, both sides: a flat sheet from
+    y0 to y1 (between the wheels) with its top at `top` (the splitter's own height, so the line runs
+    on), standing `proud` m out from the sill's face (its most outward point within `scan` m above the
+    sheet, per station), its outer top edge chamfered. With `dam` > 0 a vertical panel that thick runs
+    from the sill's lower line (the lowest height the face is within 3 mm of its most outward point)
+    down to the sheet, 1 mm proud of the face, like `sheet_lip`'s air dam. Built on the +x side from
+    rays and mirrored, each side one sweep. The Wendt Strom's Track Mild and Track Wild skirts.
+    Returns the +x sections."""
+    from mathutils.bvhtree import BVHTree
+    t = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    bot = top - thick
+    secs = []
+    for k in range(stations):
+        y = y0 + (y1 - y0) * k / (stations - 1)
+        prof = []
+        for j in range(int(scan / 0.003)):
+            zz = top + 0.003 * j
+            h = t.ray_cast(Vector((3, y, zz)), Vector((-1, 0, 0)), 3)
+            if h[0]:
+                prof.append((zz, h[0].x))
+        xf = max(x for _, x in prof)
+        zl, xl = next((p for p in prof if p[1] >= xf - 0.003), prof[-1])
+        out = xf + proud
+        if dam > 0:
+            xd = xl + 0.001
+            secs.append([(xd - dam, y, zl), (xd, y, zl), (xd, y, top), (out - chamfer, y, top), (out, y, top - chamfer),
+                         (out, y, bot), (xd - dam, y, bot)])
+        else:
+            secs.append([(xf - tuck, y, top), (out - chamfer, y, top), (out, y, top - chamfer), (out, y, bot),
+                         (xf - tuck, y, bot)])
+    carry = stash_normals(target)
+    sweep(target, secs, material)
+    sweep(target, [[(-x, y, z) for x, y, z in s] for s in secs], material)
+    if carry:
+        restore_normals(target)
+    return secs
+
+
 def tow_strap(target, root, direction, length=0.10, width=0.035, strap=(0.022, 0.004), segments=20, material='Chrome'):
     """A tow hook loop: a flat strap bent into a racetrack loop `length` m long and `width` wide from
     `root` (where it leaves the panel, a few mm inside it) along `direction`, the strap `strap`

@@ -119,6 +119,32 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_sideSkirts_trackMild",
+      "displayName": "Track Mild",
+      "carId": "wendtStrom",
+      "slot": "sideSkirts",
+      "file": "parts/wendtStrom_sideSkirts_trackMild.glb",
+      "hides": [],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 212,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_sideSkirts_trackWild",
+      "displayName": "Track Wild",
+      "carId": "wendtStrom",
+      "slot": "sideSkirts",
+      "file": "parts/wendtStrom_sideSkirts_trackWild.glb",
+      "hides": [],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 300,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",
