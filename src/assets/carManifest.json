@@ -117,8 +117,8 @@
       "materialMap": {},
       "defaultWheel": "wheel_ryusei",
       "targetOffset": {
-        "front": 30,
-        "rear": 10
+        "front": 5,
+        "rear": -15
       },
       "defaultPaint": "#ff6a00",
       "selectable": true,
@@ -190,8 +190,8 @@
       "materialMap": {},
       "defaultWheel": "wheel_kumo",
       "targetOffset": {
-        "front": 30,
-        "rear": 10
+        "front": 45,
+        "rear": 25
       },
       "defaultPaint": "#7d8186",
       "selectable": true,
@@ -263,8 +263,8 @@
       "materialMap": {},
       "defaultWheel": "wheel_tora",
       "targetOffset": {
-        "front": 30,
-        "rear": 10
+        "front": 10,
+        "rear": -10
       },
       "defaultPaint": "#b3121b",
       "selectable": true,
@@ -413,8 +413,8 @@
       "materialMap": {},
       "defaultWheel": "wheel_hien",
       "targetOffset": {
-        "front": 30,
-        "rear": 10
+        "front": 10,
+        "rear": -10
       },
       "defaultPaint": "#e8e4dc",
       "selectable": true,
@@ -483,8 +483,8 @@
       "materialMap": {},
       "defaultWheel": "wheel_hari",
       "targetOffset": {
-        "front": 30,
-        "rear": 10
+        "front": 10,
+        "rear": -10
       },
       "defaultPaint": "#17606b",
       "selectable": true,
