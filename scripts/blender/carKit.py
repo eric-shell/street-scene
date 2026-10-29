@@ -973,6 +973,78 @@ def punch_holes(o, holes, r, depth=0.015, sides=16, wall='Black', back='Black', 
     return added
 
 
+def sheet_lip(src, target, center=(0, -1.55), angles=(0, 20, 40, 52, 62, 70), band=(0.165, 0.235), thick=0.013,
+              proud=0.04, end_proud=0.025, tuck=0.04, chamfer=0.006, material='Black'):
+    """A flat splitter cut from sheet stock (half inch HDPE) under a front bumper: top and bottom flat
+    all the way round at the height of the bumper's underside at the nose, its outline the bumper's
+    bottom edge offset `proud` m and taken in straight runs between `angles` (degrees about `center`,
+    one half, mirrored), with a 45 degree `chamfer` on the top front edge. Each run is its own sweep,
+    so its faces are flat and the joints crisp like a cut sheet, not smooth like `bumper_lip`. It
+    stops before the arches at the last angle where the bumper's underside is still above the sheet.
+    The Wendt Strom's Track bumper. Carries authored normals. Returns the sections."""
+    E = lower_edge(src, center, list(angles), *band)
+    top = E[0].z - 0.002
+    keep = [i for i, e in enumerate(E) if e.z >= top + 0.001 or i == 0]
+    E = [E[i] for i in keep]
+    A = [angles[i] for i in keep]
+    E = [Vector((-e.x, e.y, e.z)) for e in reversed(E[1:])] + E
+    A = [-a for a in reversed(A[1:])] + A
+    bot = top - thick
+    secs = []
+    for i, (e, a) in enumerate(zip(E, A)):
+        p, q = E[max(i - 1, 0)].to_2d(), E[min(i + 1, len(E) - 1)].to_2d()
+        tg = (q - p).normalized()
+        n = Vector((tg.y, -tg.x))
+        if n.dot(e.to_2d() - Vector(center)) < 0:
+            n = -n
+        n3 = Vector((n.x, n.y, 0))
+        ext = end_proud if abs(a) == max(abs(x) for x in A) else proud
+        base = Vector((e.x, e.y, 0))
+        secs.append([tuple(base - n3 * tuck + Vector((0, 0, top))),
+                     tuple(base + n3 * (ext - chamfer) + Vector((0, 0, top))),
+                     tuple(base + n3 * ext + Vector((0, 0, top - chamfer))),
+                     tuple(base + n3 * ext + Vector((0, 0, bot))),
+                     tuple(base - n3 * tuck + Vector((0, 0, bot)))])
+    carry = stash_normals(target)
+    for i in range(len(secs) - 1):
+        sweep(target, [secs[i], secs[i + 1]], material)
+    if carry:
+        restore_normals(target)
+    return secs
+
+
+def canard(src, target, side, a0, a1, z0, rise=0.03, width=(0.06, 0.02), thick=0.004, embed=0.006,
+           center=(0, -1.55), stations=5, material='Black'):
+    """A canard (dive plane) on a bumper's corner: a thin plate standing out of the corner face from
+    `a0` to `a1` degrees about `center` (plan, 0 toward -y; `side` +1 the car's left, -1 its right), its
+    root following the face (plan rays at each station) from height z0 at the front end to z0 + `rise`
+    at the back, so it angles up toward the rear; `width` (front, back) is how far it stands out, the
+    root sunk `embed` m into the face so no seam shows. The Wendt Strom's Track bumper carries two a
+    side where the amber markers were. Carries authored normals."""
+    from mathutils.bvhtree import BVHTree
+    t = BVHTree.FromObject(src, bpy.context.evaluated_depsgraph_get())
+    c = Vector((center[0], center[1], 0))
+    secs = []
+    for k in range(stations):
+        f = k / (stations - 1)
+        a = math.radians(a0 + (a1 - a0) * f)
+        d = Vector((side * math.sin(a), -math.cos(a), 0))
+        z = z0 + rise * f
+        h = t.ray_cast(c + d * 3 + Vector((0, 0, z)), -d, 3)
+        if not h[0]:
+            continue
+        n = Vector((h[1].x, h[1].y, 0)).normalized()
+        w = width[0] + (width[1] - width[0]) * f
+        s = h[0]
+        up = Vector((0, 0, thick / 2))
+        secs.append([tuple(s - n * embed + up), tuple(s + n * w + up), tuple(s + n * w - up), tuple(s - n * embed - up)])
+    carry = stash_normals(target)
+    sweep(target, secs, material)
+    if carry:
+        restore_normals(target)
+    return secs
+
+
 def ray_map(objs, x0, x1, z0, z1, step=0.005, skip=('Lens', 'Glass', 'ClearLens'), deep=-1.8):
     """What the eye sees through the front, one letter per material: rays along +y over x0..x1, z1..z0,
     passing through `skip` (clear covers) to the first face behind. `O` marks a ray whose first hit lies

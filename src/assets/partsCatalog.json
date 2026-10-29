@@ -86,6 +86,22 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_frontBumper_track",
+      "displayName": "Track",
+      "carId": "wendtStrom",
+      "slot": "frontBumper",
+      "file": "parts/wendtStrom_frontBumper_track.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 4387,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",
