@@ -1164,11 +1164,15 @@ def canard(src, target, side, a0, a1, z0, rise=0.03, width=(0.06, 0.02), thick=0
     secs = []
     for (f, s, n), along in zip(roots, run):
         w = width[0] + (width[1] - width[0]) * f
-        w -= max(pull(along, corner[0]), pull(total - along, corner[1]))
+        rounded = max(pull(along, corner[0]), pull(total - along, corner[1]))
+        w -= rounded
+        # The end plate runs along the straight outer edge only: round the corner's radius it reads as
+        # a fold, and the user had it taken off there.
+        in_corner = (corner[0] > 0 and along < corner[0]) or (corner[1] > 0 and total - along < corner[1])
         up = Vector((0, 0, thick / 2))
         if lip > 0:
             # A vertical end plate along the outer edge, `lip` m tall above the plate, `thick` thick.
-            L = Vector((0, 0, lip))
+            L = Vector((0, 0, 0 if in_corner else lip))
             secs.append([tuple(s - n * embed + up), tuple(s + n * (w - thick) + up), tuple(s + n * (w - thick) + up + L),
                          tuple(s + n * w + up + L), tuple(s + n * w - up), tuple(s - n * embed - up)])
         elif chamfer > 0:
