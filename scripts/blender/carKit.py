@@ -886,15 +886,16 @@ def bumper_lip(src, target, center=(0, -1.55), angles=None, band=(0.165, 0.235),
     return secs
 
 
-def punch_holes(o, holes, r, depth=0.015, sides=16, wall='Black', back='Black', skin=0.012, stretch=0.0):
+def punch_holes(o, holes, r, depth=0.015, sides=16, wall='Black', back='Black', skin=0.012, stretch=0.0, along='z'):
     """Real round holes through a panel (speed holes, vents): for each (center, normal), `center` on the
     surface and `normal` pointing out of it, the faces round it are cut along a `sides`-gon of radius r
     (one bisect per side, limited to faces within `skin` of the surface and near the hole, so the
     inside of the bumper is never sliced), the faces inside are deleted, the opening's edge is run
     `depth` m inward as a `wall` and capped with a `back` (the black mesh a real hole shows). A real
     opening rather than a black disc on the paint: from the garage's three-quarter a disc reads as a
-    sticker. `stretch` m turns each circle into a vertical oval (a stadium): its halves pushed apart that
-    far either way with straight sides between (the Wendt Strom's Track Wild). Carries authored normals
+    sticker. `stretch` m turns each circle into a stadium: its halves pushed apart that far either way
+    along `along` ('z' an upright oval, 'x' a slot: two neighbouring holes merged, the paint between them
+    taken out, as on the Wendt Strom's Track Wild). Carries authored normals
     (the cut faces keep theirs, the wall is radial, the back flat). Returns the faces added."""
     carry = stash_normals(o)
     me = o.data
@@ -907,6 +908,8 @@ def punch_holes(o, holes, r, depth=0.015, sides=16, wall='Black', back='Black', 
         c, n = Vector(center), Vector(normal).normalized()
         u = n.cross(Vector((0, 0, 1))).normalized()
         w = u.cross(n)
+        if along == 'x':
+            u, w = w, u
         ring = [c + (u * math.cos(2 * math.pi * i / sides) + w * math.sin(2 * math.pi * i / sides)) * r for i in range(sides)]
         if stretch:
             # The straight sides: the points at 0 and 180 degrees each split into a top and a bottom.
@@ -1543,105 +1546,109 @@ def tow_strap(target, root, direction, length=0.10, width=0.035, strap=(0.022, 0
     return secs
 
 
-def stadium(cx, cz, r, stretch, sides=16):
-    """A vertical oval (a circle of radius r split and pushed `stretch` m apart each way) as (x, z) points,
-    the outline `punch_holes(..., stretch=)` cuts; front view, for plates laid over the holes."""
-    top = [(cx + r * math.cos(math.pi * i / (sides // 2)), cz + stretch + r * math.sin(math.pi * i / (sides // 2))) for i in range(sides // 2 + 1)]
-    bot = [(cx + r * math.cos(math.pi + math.pi * i / (sides // 2)), cz - stretch + r * math.sin(math.pi + math.pi * i / (sides // 2))) for i in range(sides // 2 + 1)]
-    return top + bot
+def stadium(cx, cz, r, stretch, sides=16, along='z'):
+    """A stadium (a circle of radius r split and pushed `stretch` m apart each way along `along`) as
+    (x, z) points counterclockwise, the outline `punch_holes(..., stretch=, along=)` cuts; front view,
+    for plates laid over the holes."""
+    h = sides // 2
+    if along == 'z':
+        top = [(cx + r * math.cos(math.pi * i / h), cz + stretch + r * math.sin(math.pi * i / h)) for i in range(h + 1)]
+        bot = [(cx + r * math.cos(math.pi + math.pi * i / h), cz - stretch + r * math.sin(math.pi + math.pi * i / h)) for i in range(h + 1)]
+        return top + bot
+    right = [(cx + stretch + r * math.cos(-math.pi / 2 + math.pi * i / h), cz + r * math.sin(-math.pi / 2 + math.pi * i / h)) for i in range(h + 1)]
+    left = [(cx - stretch + r * math.cos(math.pi / 2 + math.pi * i / h), cz + r * math.sin(math.pi / 2 + math.pi * i / h)) for i in range(h + 1)]
+    return right + left
 
 
-def trim_plate(surface, target, holes, cells, z0, z1, gap=0.001, thick=0.003, material='Black'):
-    """A thin plate laid over a row of holes on a panel seen from the front: each hole gets a cell,
-    (x0, x1) of `cells` by z0..z1, and the plate in that cell is a ring of quads from the hole's
-    outline (`holes`: ((cx, cz), [(x, z) ...]) as `stadium` gives them) out to the cell's rectangle,
-    each outline point carried straight out from the hole's centre to the rectangle (its corners
-    added). Every point is laid onto `surface` by a ray along +y, `gap` m off it and `thick` m thick, so
-    the plate follows the panel's curve and takes its normals; walls run round the holes and the
-    plate's outside. Trim round a row of oval speed holes (the Wendt Strom's Track Wild, black like its
-    lips). A free fill (tessellate_polygon) made long slivers that sank behind the curved bumper, and
-    splitting them ran to 30,000 triangles; cells keep every quad short. Carries authored normals."""
+def trim_plate(surface, target, holes, cells, gap=0.001, thick=0.003, material='Black'):
+    """A thin plate laid over a row of holes on a panel seen from the front: each hole ((cx, cz) and its
+    counterclockwise outline as `stadium` gives it) has a convex cell around it (counterclockwise (x, z)
+    points), and the plate in that cell runs from the hole's outline out to the cell's edge: each
+    outline point is carried straight out from the hole's centre to the cell's edge, the cell's own
+    corners filled in between. Cells share their straight dividers; the end cells' outer sides can be
+    arcs, so the whole plate is a rounded rectangle whose ends follow the end holes' curve (the Wendt
+    Strom's Track Wild, black like its lips, round four slots). Every point is laid onto `surface` by a
+    ray along +y, `gap` m off it and `thick` m thick, so the plate follows the panel and takes its
+    normals; walls run round the holes and the plate's border. A free fill (tessellate_polygon) made
+    slivers that sank behind the curved bumper; cells keep every face short. Carries authored normals."""
     from mathutils.bvhtree import BVHTree
+    from mathutils.geometry import intersect_line_line_2d
     t = BVHTree.FromObject(surface, bpy.context.evaluated_depsgraph_get())
     me = target.data
     bm = bmesh.new()
     bm.from_mesh(me)
     sn = bm.loops.layers.float_vector.get('src_normal')
     mi = mat_index(target, material)
-    X0, X1 = cells[0][0], cells[-1][1]
     cache = {}
 
-    def vert(x, z):
-        key = (round(x, 6), round(z, 6))
+    def vert(p):
+        key = (round(p[0], 6), round(p[1], 6))
         if key not in cache:
-            h = t.ray_cast(Vector((x, -5, z)), Vector((0, 1, 0)), 10)
+            h = t.ray_cast(Vector((p[0], -5, p[1])), Vector((0, 1, 0)), 10)
             y, n = (h[0].y, h[1].copy()) if h[0] else (-2.1, Vector((0, -1, 0)))
             if n.y > 0:
                 n = -n
-            cache[key] = (bm.verts.new((x, y - gap - thick, z)), bm.verts.new((x, y - gap, z)), n)
+            cache[key] = (bm.verts.new((p[0], y - gap - thick, p[1])), bm.verts.new((p[0], y - gap, p[1])), n)
         return cache[key]
 
-    def face(vs, facing, normals=None):
-        f = bm.faces.new(vs)
+    def face(pts, facing, smooth):
+        vs = [vert(p) for p in pts]
+        ring = [v[0] for v in vs] if smooth else [vs[0][0], vs[1][0], vs[1][1], vs[0][1]]
+        ring = [v for k, v in enumerate(ring) if v is not ring[k - 1]]
+        if len(set(ring)) < 3 or bm.faces.get(ring) is not None:
+            return
+        f = bm.faces.new(ring)
         f.material_index = mi
-        f.smooth = normals is not None
+        f.smooth = smooth
         f.normal_update()
         if f.normal.dot(facing) < 0:
             f.normal_flip()
         if sn is not None:
+            nm = {v[0]: v[2] for v in vs}
             for loop in f.loops:
-                loop[sn] = normals[loop.vert] if normals else f.normal.copy()
-        return f
+                loop[sn] = nm[loop.vert] if smooth else f.normal.copy()
 
-    def to_rect(cx, cz, x, z, x0, x1):
-        dx, dz = x - cx, z - cz
-        k = min((x1 - cx) / dx if dx > 1e-9 else 9, (x0 - cx) / dx if dx < -1e-9 else 9,
-                (z1 - cz) / dz if dz > 1e-9 else 9, (z0 - cz) / dz if dz < -1e-9 else 9)
-        return (cx + dx * k, cz + dz * k)
-
-    def side(p, x0, x1):
-        x, z = p
-        return 'b' if abs(z - z0) < 1e-7 else 't' if abs(z - z1) < 1e-7 else 'l' if abs(x - x0) < 1e-7 else 'r'
-
-    corners = lambda x0, x1: {('b', 'r'): (x1, z0), ('r', 't'): (x1, z1), ('t', 'l'): (x0, z1), ('l', 'b'): (x0, z0),
-                              ('r', 'b'): (x1, z0), ('t', 'r'): (x1, z1), ('l', 't'): (x0, z1), ('b', 'l'): (x0, z0)}
+    ang = lambda c, p: math.atan2(p[1] - c[1], p[0] - c[0]) % (2 * math.pi)
     fwd = Vector((0, -1, 0))
-    for ((cx, cz), outline), (x0, x1) in zip(holes, cells):
-        rect = [to_rect(cx, cz, x, z, x0, x1) for x, z in outline]
+    dividers = set()
+    for cell in cells:
+        for (ax, az), (bx, bz) in zip(cell, cell[1:] + cell[:1]):
+            if abs(ax - bx) < 1e-9:
+                dividers.add(round(ax, 6))
+    border_x = {round(min(p[0] for c in cells for p in c), 6), round(max(p[0] for c in cells for p in c), 6)}
+    for ((cx, cz), outline), cell in zip(holes, cells):
+        c = (cx, cz)
+
+        def hit(p):
+            far = (cx + (p[0] - cx) * 50, cz + (p[1] - cz) * 50)
+            for a, b in zip(cell, cell[1:] + cell[:1]):
+                q = intersect_line_line_2d(Vector(c), Vector(far), Vector(a), Vector(b))
+                if q is not None:
+                    return (q.x, q.y)
+            return p
+
+        rim = [hit(p) for p in outline]
         m = len(outline)
         for i in range(m):
             j = (i + 1) % m
-            a, b = vert(*outline[i]), vert(*outline[j])
-            qa, qb = vert(*rect[i]), vert(*rect[j])
-            ring = [a[0], b[0], qb[0]]
-            sa, sb = side(rect[i], x0, x1), side(rect[j], x0, x1)
-            if sa != sb:
-                ring.append(vert(*corners(x0, x1)[(sa, sb)])[0])
-            ring.append(qa[0])
-            nm = {v: n for v, n in ((a[0], a[2]), (b[0], b[2]), (qb[0], qb[2]), (qa[0], qa[2]))}
-            if len(ring) == 5:
-                cv = vert(*corners(x0, x1)[(sa, sb)])
-                nm[cv[0]] = cv[2]
-            face(ring, fwd, nm)
-            # The hole's wall.
+            a0, a1 = ang(c, outline[i]), ang(c, outline[j])
+            span = (a1 - a0) % (2 * math.pi)
+            mids = sorted([q for q in cell if 1e-9 < (ang(c, q) - a0) % (2 * math.pi) < span - 1e-9],
+                          key=lambda q: (ang(c, q) - a0) % (2 * math.pi))
+            face([outline[i], outline[j], rim[j]] + list(reversed(mids)) + [rim[i]], fwd, True)
             mid = Vector(((outline[i][0] + outline[j][0]) / 2 - cx, 0, (outline[i][1] + outline[j][1]) / 2 - cz))
-            face([a[0], b[0], b[1], a[1]], -mid)
-        # The plate's outside: rectangle edges on the plate's border (its top, bottom and two ends).
-        pts = []
-        for i in range(m):
-            j = (i + 1) % m
-            pts.append(rect[i])
-            sa, sb = side(rect[i], x0, x1), side(rect[j], x0, x1)
-            if sa != sb:
-                pts.append(corners(x0, x1)[(sa, sb)])
+            face([outline[i], outline[j]], -mid, False)
+        # The border: the cell's edge, rim points and corners in order, less the shared dividers.
+        uniq = {}
+        for q in rim + list(cell):
+            uniq.setdefault((round(q[0], 6), round(q[1], 6)), q)
+        pts = sorted(uniq.values(), key=lambda q: ang(c, q))
         for i in range(len(pts)):
             p, q = pts[i], pts[(i + 1) % len(pts)]
-            on_border = (abs(p[1] - q[1]) < 1e-7 and abs(p[1] - z0) < 1e-7) or (abs(p[1] - q[1]) < 1e-7 and abs(p[1] - z1) < 1e-7) \
-                or (abs(p[0] - q[0]) < 1e-7 and (abs(p[0] - X0) < 1e-7 or abs(p[0] - X1) < 1e-7))
-            if on_border and math.dist(p, q) > 1e-6:
-                va, vb = vert(*p), vert(*q)
-                out = Vector(((p[0] + q[0]) / 2 - cx, 0, (p[1] + q[1]) / 2 - cz))
-                face([va[0], vb[0], vb[1], va[1]], out)
+            if abs(p[0] - q[0]) < 1e-9 and round(p[0], 6) in dividers and round(p[0], 6) not in border_x:
+                continue
+            if math.dist(p, q) > 1e-6:
+                face([p, q], Vector(((p[0] + q[0]) / 2 - cx, 0, (p[1] + q[1]) / 2 - cz)), False)
     bm.to_mesh(me)
     bm.free()
     me.update()
