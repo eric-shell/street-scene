@@ -433,9 +433,8 @@ export function renderTabContent(host: TabHost): void {
       break;
     }
     case 'body': {
-      // Every part slot listed (a part list each, or a line while a slot has none yet); the one in hand frames the camera.
-      const slots: PartSlot[] = ['body', ...BODY_PART_SLOTS];
-      for (const slot of slots) {
+      // Every body part slot listed (a part list each, or a line while a slot has none yet); the one in hand frames the camera.
+      for (const slot of BODY_PART_SLOTS) {
         const parts = partsFor(b.carId, slot);
         const optional = OPTIONAL_SLOTS.includes(slot);
         const items: { value: string | null; label: string; sub?: string }[] = [{ value: null, label: optional ? 'None' : 'Stock' }, ...parts.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` }))];
@@ -448,7 +447,7 @@ export function renderTabContent(host: TabHost): void {
                 v.parts[slot] = id;
                 void host.changed(true);
               })
-            : note(slot === 'body' ? 'Only the stock body for this car.' : 'No parts for this slot yet.'),
+            : note('No parts for this slot yet.'),
         );
         group.dataset.slot = slot;
         host.body.append(
@@ -460,7 +459,7 @@ export function renderTabContent(host: TabHost): void {
         );
       }
       // A slot picked from elsewhere (the dev part drop) scrolls into view; one already in view stays put.
-      if (host.bodySlot !== 'body') requestAnimationFrame(() => host.body.querySelector(`[data-slot='${host.bodySlot}']`)?.scrollIntoView({ block: 'nearest' }));
+      if (host.bodySlot !== BODY_PART_SLOTS[0]) requestAnimationFrame(() => host.body.querySelector(`[data-slot='${host.bodySlot}']`)?.scrollIntoView({ block: 'nearest' }));
       break;
     }
     case 'tune':

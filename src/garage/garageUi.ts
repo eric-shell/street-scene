@@ -43,7 +43,7 @@ import { RailSteps, railInset, screenHead } from '../ui/rail/rail';
 import { Help, MUSIC_KEYS } from '../ui/panels/help';
 import type { HelpKey } from '../ui/panels/help';
 import { uiWhoosh } from '../audio/uiSound';
-import { PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
+import { BODY_PART_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { Axle, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, VinylShape, validateBuild } from '../shared/carBuild';
 import { getBaseTuning } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
@@ -122,7 +122,7 @@ export class GarageScreen implements TabHost {
   /** The steps, sliding in the rail's column above the Save button. */
   private readonly steps: RailSteps;
   /** The Body tab's part slot last touched: every slot is listed, the camera frames this one. */
-  bodySlot: PartSlot = 'body';
+  bodySlot: PartSlot = BODY_PART_SLOTS[0];
   /** The Paint tab's surface last touched: every surface is listed, the camera frames this one. */
   paintSurface: PaintSurface = 'body';
   /** The axle the Wheels tab's wheel and the Paint tab's wheel paint dress while front and rear are unlinked. */
