@@ -11,8 +11,8 @@
  * The axial (X) coordinate only changes for the width control, and only behind
  * the spokes: the face, lip and everything from the outer face back to the
  * spokes' back keep their exact shape, the barrel behind them grows (or
- * shortens) along the axle, and the tire's inner side shifts by as much as the
- * barrel's back moved, so the barrel never pokes out of the tire.
+ * shortens) along the axle, and the tire's inner side follows the barrel's
+ * back edge, so the barrel never pokes out of the tire.
  */
 
 export interface WheelProfile {
@@ -34,6 +34,11 @@ export interface WidthFit {
   /** X range of the tire's vertices. */
   tireMin: number;
   tireMax: number;
+  /**
+   * How far (<= 0, along X) the tire's back bead must move at stock width so the tire covers the barrel (see
+   * `tirePull`); the width's own shift comes on top. 0 when the tire already covers it or has no bead to move.
+   */
+  tirePull: number;
   /**
    * Least stretch the barrel behind the spokes needs so its back reaches past the brake unit (1 = none; see
    * `barrelCover`). Set by the car view whenever the wheel size changes, since the brake scales with the bead.
@@ -64,6 +69,42 @@ export function barrelCover(spokeBack: number, back: number, depth: number): num
  */
 export function barrelStretch(width: number, cover: number): number {
   return width <= 1 ? Math.max(width, cover) : cover + (width - 1);
+}
+
+/**
+ * How far the tire's back bead must move back along X (<= 0, wheel space units) so the tire covers the stock
+ * barrel: the barrel's back edge (`back`, out where the barrel is) must not stand past the back bead, and no
+ * wheel vertex above the bead on the back half (a back flange) may stand outside the back sidewall. The house
+ * barrels end at half the tire's width while its bead sits at 0.42 of it (19 mm at the house scale,
+ * carWheels.py X_BACK), and a stretched tire's back sidewall leans in over a flange, so most wheels need one.
+ * `profile` is the lathed tire's half section, face bead to back bead (x, r); `x`/`r` the wheel's non-tire
+ * vertices. A tire of `segments` flat facets sits inside its profile between columns, so a vertex is tested at
+ * its radius over cos(pi / segments). Neither the size remap (which keeps radial order above the bead) nor the
+ * width (which shifts the tire with the barrel's back) changes the answer, so it is measured once per bake.
+ */
+export function tirePull(profile: readonly (readonly [number, number])[], x: ArrayLike<number>, r: ArrayLike<number>, back: number, segments: number): number {
+  const n = profile.length;
+  if (n < 2) return 0;
+  const [beadX, beadR] = profile[n - 1];
+  let pull = Math.min(0, back - beadX);
+  // The back sidewall, from the bead up while its radius rises (the grooves in the crown end it).
+  let top = n - 1;
+  while (top > 0 && profile[top - 1][1] >= profile[top][1]) top--;
+  const topR = profile[top][1];
+  const sag = 1 / Math.cos(Math.PI / segments);
+  for (let i = 0; i < x.length; i++) {
+    if (x[i] >= 0) continue;
+    const re = r[i] * sag;
+    if (re <= beadR || re > topR) continue;
+    // The sidewall's X at this radius.
+    let k = n - 1;
+    while (k > top && profile[k - 1][1] < re) k--;
+    const [x0, r0] = profile[k];
+    const [x1, r1] = profile[k - 1];
+    const side = x0 + ((x1 - x0) * (re - r0)) / (r1 - r0 || 1);
+    pull = Math.min(pull, x[i] - side);
+  }
+  return pull;
 }
 
 /** Largest bead allowed, as a fraction of the outer radius (keeps a visible sliver of sidewall). */
@@ -141,19 +182,20 @@ export function remapRadius(r: number, p: WheelProfile, bead2: number): [number,
  * `width` (with its `fit`) works along X only. A wheel vertex behind the
  * spokes' back moves to spokeBack + (x - spokeBack) * width, so the barrel, a
  * lathed tube, just gets longer or shorter and nothing in front of that plane
- * changes. The tire (`tire` true) follows the barrel's back edge, which moved
- * by `shift`: its inner side (the lowest share of its width) shifts by it as a
- * whole, its outer side stays put, and the tread between is stretched to stay
- * one continuous surface. Normals' X is divided by the local dx'/dx (1 for the
+ * changes. The tire (`tire` true) follows the barrel's back edge: its inner
+ * side (the lowest share of its width) shifts as a whole by as much as the
+ * barrel's back moved plus the stock pull (`fit.tirePull`) that covers it,
+ * its outer side stays put, and the tread between is stretched to stay one
+ * continuous surface. Normals' X is divided by the local dx'/dx (1 for the
  * parts that only shift).
  */
 export function remapWheel(pos: ArrayLike<number>, nrm: ArrayLike<number> | null, outPos: Float32Array, outNrm: Float32Array | null, p: WheelProfile, size: number, width = 1, fit: WidthFit | null = null, tire = false): void {
   const bead2 = beadForSize(p, size);
   // The barrel's stretch: the width slider, floored by what covers the brake (fit.cover).
   if (fit !== null) width = barrelStretch(width, fit.cover);
-  const axial = fit !== null && width !== 1;
-  // The tire's inner side moves as far as the barrel's back edge does.
-  const shift = axial ? (1 - width) * (fit.spokeBack - fit.back) : 0;
+  // The tire's inner side moves as far as the barrel's back edge does, plus the pull that covers the stock barrel.
+  const shift = fit !== null ? (fit.back - fit.spokeBack) * (width - 1) + fit.tirePull : 0;
+  const axial = fit !== null && (width !== 1 || shift !== 0);
   const tireSpan = axial ? fit.tireMax - fit.tireMin : 0;
   const lo = axial ? fit.tireMin + TIRE_SHIFT_BAND * tireSpan : 0;
   const hi = axial ? fit.tireMax - TIRE_SHIFT_BAND * tireSpan : 0;

@@ -49,6 +49,7 @@ export const WHEEL_TRIMS = {
   lip: ['stock', 'face', 'body', 'paint'],
   cap: ['face', 'body', 'paint'],
   lugNuts: ['cap', 'face', 'body', 'paint'],
+  hardware: ['cap', 'face', 'body', 'paint'],
 } as const satisfies Record<string, readonly WheelTrimMode[]>;
 export type WheelTrimName = keyof typeof WHEEL_TRIMS;
 
@@ -137,6 +138,8 @@ export interface VisualBuild {
     cap: WheelTrim;
     /** The house lug nuts, both axles (builds from before saved one of a few fixed finishes; validation migrates them). */
     lugNuts: WheelTrim;
+    /** The wheels' bolt hardware (the Chrome faces of the wheel models: lip bolts and donor bits), both axles. Chrome by default; a missing value reads chrome. */
+    hardware: WheelTrim;
   };
   /** Brake caliper paint, all four corners. */
   calipers: AccentPaint;
@@ -171,7 +174,7 @@ export function defaultVisual(): VisualBuild {
     paint: { color: '#d11f3f', finish: 'metallic' },
     trimColor: '#15161a',
     parts: {},
-    wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'stock', color: '#c9ced8', finish: 'metallic' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' } },
+    wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'stock', color: '#c9ced8', finish: 'metallic' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, hardware: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' } },
     calipers: { color: '#c41e3a', finish: 'gloss', match: false },
     decals: [],
     stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 } },
@@ -289,7 +292,7 @@ export function validateVisual(v: unknown): VisualBuild {
     paint: validPaint(o.paint, d.paint, PAINT_FINISHES),
     trimColor: hexColor(o.trimColor, d.trimColor),
     parts,
-    wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire), lettering: wheels.lettering === true, lip: validTrim(wheels.lip, d.wheels.lip, 'lip'), cap: validTrim(wheels.cap, d.wheels.cap, 'cap'), lugNuts },
+    wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire), lettering: wheels.lettering === true, lip: validTrim(wheels.lip, d.wheels.lip, 'lip'), cap: validTrim(wheels.cap, d.wheels.cap, 'cap'), lugNuts, hardware: validTrim(wheels.hardware, d.wheels.hardware, 'hardware') },
     calipers: validAccent(o.calipers, d.calipers, PAINT_FINISHES),
     decals,
     stance: {

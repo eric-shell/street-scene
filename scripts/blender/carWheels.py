@@ -55,6 +55,7 @@ CAP_SEG = 40         # segments around the turned center cap
 RING_BANDS = 26      # profile points sampled along the lip's visible surface
 BOLT_SEG = 6         # hex heads
 BOLT_MAX = 48        # more peaks than this on a bolt circle is a knurl, not bolts
+GOLDEN = math.pi * (3 - math.sqrt(5))   # rad, the golden angle: sample angles round the axle that no spoke count repeats
 WELD = 2e-5          # m, vertices closer than this (in the import's 0.65 m scale) are one
 
 # Dropped from every wheel by material or object name: display scenes, branding, brakes, valves.
@@ -66,7 +67,7 @@ JUNK = r'(?i)(?<![a-z])(stand|ground|plane|shadow|floor|backdrop|logo|badge|embl
 GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'Byakko', 'Fifteen52': 'Hotaru',
           'SSR': 'Hiryu', 'BBS': 'Suzaku', 'Volk': 'Genbu', 'Enkei': 'Kohaku',
           'Advan': 'Kitsune', 'Avant Garde': 'Tengu', 'Brixton Forged': 'Oni', 'Kyusha Shoes': 'Tanuki', 'Velare': 'Yamabiko',
-          'VIP Modular': 'Baku', 'Weds': 'Fujin', '326 Power': 'Kirin', 'Brabus': 'Nue', 'Budnik': 'Orochi',
+          'VIP Modular': 'Baku', 'Weds': 'Fujin', 'Brabus': 'Nue', 'Budnik': 'Orochi',
           'Devil Japan': 'Shuten', 'Kansei': 'Nekomata', 'MAE': 'Kamaitachi',
           'Rays': 'Genbu',   # Volk is a Rays brand: one group
           'Vossen-x-Work': 'Seiryu'}   # a Vossen collaboration, listed with Vossen
@@ -74,12 +75,14 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
 # Most donors are jonver87's (CC BY 4.0): clean showpiece models without tires, each piece its own
 # mesh. Recipe fields: `maker` the donor's real maker (a key of GROUPS), `face` 1 / -1 forces the
 # face direction when the normal vote gets it wrong, `lip` 'chrome' / 'rim' overrides the ring's
-# finish (chrome on a multi-piece wheel, the wheel colour on a one-piece), `drop` a regex of
+# finish (chrome on a multi-piece wheel: six or more lip bolts, or 2P / 3P in the title; the wheel colour on a one-piece), `drop` a regex of
 # material or object names to drop, `bolts` 0 to keep no bolt circle, `normals` 'geometry' to
 # shade the face from its own shape when the donor's normals are wrong, `dark` a luminance (0-1):
 # faces whose base colour texture is darker go (a tire welded to the wheel in one textured mesh).
 # `pick` (axis, lo, hi): keep only the faces whose centre lies between lo and hi on that axis of the import's frame (a scene holding several wheels).
 # `cap` the turned hub cap's radius (share of the lip) where the round test stops short of an opening a dropped logo cap covered.
+# `cap_fill` True closes a cap ring's open center, so the whole center wears the cap's paint (sora).
+# `turn` (share of the lip): on a multi-piece wheel, turn the face's surfaces of revolution joined to faces outside it, as on a one-piece (a round flange the spokes stand on, which a collapse crumples: mio).
 # `lugs` 0 when no lug circle shows (a cap or a solid face hides it), or (count, r over the lip) for the circle to take where the innermost is a decoration.
 _J = {'author': 'jonver87', 'license': 'CC Attribution'}
 WHEELS = {
@@ -93,15 +96,15 @@ WHEELS = {
                'face': -1},   # its badge sits behind the hub's center, so the badge rule turned it round
     'shinobi': {'name': 'Work Zistance W5S', 'uid': '8a80d5dd27384671bb1beef04234f3db', 'maker': 'Work', **_J},
     'tsurugi': {'name': 'Work Schwert SC2', 'uid': '054f59d1321e41aebeffa272d4b7f863', 'maker': 'Work', **_J},
-    'kaze': {'name': 'Work Equip 02', 'uid': '57f0fcea45df47188bc8531a012d3357', 'maker': 'Work', **_J,
-             'lip': 'chrome'},   # a polished dish
+    'kaze': {'name': 'Work Equip 02', 'uid': '57f0fcea45df47188bc8531a012d3357', 'maker': 'Work', **_J},
     'hagane': {'name': 'Work Euroline DH', 'uid': 'eab967f5fcab4581bd427ddf6b79da52', 'maker': 'Work', **_J},
-    'kagero': {'name': 'Work Import Label AL4', 'uid': '593aed74677d49ff953e068debce4b87', 'maker': 'Work', **_J,
-               'lip': 'chrome'},
+    'kagero': {'name': 'Work Import Label AL4', 'uid': '593aed74677d49ff953e068debce4b87', 'maker': 'Work', **_J},
     'gekko': {'name': 'Work LS Chiarezza SUV', 'uid': '3134884d8ecf45c9817cf5e1d231734b', 'maker': 'Work', **_J,
-              'bolts': 0},   # its rivets sit in pairs in the windows: the histogram read three bolts
+              'bolts': 0,   # its rivets sit in pairs in the windows: the histogram read three bolts
+              'lip': 'chrome'},   # multi-piece all the same: the rivets stay on the face
     'nami': {'name': 'Rotiform ZMO', 'uid': '4193e4cd0fdc481688e3a437e4e5d130', 'maker': 'Rotiform', **_J},
-    'shizuku': {'name': 'Rotiform Aerodisc', 'uid': 'ccaf76b4b4514d1e9b6351a628e75817', 'maker': 'Rotiform', **_J},
+    'shizuku': {'name': 'Rotiform Aerodisc', 'uid': 'ccaf76b4b4514d1e9b6351a628e75817', 'maker': 'Rotiform', **_J,
+                'cap_fill': True},   # its center nut is a ring round a logo plate: filled, or the turned cap leaves the bore open
     'uzu': {'name': 'Rotiform VCE', 'uid': '05783beda2a74aa8981fb374e9088b4f', 'maker': 'Rotiform', **_J,
             'face': -1},   # the normal vote showed the plain back of the fins
     'kawa': {'name': 'Rotiform SIX', 'uid': '35d0043f1c774ddfaa7c3983eb3bc8c0', 'maker': 'Rotiform', **_J,
@@ -113,6 +116,7 @@ WHEELS = {
     'ame': {'name': 'Rotiform OZR', 'uid': '72e5ee8f6e6b46799c00f732f414d41f', 'maker': 'Rotiform', **_J,
             'face': -1},   # its center nut and logo cap sit on this side; the normal vote showed the hub's back
     'yuki': {'name': 'Rotiform BM1', 'uid': 'abb6a1de9bd54492baff6843cad8a429', 'maker': 'Rotiform', **_J,
+             'normals': 'geometry',   # the authored normals left big shading triangles over the collapsed flat face plate
              'face': -1},   # the normal vote showed the barrel, the lip bolts at its far end
     'shigure': {'name': 'Rotiform WRO', 'uid': 'd64d8d4fab944a77a6fba680551a7e67', 'maker': 'Rotiform', **_J},
     'umi': {'name': 'Rotiform CCV', 'uid': '827bfe4138d447c28888c6c22a47609b', 'maker': 'Rotiform', **_J,
@@ -121,11 +125,13 @@ WHEELS = {
     'tsuyu': {'name': 'Rotiform LSR', 'uid': '1fe207f311bb4b50b0cf4d3fbbe549b2', 'maker': 'Rotiform', **_J},
     'kori': {'name': 'Rotiform KLU', 'uid': '641a37e731194b3e8fdd18e6a9b1e6d9', 'maker': 'Rotiform', **_J},
     'mio': {'name': 'Rotiform SNA', 'uid': '20dad53c5f1947cf92f113f3c2e7c2fe', 'maker': 'Rotiform', **_J,
+            'turn': 0.6,   # the round flange its spokes stand on is part of the face: collapsed, it crumpled between the spoke tips
             'face': -1},   # the normal vote showed the plain backs of the spokes
     'fubuki': {'name': 'Rotiform KPS', 'uid': 'c3ffecfad22d4a3a808123bac5187479', 'maker': 'Rotiform', **_J},
     'seseragi': {'name': 'Rotiform PNT', 'uid': 'cee8b459137249e5bcfa8289d5c2759c', 'maker': 'Rotiform', **_J},
     'aoi': {'name': 'Vossen LC104T', 'uid': 'aa0f85f015d741a5958dc70fea79d863', 'maker': 'Vossen', **_J},
-    'sora': {'name': 'Vossen LC109T', 'uid': '3fe9676878634ec183068252cb2d52fd', 'maker': 'Vossen', **_J},
+    'sora': {'name': 'Vossen LC109T', 'uid': '3fe9676878634ec183068252cb2d52fd', 'maker': 'Vossen', **_J,
+             'cap_fill': True},   # its cap is a ring round an open bore: filled, so the whole center takes the cap's paint
     'hikari': {'name': 'Vossen VPS302', 'uid': 'ba0fafb1c9b545328948ad716a8b5747', 'maker': 'Vossen', **_J},
     'kagami': {'name': 'Vossen VPS301', 'uid': '4bfa99c33ba94cd08dfcf3cd53d1cd2d', 'maker': 'Vossen', **_J},
     'seiun': {'name': 'Vossen ERA3', 'uid': 'b5cffbf62f77419897de89413427d33d', 'maker': 'Vossen', **_J},
@@ -138,6 +144,9 @@ WHEELS = {
     'hane': {'name': 'BBS E52', 'uid': '8168cc3dce114b19b617c17fea0ab364', 'maker': 'BBS', **_J,
              'normals': 'geometry',   # its mesh's authored normals lean sideways: the face shaded dark
              'face': -1},   # the normal vote showed the hub's back, with its five stud holes
+    # By hand after wheel() (2026-10-28): its Rim face sat 5.6 mm off the axle and was moved onto it (+0.0056 y,
+    # -0.0001 z; the face protrudes past the lip on purpose, a euro face); the house cap widened to 0.173 of the
+    # lip with its skirt sunk to x 0.132; then fit_lugs found its 5 lugs (r 0.056 m) and set `lugs`.
     'iwa': {'name': 'Volk Rays 21C', 'uid': 'd053af8f24bc4a5dbaf9d21f31ae25da', 'maker': 'Volk', **_J,
             'face': -1},   # the normal vote showed the plain backs of the spokes
     'kiseki': {'name': 'Enkei Nt03+m Wheels', 'uid': '6d31c56557b945a5abd4015884461dc4', 'maker': 'Enkei',
@@ -159,7 +168,8 @@ WHEELS = {
     'fuyu': {'name': 'Brixton Forged TR06', 'uid': 'fb3ed2107cf949cba4922a8af22635fb', 'maker': 'Brixton Forged', **_J},
     'genki': {'name': 'Avant Garde F450', 'uid': 'aaf0fb4891cd474e86df0eb2dc322e48', 'maker': 'Avant Garde', **_J},
     'haruka': {'name': 'Avant Garde F142', 'uid': '0c5a53690d0d40adadf3ddaf0828c8b6', 'maker': 'Avant Garde', **_J},
-    'hasu': {'name': 'HRE FF04', 'uid': 'b0d7579597a542978a00cf19ec3c9d29', 'maker': 'HRE', **_J},
+    'hasu': {'name': 'HRE FF04', 'uid': 'b0d7579597a542978a00cf19ec3c9d29', 'maker': 'HRE', **_J,
+             'lip': 'rim'},   # a one-piece: the bolt test found a circle of three heads, no lip bolt ring
     'ibuki': {'name': 'Brixton Forged VL7', 'uid': '051fba725036489288a0ed6ded9a4abe', 'maker': 'Brixton Forged', **_J,
              'face': -1},   # the normal vote put the lattice face 0.7 of the way down the barrel
     'kaen': {'name': 'Brixton Forged PF6', 'uid': '60d3005ced7f42fa9100b0aa03979269', 'maker': 'Brixton Forged', **_J},
@@ -170,7 +180,8 @@ WHEELS = {
     'mizore': {'name': 'Vossen LC108T', 'uid': '124076f7e61f43109c78f329bbb4ee8b', 'maker': 'Vossen', **_J},
     'momiji': {'name': 'Vossen-x-Work VWS3', 'uid': 'bff5b9a09f0f42febac5fba5c2f2860c', 'maker': 'Vossen-x-Work', **_J,
               'face': -1,   # the spokes' concave fronts; face 1 showed the hub's mounting pad and stud holes (2026-10-28)
-              'cap': 0.235},   # its logo cap went as a decal over a star shaped opening wider than the round hub
+              'cap': 0.235,   # its logo cap went as a decal over a star shaped opening wider than the round hub
+              'lip': 'chrome'},   # a Work 3-piece line, though the model carries no lip bolts
     'nagi': {'name': 'Vossen VPS 310T', 'uid': '2128c0d05b98416c9de4f3eccf2605aa', 'maker': 'Vossen', **_J},
     'natsu': {'name': 'Rotiform HVN', 'uid': 'c89560b091cf49e9b2cc4f0f38074d40', 'maker': 'Rotiform', **_J,
              'face': -1},   # face 1 showed the plate's plain back and the hub's mounting face (2026-10-28)
@@ -198,7 +209,8 @@ WHEELS = {
     'wakaba': {'name': 'fifteen52 Turbomac', 'uid': '0dbadec625c249eea309d95eb015c9f4', 'maker': 'Fifteen52', 'author': 'portfoliorodrigues', 'license': 'CC Attribution'},
     'yamabuki': {'name': 'Work Meister S1 3P', 'uid': '7205c04f3cb24a7dbdaf6a304fb31f21', 'maker': 'Work', 'author': 'alexanderlyreo', 'license': 'CC Attribution'},   # its brake rotor and hat are welded into the one mesh, so the junk names miss them: deleted by hand after wheel() (the islands behind the spokes, x < 0.047 and r 0.055 to 0.12)
     'yoake': {'name': 'WORK MEISTER CR01', 'uid': '9b2bb4a769de4c6098efe95001072841', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'yuzu': {'name': 'SSR Minerva', 'uid': '704b405602b74a788a0678fd39ac4e51', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'yuzu': {'name': 'SSR Minerva', 'uid': '704b405602b74a788a0678fd39ac4e51', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
+             'lip': 'chrome'},   # multi-piece: its rivets are moulded into the face's rim, so no bolt circle is rebuilt
     'zan': {'name': 'RAYS nismo LMGT1', 'uid': '6ed19c4728744e0b95246b5e125ea286', 'maker': 'Rays', 'author': 'dermaks', 'license': 'CC Attribution'},
     'hotaka': {'name': 'SSR Longchamp XR4', 'uid': '6b3cc8dc828b4e319d625ef3318a26ff', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
     'sagi': {'name': 'Budnik Tusk', 'uid': 'ab0c4c881d2d41f8a479273e81491978', 'maker': 'Budnik', 'author': 'dermaks', 'license': 'CC Attribution'},
@@ -206,11 +218,11 @@ WHEELS = {
     'yuhi': {'name': 'BRABUS MONOBLOCK M', 'uid': 'a27f7cb1c38240869275ed5319573826', 'maker': 'Brabus', 'author': 'dermaks', 'license': 'CC Attribution'},
     'asagi': {'name': 'Devil Japan IF', 'uid': '38821fe2a6b4417ab96e2f3948b65537', 'maker': 'Devil Japan', 'author': 'dermaks', 'license': 'CC Attribution'},
     'kasane': {'name': 'WORK Equip 05', 'uid': 'ea0c0c37faa0465ca38d1a3365fb9dfe', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'sazanka': {'name': 'KANSEI TANDEM', 'uid': '4d467ea742e94f6aa9ffa8f7f1a0a913', 'maker': 'Kansei', 'author': 'dermaks', 'license': 'CC Attribution'},
+    'sazanka': {'name': 'KANSEI TANDEM', 'uid': '4d467ea742e94f6aa9ffa8f7f1a0a913', 'maker': 'Kansei', 'author': 'dermaks', 'license': 'CC Attribution',
+                'bolts': 0},   # a one-piece wheel: the raised lettering on its dish wall made a bolt circle of 13 heads
     'mikazuki': {'name': 'O.Z MAE', 'uid': '75f3ef08221849e2ac3a17dd2ecf2386', 'maker': 'MAE', 'author': 'dermaks', 'license': 'CC Attribution'},
     'inazuma': {'name': 'WORK EMOTION T5R 2P', 'uid': '38c31e5755494f7fa5e53fdbc95fa313', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution'},
     'hanabi': {'name': 'SSR Starshark', 'uid': '58970916a3be46a48d61de853149a22a', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
-    'kozue': {'name': '326 yabaking spoke', 'uid': '3ca841c675a24173b99f70adcc885b8e', 'maker': '326 Power', 'author': 'dermaks', 'license': 'CC Attribution'},
     'minamo': {'name': 'MAE CROWN JEWEL', 'uid': '2c77da7f41df431aa1db7b7c2afa92ca', 'maker': 'MAE', 'author': 'dermaks', 'license': 'CC Attribution',
               'face': 1},   # the normal vote put the spokes 0.76 down the barrel; the same template as the MAE above reads 0.39 turned
     'nadeshiko': {'name': 'SSR Collection Mk1', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
@@ -458,7 +470,7 @@ def _hex_heads(bm, mat, circle):
                 f.normal_flip()
 
 
-def _turned_faces(isl, L, sectors=120, full=112, dx=0.002, dr=0.01):
+def _turned_faces(isl, L, sectors=120, full=112, dx=0.002, dr=0.01, edge=0.97):
     """The faces of a one-piece wheel's face island that are its lip, dish wall and barrel: the
     surfaces of revolution, told from the spokes by covering (nearly) every 3 degree sector around
     the axle at their own (x, r) cell (2 mm by 1 % of the lip; a cell borrows its neighbours along
@@ -491,7 +503,76 @@ def _turned_faces(isl, L, sectors=120, full=112, dx=0.002, dr=0.01):
 
     # Center and every corner: where a spoke's fillet runs into the lip it stays face (its edge
     # overlaps the turned surface, which hides nothing), so the junction is not torn.
-    return {f for f in faces if _rad(f.calc_center_median()) > 0.6 * L and turned(f.calc_center_median()) and all(turned(v.co) for v in f.verts)}
+    out = {f for f in faces if _rad(f.calc_center_median()) > 0.6 * L and turned(f.calc_center_median()) and all(turned(v.co) for v in f.verts)}
+    # Only what is joined to the lip edge (or, with the recipe's `turn`, to faces outside `edge` of the
+    # lip) through turned faces: one profile is lathed, and a round
+    # dish inside a ring of windows (the VCE), or the odd turned face among the pockets of a flat
+    # band (the OZR), is not on it. The profile's rays jumped between the lip and such a dish, and
+    # the lathe joined them with a cone through the face (2026-10-28).
+    seen = {f for f in out if any(_rad(v.co) > edge * L for v in f.verts)}
+    stack = list(seen)
+    while stack:
+        f = stack.pop()
+        for e in f.edges:
+            for g in e.link_faces:
+                if g in out and g not in seen:
+                    seen.add(g)
+                    stack.append(g)
+    return seen
+
+
+def _profile_dist(co, prof):
+    """Distance in the (x, r) plane from a point to the profile's polyline, m."""
+    p = Vector((co.x, _rad(co)))
+    best = 1e9
+    for a, b in zip(prof, prof[1:]):
+        ab = b - a
+        n = ab.length_squared or 1e-12
+        u = max(0.0, min(1.0, (p - a).dot(ab) / n))
+        best = min(best, (p - (a + ab * u)).length)
+    return best
+
+
+def _turn_to_profile(parts, prof, KIND, rim, lip, names, mats, work, tol=0.002, keep=0.005):
+    """A one-piece wheel's lathe (or one with the recipe's `turn`) replaces exactly the faces it reproduces: a face (turned or not)
+    whose center and every corner lie within `tol` of the ring's measured profile goes to the
+    ring (the lathe stands in its place), and a turned face off the profile goes back to the face.
+
+    The turned test takes every surface of revolution out on the dish, and a flat band broken by
+    pockets between the spokes is one (the OZR's outer band, two pockets a bay): the profile, by
+    rays that pass through the pockets' holes in the ring, ran behind the band, so the lathe left
+    it out and the pockets floated over the barrel in pieces. And on a smooth dish the test's
+    cells flicker, so some of the dish was turned and some kept, the two a millimetre apart: the
+    VCE's dish showed a sunburst of slivers (ame, uzu, sazanka, taki, 2026-10-28). Returns (parts,
+    faces turned, faces given back)."""
+    bm = _join(parts.values())
+    kl = bm.faces.layers.int['kind']
+    def on(f, d):
+        return all(_profile_dist(co, prof) <= d for co in [f.calc_center_median()] + [v.co for v in f.verts])
+    # And a face of the barrel's inside (its normal toward the axle, so no spoke and no flange's face; its
+    # center 6 cm or more behind the lip edge, so no pocket wall in the face) within `keep` is turned (or
+    # stays turned) too: hisui's barrel has two skins 3.5 mm apart, the turned test took some of the inner
+    # one's strips and the profile ran on the outer, so the rest stood in front of the lathe as shards.
+    def radial(f):
+        c = f.calc_center_median()
+        r = _rad(c)
+        return r > 0 and c.x < X_LIP - 0.06 and -(f.normal.y * c.y + f.normal.z * c.z) / r > 0.9
+    def lathed(f):
+        return on(f, tol) or radial(f) and on(f, keep)
+    off = [f for f in bm.faces if f[kl] == KIND['ring'] and not lathed(f)]
+    add = [f for f in bm.faces if f[kl] == KIND['face'] and f.material_index == rim and lathed(f)]
+    if off or add:
+        for f in off:
+            f[kl] = KIND['face']
+            f.material_index = rim
+        for f in add:
+            f[kl] = KIND['ring']
+            f.material_index = lip
+        for o in parts.values():
+            bpy.data.objects.remove(o)
+        parts = _kind_objects(bm, KIND, names, mats, work)
+    bm.free()
+    return parts, len(add), len(off)
 
 
 def _face_sign(isl, L):
@@ -567,12 +648,13 @@ def _house_cap(bm, mat, r, x):
                 f.normal_flip()
 
 
-def _cap_profile(faces, L, planes=24, stations=48):
+def _cap_profile(faces, L, planes=24, stations=48, fill=False):
     """A center cap's (x, r) profile from the axle out to its edge and down its skirt: rays down -X
     at `stations` radii, each station the median of its hits over `planes` angles round the axle,
     so a maker's logo or lettering, raised or engraved, on a fraction of the angles at any radius
     does not count and the cap's own shape (dome, step, flat face) does. A cap ring round an open
-    bore starts where the rays first hit. None when too few stations hit."""
+    bore starts where the rays first hit, unless `fill` closes the bore at the ring's inner face. None
+    when too few stations hit."""
     vs = list({v for f in faces for v in f.verts})
     idx = {v: k for k, v in enumerate(vs)}
     tree = BVHTree.FromPolygons([v.co for v in vs], [[idx[v] for v in f.verts] for f in faces])
@@ -591,6 +673,8 @@ def _cap_profile(faces, L, planes=24, stations=48):
             pts.append(Vector((sorted(hits)[len(hits) // 2], r)))
     if len(pts) < 2:
         return None
+    if fill and pts[0].y > 0:
+        pts.insert(0, Vector((pts[0].x, 0)))
     # Out to the edge of the faces it replaces, where the rays stopped short (an opening under them).
     if pts[-1].y < 0.98 * rmax:
         pts.append(Vector((pts[-1].x, rmax)))
@@ -602,11 +686,12 @@ def _cap_profile(faces, L, planes=24, stations=48):
     return _thin(pts, 12, 2e-4)
 
 
-def clean_cap(o, pick=None, seg=CAP_SEG):
+def clean_cap(o, pick=None, seg=CAP_SEG, fill=False):
     """Turn the wheel's center cap from its own profile: the faces `pick(face, L)` chooses (by
     default those already `RimCap`) go and a lathe of their median profile takes their place, in
     `RimCap`, so the cap keeps its shape and loses the donor maker's logo. The rest of the mesh
     keeps its custom normals. Faces that start outside 0.15 of the lip are lug nuts and go back to Chrome.
+    `fill` closes a cap ring's open center (the recipe's `cap_fill`: the whole center takes the cap's paint).
     Returns the profile's point count, 0 when there was no cap."""
     L = TIRE_R * BEAD
     me = o.data
@@ -622,10 +707,10 @@ def clean_cap(o, pick=None, seg=CAP_SEG):
     # A cap reaches in to the bore; a ring of lug nuts round the hub (inside 0.35 of the lip, so
     # classified as cap) starts outside 0.15.
     lugs = bool(faces) and min(_rad(v.co) for f in faces for v in f.verts) > 0.15 * L
-    prof = _cap_profile(faces, L) if faces and not lugs else None
+    prof = _cap_profile(faces, L, fill=fill) if faces and not lugs else None
     if prof:
         bmesh.ops.delete(bm, geom=faces, context='FACES')
-        made = _lathe(bm, prof, cap_i, seg, eye=Vector((0.25, 0.3)))
+        made = _lathe(bm, prof, cap_i, seg, ordered=True)
         # The lathe's first ring sits on the axle: one vertex, its quads triangles.
         bmesh.ops.remove_doubles(bm, verts=list({v for f in made for v in f.verts if _rad(v.co) < 1e-5}), dist=1e-5)
     elif faces:
@@ -897,7 +982,7 @@ def fit_lugs(o, want=None):
     return n, round(c['r'], 3), members[0]['kind'], len(gone)
 
 
-def _ring_profile(o, L, planes=12, rays=480):
+def _ring_profile(o, L, planes=16, rays=480):
     """The lip and barrel's visible surface as (x, r) points from the lip edge inward and back:
     rays from a viewpoint in front of the wheel, swept in the plane through the axle from the lip
     edge back to the barrel's far end, each one's first hit on the ring one point of the profile
@@ -908,6 +993,11 @@ def _ring_profile(o, L, planes=12, rays=480):
     to RING_BANDS where the profile bends most. The inner barrel behind the face stays and runs
     on to the tire's back bead: it shows between the spokes and from behind, and a wheel cut off
     at its face reads as a thin disc in a hollow tire.
+
+    The planes step round the axle by the golden angle, so no spoke count lines up with them.
+    Twelve planes 30 degrees apart met a 6 or 12 spoke wheel at the same place in every bay: on
+    the OZR the bar between a bay's two pockets, so the rays all passed it and the median was the
+    barrel behind (ame, 2026-10-28).
 
     It used to bin the culled ring's face centers by their angle from that viewpoint and average
     each bin: a dish wall and the barrel step behind it lie along the same rays, so the average
@@ -926,7 +1016,7 @@ def _ring_profile(o, L, planes=12, rays=480):
         dx, dr = math.cos(t), math.sin(t)
         hits = []
         for j in range(planes):
-            ph = 2 * math.pi * (j + 0.5) / planes
+            ph = 0.3 + j * GOLDEN
             c, s = math.cos(ph), math.sin(ph)
             hit = tree.ray_cast(Vector((P.x, P.y * c, P.y * s)), Vector((dx, dr * c, dr * s)))[0]
             if hit is not None:
@@ -942,7 +1032,7 @@ def _ring_profile(o, L, planes=12, rays=480):
     while x > X_BACK - 0.01:
         hits = []
         for j in range(planes):
-            ph = 2 * math.pi * (j + 0.5) / planes
+            ph = 0.3 + j * GOLDEN
             hit = tree.ray_cast(Vector((x, 0, 0)), Vector((0, math.cos(ph), math.sin(ph))))[0]
             if hit is not None and _rad(hit) > 0.5 * L:
                 hits.append(_rad(hit))
@@ -982,7 +1072,7 @@ def _thin(pts, most, tol=3e-4):
     return [pts[i] for i in sorted(keep)]
 
 
-def _lathe(bm, prof, mat, seg=RING_SEG, eye=None):
+def _lathe(bm, prof, mat, seg=RING_SEG, eye=None, ordered=False):
     """A surface of revolution through the (x, r) profile about the axle, smooth, its normals in
     `src_normal` (toward the viewpoint side of the profile). Returns the faces made.
 
@@ -991,7 +1081,12 @@ def _lathe(bm, prof, mat, seg=RING_SEG, eye=None):
     order the viewpoint sees it, so that side is the seen one all along. Winding faces by the
     smoothed corner normal turned the faces at a sharp step away from the front, and the game
     draws `Rim` single sided (2026-10-28). `eye` is that viewpoint as (x, r); a center cap is seen
-    from in front and outside it, so its skirt faces out."""
+    from in front and outside it, so its skirt faces out. `ordered`: no viewpoint, every face is
+    wound to the left of the profile's direction (axle outward: +X on a flat, out on a wall that
+    drops, in toward the axle on one that rises). A cap's profile runs from the axle out, so that
+    side is the seen one everywhere; an eye off to the side turned the walls of a groove that face
+    the axle away from the front (minamo, homura and five more showed holes in their caps,
+    2026-10-28)."""
     sn = bm.loops.layers.float_vector.get('src_normal') or bm.loops.layers.float_vector.new('src_normal')
     P = len(prof)
     eye = eye or Vector((0.25, 0.3 * prof[0].y))
@@ -1001,14 +1096,14 @@ def _lathe(bm, prof, mat, seg=RING_SEG, eye=None):
         t = (b - a).normalized()
         n = Vector((t.y, -t.x))
         # Toward the front viewpoint: the side the dish is seen from.
-        if n.dot(eye - prof[k]) < 0:
+        if not ordered and n.dot(eye - prof[k]) < 0:
             n = -n
         n2.append(n)
     ns = []
     for k in range(P - 1):
         t = (prof[k + 1] - prof[k]).normalized()
         n = Vector((t.y, -t.x))
-        if n.dot(eye - (prof[k] + prof[k + 1]) / 2) < 0:
+        if not ordered and n.dot(eye - (prof[k] + prof[k + 1]) / 2) < 0:
             n = -n
         ns.append(n)
     rings = []
@@ -1207,8 +1302,14 @@ def wheel(name, root):
     KIND = {'face': 0, 'ring': 1, 'cap': 2}
     kl = bm.faces.layers.int['kind']
     one_piece = not any(i.kind == 'ring' for i in isl)
-    lip = R0.get('lip', 'rim' if one_piece else 'chrome')   # multi-piece lips are polished, a monoblock is one finish
-    turned = _turned_faces(isl, L) if one_piece else set()
+    # The stock lip: chrome on a multi-piece wheel, the face's paint on a one-piece (the user, 2026-10-28). A
+    # wheel is multi-piece when a ring of bolts holds its lip (six heads or more) or its title says 2P or 3P;
+    # a donor's separate lip mesh says nothing, since jonver87 models a cast wheel's lip as its own piece too.
+    multi = (circle is not None and len(circle[0]) >= 6) or re.search(r'(?i)\b[23] ?p(iece)?\b', R0['name'])
+    lip = R0.get('lip', 'chrome' if multi else 'rim')
+    # A multi-piece wheel's face can carry a round flange of its own (the recipe's `turn`): turned the same way.
+    turn = R0.get('turn')
+    turned = _turned_faces(isl, L, edge=turn or 0.97) if one_piece or turn else set()
     for i in isl:
         for f in i.faces:
             src = names[f.material_index] if f.material_index < len(names) else ''
@@ -1230,6 +1331,9 @@ def wheel(name, root):
     # The ring's profile from the whole ring, before anything is collapsed or culled: the flange
     # and dish wall the face sits on are hidden behind the face's edge, and the cull takes them.
     ring_prof = _ring_profile(parts['ring'], L) if 'ring' in parts else None
+    returned = unturned = 0
+    if ring_prof and (one_piece or turn):
+        parts, returned, unturned = _turn_to_profile(parts, ring_prof, KIND, IDX['Rim'], IDX['RimLip'], oname, mats, work)
     for kind, o in parts.items():
         if tris(o) > 3 * BUDGETS[kind]:
             _reduce(o, 3 * BUDGETS[kind])
@@ -1296,14 +1400,14 @@ def wheel(name, root):
         if out.attributes.get(a):
             out.attributes.remove(out.attributes[a])
     remap_materials(o)
-    cap_pts = clean_cap(o)
+    cap_pts = clean_cap(o, fill=R0.get('cap_fill', False))
     hub_r = 0 if cap_pts else hub_cap(o, R0.get('cap'))
     lugs = fit_lugs(o, R0.get('lugs'))
     o['lip'] = lip
     o['displayName'] = name.capitalize()
     o['group'] = GROUPS[R0['maker']]
     print(f'wheel_{name}: {R0["name"]} ({R0["author"]}); islands {kinds}; face {"+" if sign > 0 else "-"}X, scaled x{k:.3f}, '
-          f'barrel squeezed x{squeeze:.2f}, lip {lip}' + (f' turned from {len(ring_prof)} points' if ring_prof else '') + ', ' + (f'{len(circle[0])} house bolts at r {circle[1]:.3f}' if circle else 'no bolt circle') +
+          f'barrel squeezed x{squeeze:.2f}, lip {lip}' + (f' turned from {len(ring_prof)} points' if ring_prof else '') + (f' (faces on its profile: {returned} more turned, {unturned} off it kept as face)' if returned or unturned else '') + ', ' + (f'{len(circle[0])} house bolts at r {circle[1]:.3f}' if circle else 'no bolt circle') +
           (f', house cap r {cap_r:.3f}' if cap_r else '') + (f', cap turned from {cap_pts} points' if cap_pts else f', hub turned as a cap to r {hub_r:.2f}' if hub_r else '') + (f', {lugs[0]} lugs at r {lugs[1]:.3f}' if lugs else ', no lugs') + f'; {src_tris} -> {tris(o)} tris ({culled} hidden culled, {loose} loose, {gone["bolt"]} of bolts and {gone["decal"]} of decals replaced)')
     return o
 

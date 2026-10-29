@@ -67,7 +67,7 @@ describe('build validation', () => {
     b.visual.paint = { color: '#19e6ff', finish: 'pearl' };
     b.visual.parts = { spoiler: 'wendtStrom_spoiler_1', frontBumper: 'wendtStrom_frontBumper_kurogane', wheels: 'wheel_yari' };
     b.visual.decals.push({ shape: 'number', color: '#ff3df2', pos: [0.9, 0.6, 0.2], normal: [1, 0, 0], rotation: 12, scale: 0.7, mirror: true, text: '42' });
-    b.visual.wheels = { paint: { color: '#ffcc00', finish: 'candy', match: false }, rearPaint: { color: '#1a1b1f', finish: 'matte', match: true }, rearPart: 'wheel_kumo', tire: 'standard', rearTire: 'stretched', lettering: false, lip: { mode: 'paint', color: '#ff3df2', finish: 'gloss' }, cap: { mode: 'paint', color: '#dedede', finish: 'chrome' }, lugNuts: { mode: 'body', color: '#d4a537', finish: 'chrome' } };
+    b.visual.wheels = { paint: { color: '#ffcc00', finish: 'candy', match: false }, rearPaint: { color: '#1a1b1f', finish: 'matte', match: true }, rearPart: 'wheel_kumo', tire: 'standard', rearTire: 'stretched', lettering: false, lip: { mode: 'paint', color: '#ff3df2', finish: 'gloss' }, cap: { mode: 'paint', color: '#dedede', finish: 'chrome' }, lugNuts: { mode: 'body', color: '#d4a537', finish: 'chrome' }, hardware: { mode: 'paint', color: '#2563d6', finish: 'chrome' } };
     b.visual.calipers = { color: '#ffcc1f', finish: 'pearl', match: true };
     b.visual.underglow = { enabled: true, color: '#ff00aa', color2: '#00ffaa', pattern: 'chase', brightness: 1.4, speed: 2, size: 1.2 };
     b.visual.stance = { front: { rideHeight: -0.045, camber: -3.5, offset: 0.015, wheelSize: 1.05, wheelWidth: 1.1 }, rear: { rideHeight: -0.02, camber: -7, offset: 0.05, wheelSize: 1.2, wheelWidth: 1.3 } };
@@ -145,7 +145,7 @@ describe('build validation', () => {
     expect(b!.visual.stance.rear.rideHeight).toBe(-0.03);
     expect(b!.visual.stance.front).toEqual({ rideHeight: -0.03, camber: -6, offset: 0.04, wheelSize: 1.15, wheelWidth: 1 });
     expect(b!.visual.stance.rear).toEqual({ rideHeight: -0.03, camber: -8.5, offset: 0.04, wheelSize: 1.15, wheelWidth: 1 });
-    expect(b!.visual.wheels).toEqual({ paint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPaint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'stock', color: '#c9ced8', finish: 'metallic' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: { mode: 'paint', color: '#dedede', finish: 'chrome' } });
+    expect(b!.visual.wheels).toEqual({ paint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPaint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'stock', color: '#c9ced8', finish: 'metallic' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: { mode: 'paint', color: '#dedede', finish: 'chrome' }, hardware: { mode: 'paint', color: '#dedede', finish: 'chrome' } });
     // Its wheel id is from a retired car: kept as saved (the renderer falls back to a wheel the car offers).
     expect(b!.visual.parts.wheels).toBe('wheel_s64_2');
     // Saved with the retired component upgrades (engine tier 2): it starts on the stock setup.

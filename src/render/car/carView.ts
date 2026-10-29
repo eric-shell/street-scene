@@ -11,10 +11,10 @@ import { CarMaterialSet, LAMP_GLOW, applyVisualToMaterials, createCarMaterials, 
 import { makeRadialGlow } from '../textures/textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../../shared/features';
-import { BARREL_MARGIN, WheelProfile, WidthFit, barrelCover, beadForSize, detectProfile, remapWheel, sizeForBead } from './wheelFit';
+import { BARREL_MARGIN, WheelProfile, WidthFit, barrelCover, beadForSize, detectProfile, remapWheel, sizeForBead, tirePull } from './wheelFit';
 import { BRAKE, brakeDepth, brakeReach, buildCaliperGeometry, buildRotorGeometry } from './brakes';
 import { damp } from '../../shared/anim';
-import { latheTire, measureTire } from './tireShapes';
+import { TIRE_SEGMENTS, latheTire, measureTire } from './tireShapes';
 import { PLATE, buildPlateGeometry, createPlateMaterial, drawPlate, plateTexture, seatPlate } from './plate';
 import { lugsGeometry } from './lugNuts';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
@@ -220,8 +220,8 @@ export class CarView {
    * edge and the tire's extent.
    */
   private widthFit: WidthFit[] = [
-    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0, cover: 1 },
-    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0, cover: 1 },
+    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0, tirePull: 0, cover: 1 },
+    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0, tirePull: 0, cover: 1 },
   ];
   /** Each axle's wheel profile: front and rear may wear different wheels. */
   private wheelProfiles: WheelProfile[] = [
@@ -298,7 +298,7 @@ export class CarView {
   ) {
     this.materials = createCarMaterials(opts.envMap ?? null, opts.tread ?? true);
     const m = this.materials;
-    this.paintedWheelMats = new Set([m.Rim, m.RimRear, m.RimLip, m.RimLipRear, m.RimCap, m.RimCapRear, m.Lug, m.LugRear]);
+    this.paintedWheelMats = new Set([m.Rim, m.RimRear, m.RimLip, m.RimLipRear, m.RimCap, m.RimCapRear, m.Lug, m.LugRear, m.Hardware, m.HardwareRear]);
     this.car = manifestCar(carId);
     this.roadLift = opts.roadLift ?? 0;
     this.brakesOn = opts.brakes ?? true;
@@ -321,7 +321,7 @@ export class CarView {
     const { track } = this.owned;
     this.clip = track(new WheelClip(this.car, this.body));
     // Tire and wheel paints are the wheels' alone; the clip goes straight on them.
-    for (const m of [this.materials.Tire, this.materials.Rim, this.materials.RimRear, this.materials.RimLip, this.materials.RimLipRear, this.materials.RimCap, this.materials.RimCapRear, this.materials.Lug, this.materials.LugRear]) this.clip.clipMaterial(m);
+    for (const m of [this.materials.Tire, this.materials.Rim, this.materials.RimRear, this.materials.RimLip, this.materials.RimLipRear, this.materials.RimCap, this.materials.RimCapRear, this.materials.Lug, this.materials.LugRear, this.materials.Hardware, this.materials.HardwareRear]) this.clip.clipMaterial(m);
     // Underglow: a shader glow on the road around the footprint, plus an optional real light.
     this.underglowMat = track(new THREE.ShaderMaterial({
       uniforms: {
@@ -643,6 +643,8 @@ export class CarView {
     const otherX: number[] = [];
     let tireMin = Infinity;
     let tireMax = -Infinity;
+    // The lathed tire's half section, which the tire's back is fitted to the barrel by (tirePull).
+    let tireProfile: [number, number][] = [];
     model.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !visibleInTree(mesh, model)) return;
@@ -670,6 +672,7 @@ export class CarView {
       const fit = isTire && !model.userData.ownGeometry ? measureTire(geo.getAttribute('position').array) : null;
       if (fit) {
         const t = latheTire(tire, fit);
+        tireProfile = t.profile;
         geo.dispose();
         geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(t.position, 3));
@@ -693,7 +696,7 @@ export class CarView {
         }
       }
       // The rear axle wears its own wheel material (wheel color); everything wears a clipped material.
-      const own = axle === 1 ? this.rearWheelMat : this.wheelMat;
+      const own = axle === 1 ? this.rearWheelMat : this.frontWheelMat;
       const material = Array.isArray(mesh.material) ? mesh.material.map(own) : own(mesh.material);
       const out = new THREE.Mesh(geo, material);
       out.name = mesh.name;
@@ -729,7 +732,15 @@ export class CarView {
       else if (r >= 0.75) rearmost = Math.min(rearmost, otherX[k]);
     }
     const spokeBack = Number.isFinite(back) ? back : 0;
-    this.widthFit[axle] = { spokeBack, back: Math.min(spokeBack, Number.isFinite(rearmost) ? rearmost : spokeBack), tireMin: Number.isFinite(tireMin) ? tireMin : 0, tireMax: Number.isFinite(tireMax) ? tireMax : 0, cover: 1 };
+    const barrelBack = Math.min(spokeBack, Number.isFinite(rearmost) ? rearmost : spokeBack);
+    this.widthFit[axle] = {
+      spokeBack,
+      back: barrelBack,
+      tireMin: Number.isFinite(tireMin) ? tireMin : 0,
+      tireMax: Number.isFinite(tireMax) ? tireMax : 0,
+      tirePull: tirePull(tireProfile, otherX, otherR, barrelBack, TIRE_SEGMENTS),
+      cover: 1,
+    };
     if (model.userData.ownGeometry) model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     this.axleMeshes[axle] = baked.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh);
     const baseScale = this.car.wheelRadius / (profile.outer || this.car.wheelRadius);
@@ -787,7 +798,8 @@ export class CarView {
     }
     return copy;
   };
-  private readonly rearWheelMat = (m: THREE.Material) => this.wheelMat(m === this.materials.Rim ? this.materials.RimRear : m === this.materials.RimLip ? this.materials.RimLipRear : m === this.materials.RimCap ? this.materials.RimCapRear : m);
+  private readonly frontWheelMat = (m: THREE.Material) => this.wheelMat(m === this.materials.Chrome ? this.materials.Hardware : m);
+  private readonly rearWheelMat = (m: THREE.Material) => this.wheelMat(m === this.materials.Chrome ? this.materials.HardwareRear : m === this.materials.Rim ? this.materials.RimRear : m === this.materials.RimLip ? this.materials.RimLipRear : m === this.materials.RimCap ? this.materials.RimCapRear : m);
 
   /** Remap one axle's wheel meshes for a wheel size (tire outer diameter stays) and a width (only the barrel behind the spokes grows). */
   private applyWheelSize(axle: 0 | 1, size: number, width: number): void {

@@ -341,6 +341,11 @@ export function renderTabContent(host: TabHost): void {
             trimMatch(w.lugNuts, 'face', 'Match wheel', 'Wheel paint', face),
             trimMatch(w.lugNuts, 'body', 'Match body', 'Body paint', () => v.paint),
           ]),
+          ...(hasHardware(rear ? (w.rearPart ?? front) : front) ? [trimSection(host, 'Hardware', w.hardware, [
+            trimMatch(w.hardware, 'cap', 'Match cap', 'Center cap', capWears),
+            trimMatch(w.hardware, 'face', 'Match wheel', 'Wheel paint', face),
+            trimMatch(w.hardware, 'body', 'Match body', 'Body paint', () => v.paint),
+          ])] : []),
           // One caliper paint for all four corners, whatever the axle switch says.
           section('Calipers', paintPicker(v.calipers, PRESETS.calipers, () => host.changed(), { matches: [matchBody(v.calipers, v.paint)] })),
         );
@@ -540,6 +545,11 @@ function renderPerformance(host: TabHost): void {
     ),
   );
   host.body.append(h('div', { class: 'muted garage-note' }, 'Position 3 on every slider is the stock car. Visual parts never change performance.'));
+}
+
+/** Whether a wheel model draws any Chrome (bolt hardware); the trims are per build, so the row shows when this axle's wheel has some. */
+function hasHardware(id: string): boolean {
+  return partById(id)?.materialSlots.includes('Chrome') ?? true;
 }
 
 /** A wheel trim section (lip, center cap, lug nuts; render/car/lugNuts.ts draws the nuts): the wheel paint picker over the trim, with its matches. Both axles. */

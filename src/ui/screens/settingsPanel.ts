@@ -378,7 +378,6 @@ const DONOR_CREDITS: { use: string; title: string; uid: string; author: string }
   { use: 'Mikazuki wheels', title: 'O.Z MAE', uid: '75f3ef08221849e2ac3a17dd2ecf2386', author: 'dermaks' },
   { use: 'Inazuma wheels', title: 'WORK EMOTION T5R 2P', uid: '38c31e5755494f7fa5e53fdbc95fa313', author: 'dermaks' },
   { use: 'Hanabi wheels', title: 'SSR Starshark', uid: '58970916a3be46a48d61de853149a22a', author: 'dermaks' },
-  { use: 'Kozue wheels', title: '326 yabaking spoke', uid: '3ca841c675a24173b99f70adcc885b8e', author: 'dermaks' },
   { use: 'Minamo wheels', title: 'MAE CROWN JEWEL', uid: '2c77da7f41df431aa1db7b7c2afa92ca', author: 'dermaks' },
 ];
 

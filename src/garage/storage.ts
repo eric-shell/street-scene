@@ -185,6 +185,7 @@ const SHORT: Record<string, string> = {
   lip: 'lp',
   cap: 'cp',
   lugNuts: 'ln',
+  hardware: 'hw',
   mode: 'md',
   size: 'sz',
   decals: 'dc',

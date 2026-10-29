@@ -60,7 +60,8 @@ export const TREAD = {
 } as const;
 
 /** Segments around the tire, as the house tire's (scripts/blender/carWheels.py TIRE_SEG). */
-const SEGMENTS = 40;
+export const TIRE_SEGMENTS = 40;
+const SEGMENTS = TIRE_SEGMENTS;
 
 /** The tire a shape replaces, measured from its vertices (wheel space units). */
 export interface TireFit {
@@ -147,9 +148,10 @@ function fullProfile(shape: TireShape, fit: TireFit): ProfilePoint[] {
 /**
  * Lathe a tire of the given shape to fit where the old one sat: smooth normals from the profile, faces
  * wound outward, UVs as the module header says. 41 x 20 vertices (the seam column twice), 1,520 triangles
- * (the house tire has 960, grooves not included).
+ * (the house tire has 960, grooves not included). `profile` is the lathed half section, face bead to back bead
+ * as (x, r) pairs, for the car view's fit of the tire's back to the barrel (wheelFit.tirePull).
  */
-export function latheTire(shape: TireShape, fit: TireFit): { position: Float32Array; normal: Float32Array; uv: Float32Array; index: Uint16Array } {
+export function latheTire(shape: TireShape, fit: TireFit): { position: Float32Array; normal: Float32Array; uv: Float32Array; index: Uint16Array; profile: [x: number, r: number][] } {
   const prof = fullProfile(shape, fit);
   const P = prof.length;
   // Each point's normal in the profile plane: its tangent (central difference) turned outward.
@@ -199,5 +201,5 @@ export function latheTire(shape: TireShape, fit: TireFit): { position: Float32Ar
       n += 6;
     }
   }
-  return { position, normal, uv, index };
+  return { position, normal, uv, index, profile: prof.map((p): [number, number] => [p.x, p.r]) };
 }
