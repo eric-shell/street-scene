@@ -66,7 +66,7 @@ Only `HeadLight`, `TailLight` and `BrakeLight` glow: a lamp that is not one of t
 
 | Slot | Budget |
 |---|---|
-| frontBumper | 3500 |
+| frontBumper | 4000 |
 | rearBumper | 3000 |
 | sideSkirts, hood, roof | 2000 |
 | spoiler | 1500 |

@@ -36,6 +36,24 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_frontBumper_cupraR",
+      "displayName": "Cupra R",
+      "carId": "wendtStrom",
+      "slot": "frontBumper",
+      "file": "parts/wendtStrom_frontBumper_cupraR.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Chrome",
+        "HeadLight"
+      ],
+      "tris": 3917,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",

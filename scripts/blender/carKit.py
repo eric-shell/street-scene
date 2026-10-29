@@ -731,6 +731,85 @@ def round_lamp(o, center, normal, r_lens, r_bezel, proud=0.02, lens='HeadLight',
     me.update()
 
 
+def lower_edge(o, center, angles, z0, z1, step=0.005):
+    """A bumper's bottom edge round the nose, for lips and splitters that follow it from arch to arch:
+    for each angle (degrees about `center` in plan, 0 toward -y, + toward +x) the outermost point the
+    rays find between z0 and z1, and the underside's height just inside it (a ray up from 3 cm in).
+    Returns [(Vector x, y, z_under)] in angle order; an angle with no hit is skipped. Plan rays from
+    behind the bumper, not an x sweep: the edge turns back along the sides to the arches, where a
+    sweep along x samples it edge on (tunerKits' `outline` + `slab` stops at the corners)."""
+    from mathutils.bvhtree import BVHTree
+    t = BVHTree.FromObject(o, bpy.context.evaluated_depsgraph_get())
+    c = Vector((center[0], center[1], 0))
+    out = []
+    for a in angles:
+        th = math.radians(a)
+        d = Vector((math.sin(th), -math.cos(th), 0))
+        best = None
+        for i in range(int((z1 - z0) / step) + 1):
+            z = z0 + i * step
+            h = t.ray_cast(c + d * 3 + Vector((0, 0, z)), -d, 3)
+            if h[0] and (best is None or (h[0] - c).to_2d().length > (best - c).to_2d().length):
+                best = h[0].copy()
+        if best is None:
+            continue
+        inside = best - d * 0.03
+        up = t.ray_cast(Vector((inside.x, inside.y, z0 - 0.2)), Vector((0, 0, 1)), 0.5)
+        out.append(Vector((best.x, best.y, up[0].z if up[0] else z0)))
+    return out
+
+
+def sweep(o, sections, name, outward=None):
+    """A closed profile run along a path: `sections` are equal length point lists (one per station,
+    in order round the profile), joined side by side into quads and capped at both ends. Each side
+    is smooth along the path and sharp at the profile's corners: its corner normals are written into
+    `src_normal` when the piece carries authored normals (stash_normals first), otherwise the faces are
+    smooth with sharp profile edges marked. `outward(i)`, a plan direction per station, orients the
+    sides; by default they face away from each section's centroid. Lips, blades, rubbing strips."""
+    k = len(sections[0])
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    mi = mat_index(o, name)
+    vs = [[bm.verts.new(Vector(p)) for p in sec] for sec in sections]
+    cent = [sum((Vector(p) for p in sec), Vector()) / k for sec in sections]
+    n = len(sections)
+    tangent = [(cent[min(i + 1, n - 1)] - cent[max(i - 1, 0)]).normalized() for i in range(n)]
+
+    def side_normal(i, s):
+        a, b = Vector(sections[i][s]), Vector(sections[i][(s + 1) % k])
+        nr = tangent[i].cross(b - a).normalized()
+        return nr if nr.dot((a + b) / 2 - cent[i]) > 0 else -nr
+
+    for i in range(n - 1):
+        for s in range(k):
+            f = bm.faces.new([vs[i][s], vs[i + 1][s], vs[i + 1][(s + 1) % k], vs[i][(s + 1) % k]])
+            f.material_index = mi
+            f.smooth = True
+            f.normal_update()
+            mid = (sum((v.co for v in f.verts), Vector()) / 4) - (cent[i] + cent[i + 1]) / 2
+            if f.normal.dot(mid) < 0:
+                f.normal_flip()
+            if sn is not None:
+                for loop in f.loops:
+                    j = i if loop.vert in vs[i] else i + 1
+                    loop[sn] = side_normal(j, s)
+    for i, sign in ((0, -1), (n - 1, 1)):
+        f = bm.faces.new(vs[i])
+        f.material_index = mi
+        f.smooth = False
+        f.normal_update()
+        if f.normal.dot(tangent[i] * sign) < 0:
+            f.normal_flip()
+        if sn is not None:
+            for loop in f.loops:
+                loop[sn] = f.normal.copy()
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
 def split_off(src, name, pred, cname=None):
     """Move the faces for which pred(center, material_name, normal) is true out of src into a new object
     `name` (in src's collection, or `cname`). Unlike split_parts this carries custom normals through the

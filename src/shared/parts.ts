@@ -40,8 +40,9 @@ export type MaterialName = (typeof MATERIAL_NAMES)[number];
 /** Triangle budgets per slot used by validation. */
 export const TRI_BUDGETS: Record<PartSlot, number> = {
   body: 20000,
-  // A donor shell's bumper, cut whole with its intakes and lips, runs past 3,000 (the Wendt Strom's 3,240).
-  frontBumper: 3500,
+  // A donor shell's bumper, cut whole with its intakes and lips, runs past 3,000 (the Wendt Strom's 3,240),
+  // and a part adds lamps and a lip to it (the Wendt Strom's Cupra R: 3,920).
+  frontBumper: 4000,
   rearBumper: 3000,
   sideSkirts: 2000,
   spoiler: 1500,
