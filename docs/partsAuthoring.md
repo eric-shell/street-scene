@@ -115,7 +115,8 @@ Add an object to `parts` in `src/assets/partsCatalog.json`:
 - `id`: unique, letters, digits, `_ - .` only.
 - `displayName`: a fictional tuner name (Kurogane, Hayate, Tsubasa), not a grade or a number; the garage lists styles, not a ranking.
 - `carId`: the car it fits, or `"universal"` for wheels.
-- `hides`: names of base car nodes to hide while this part is equipped (the stock bumper it replaces). Use `npm run inspect` to list node names.
+- `hides`: names of base car nodes to hide while this part is equipped (the stock bumper it replaces). Use `npm run inspect` to list node names. Any base node works, not only the slot's stock piece: the Wendt Strom's Center Exhaust hides `Bumper_Rear` and `Exhaust` (its pipes, split off the body for this).
+- `exhaustTips` (optional): where the car's exhaust flames, pops and heat haze start while the part is on (glTF car space, m, like the manifest's `exhaustTips`, as many tips as the car has), for a part that brings its own pipes. Authored as a JSON custom property on the part object; `CarView.placeTips` applies it.
 - `node` (optional): use when several parts live in one GLB. The part is that node inside `file`.
 - `tris`: informational; validation warns if it drifts from the file.
 

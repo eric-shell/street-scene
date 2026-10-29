@@ -381,7 +381,7 @@ async function main(): Promise<void> {
     if (stale) execFileSync(blender as string, ['--background', blend, '--python', exporter, '--', out], { stdio: 'pipe' });
     const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as {
       car: { node: string; tris: number }[];
-      parts: { slot: PartEntry['slot']; partId: string; displayName: string; hides: string[]; tris: number }[];
+      parts: { slot: PartEntry['slot']; partId: string; displayName: string; hides: string[]; exhaustTips?: [number, number, number][]; tris: number }[];
       wheels: { name: string; displayName: string }[];
       wheelCenters: Record<'FL' | 'FR' | 'RL' | 'RR', number[]>;
     };
@@ -401,7 +401,7 @@ async function main(): Promise<void> {
       const file = `parts/${partFileName(carId, p.slot, p.partId)}`;
       const w = await writeOptimized(io, doc, join(PUBLIC, file));
       carBytes += w.bytes;
-      generated.push({ id: `${carId}_${p.slot}_${p.partId}`, displayName: p.displayName, carId, slot: p.slot, file, hides: p.hides, materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
+      generated.push({ id: `${carId}_${p.slot}_${p.partId}`, displayName: p.displayName, carId, slot: p.slot, file, hides: p.hides, ...(p.exhaustTips ? { exhaustTips: p.exhaustTips } : {}), materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
     }
     section.push(`- Parts: ${meta.parts.map((p) => `${p.slot} ${p.partId}`).join(', ')}.`);
 

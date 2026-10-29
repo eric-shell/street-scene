@@ -11,10 +11,13 @@ so nothing is measured or rescaled afterwards. The .blend holds four
 collections:
 
   Car     the base model: `Body` plus the stock pieces the part slots replace
-          (`Bumper_Front`, `Bumper_Rear`, `Skirts`, `Hood`, `Roof`), one node each.
+          (`Bumper_Front`, `Bumper_Rear`, `Skirts`, `Hood`, `Roof`, and any other
+          node a part may hide, such as the Wendt Strom's `Exhaust`), one node each.
   Parts   one object per catalog part, named `<slot>_<partId>`
           (`frontBumper_street`, `spoiler_1`); optional custom properties
-          `displayName` and `hides` (comma separated base node names).
+          `displayName`, `hides` (comma separated base node names) and
+          `exhaustTips` (JSON [[x, y, z], ...] in the manifest's glTF car space:
+          where the flames sit while the part is on, for a part with its own pipes).
   Wheels  wheels in wheel space (center at the origin, axle along X, outer face
           toward +X), named `wheel_<n>`; universal parts. Optional custom
           properties `displayName` and `group` (the garage section it is listed under).
@@ -187,7 +190,10 @@ def run(out_dir, car_id=None):
         hides = o.get("hides")
         hides = [h.strip() for h in hides.split(",") if h.strip()] if isinstance(hides, str) else DEFAULT_HIDES.get(slot, [])
         export([o], os.path.join(out_dir, "parts", f"{slot}_{part_id}.glb"))
-        meta["parts"].append({"slot": slot, "partId": part_id, "displayName": o.get("displayName", part_id), "hides": hides, "tris": tris(o)})
+        entry = {"slot": slot, "partId": part_id, "displayName": o.get("displayName", part_id), "hides": hides, "tris": tris(o)}
+        if o.get("exhaustTips"):
+            entry["exhaustTips"] = json.loads(o["exhaustTips"])
+        meta["parts"].append(entry)
 
     export_wheels(wheels, out_dir, meta)
 

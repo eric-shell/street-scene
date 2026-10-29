@@ -226,6 +226,35 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_rearBumper_centerExhaust",
+      "displayName": "Center Exhaust",
+      "carId": "wendtStrom",
+      "slot": "rearBumper",
+      "file": "parts/wendtStrom_rearBumper_centerExhaust.glb",
+      "hides": [
+        "Bumper_Rear",
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.065,
+          0.257,
+          -1.96
+        ],
+        [
+          -0.065,
+          0.257,
+          -1.96
+        ]
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 1122,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",

@@ -252,6 +252,8 @@ export class CarView {
   private readonly roadLift: number;
   /** The exhaust tips in car space (x, y, z; m), left to right: where CarView's flames sit and ExhaustFx's start. */
   readonly tips: [number, number, number][] = [];
+  /** The car's own tips (the manifest's, sorted like `tips`), for when no part moves them. */
+  private baseTips: [number, number, number][] = [];
   /** Nitrous flames, one per exhaust tip. */
   private flames: THREE.Mesh[] = [];
   /** Overrun pop flames per exhaust tip (the tongue, its hot core, the muzzle glow), the pipe each tip belongs to (0 or 1), when each starts and how big it is (1 bang, 0 crackle). */
@@ -418,6 +420,7 @@ export class CarView {
     const flameGeo = track(new THREE.ConeGeometry(0.11, 0.9, 10, 1, true).rotateX(-Math.PI / 2).translate(0, 0, -0.45));
     const tips = (this.car.exhaustTips ?? [[DEFAULT_TIP.x, DEFAULT_TIP.y, -dims.length / 2 + 0.05], [-DEFAULT_TIP.x, DEFAULT_TIP.y, -dims.length / 2 + 0.05]]).slice().sort((a, b) => b[0] - a[0]);
     this.tips.push(...tips);
+    this.baseTips = tips.map((t) => [...t] as [number, number, number]);
     const additive = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false } as const;
     for (const [i, [x, y, z]] of tips.entries()) {
       const flame = new THREE.Mesh(flameGeo, track(new THREE.MeshBasicMaterial({ color: NITRO_FLAME.color[0].clone(), opacity: 0.85, ...additive })));
@@ -540,6 +543,7 @@ export class CarView {
       }
     }
     this.updateHiddenBaseMeshes();
+    this.placeTips();
     this.seatPlate();
     const parts = [...BODY_PART_SLOTS, 'body' as PartSlot].map((slot) => v.parts[slot] ?? '').join('|');
     if (parts !== this.clipParts) {
@@ -585,6 +589,25 @@ export class CarView {
     const dev = this.assets.devParts.get(id);
     if (!dev) return undefined;
     return { id, displayName: dev.name, carId: this.car.id, slot: dev.slot, file: '', hides: [], materialSlots: [], tris: 0 };
+  }
+
+  /**
+   * Move the flames, pops and ExhaustFx's start (it reads `tips` each frame) to an equipped part's own tips (a
+   * center exhaust bumper), or back to the car's. Only a part with as many tips as the car moves them: the pools
+   * are built per tip.
+   */
+  private placeTips(): void {
+    let tips = this.baseTips;
+    for (const [, obj] of this.slotObjects) {
+      const own = partById(obj.userData.partId as string)?.exhaustTips;
+      if (own && own.length === this.baseTips.length) tips = own.slice().sort((a, b) => b[0] - a[0]);
+    }
+    for (const [i, [x, y, z]] of tips.entries()) {
+      this.tips[i] = [x, y, z];
+      this.flames[i]?.position.set(x, y, z);
+      const p = this.pops[i];
+      if (p) for (const o of [p.tongue, p.core, p.glow]) o.position.set(x, y, z);
+    }
   }
 
   private updateHiddenBaseMeshes(): void {
