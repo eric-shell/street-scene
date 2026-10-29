@@ -42,7 +42,8 @@ exec(open(os.path.join(REPO, 'scripts/blender/meshopt.py')).read())   # meshopt_
 
 BUDGET = 16000   # triangles per car for the reduced donor shell, the same for every car: at 8,000 mirrors, handles and lamp edges smeared
 INTERIOR_BUDGET = 2500   # triangles for the donor's own cabin (dash, seats, door cards), seen through the glass
-LAMP_BUDGET = 4000   # triangles of BUDGET set aside for the lamps (lenses, and the reflectors and housings behind a clear cover); the shell keeps the rest whatever the lamps take
+LAMP_BUDGET = 4000   # triangles for the lamps (lenses, and the reflectors and housings behind a clear cover), reduced before the shell
+CAR_BUDGET = 20000   # the whole car (TRI_BUDGETS.body): the cabin and the lamps first, the shell the rest, up to BUDGET
 LAMP_ERROR = 0.003   # the lamps' collapse stops at this share of their extent (the whole car's length: 13 mm), not MESHOPT's 1 %; the RX-7's take 4,900
 REDUCER = 'meshopt'   # _collapse: 'meshopt' (meshopt.py) or 'blender' (the Decimate modifier, mirror-symmetric)
 
@@ -83,10 +84,31 @@ DONORS = {
         # `material` is one atlas for the trim, seals, bumper inserts and mirror housings; `chassis`
         # the underbody.
         'materials': {r'^material$': 'Black', r'^chassis$': 'Black'},
-        # The lamp lenses are `glass` like the windows: the headlight covers are their own mesh at
-        # the nose, the tail lenses part of the rear glass at the corners below the hatch window.
-        'recolor': [(lambda c, n, m: m == 'Glass' and c.y < -1.5, 'HeadLight'),
-                    (lambda c, n, m: m == 'Glass' and c.y > 1.55 and c.z < 0.95 and abs(c.x) > 0.4, 'TailLight')],
+        # The lamps are geometry painted by the `Lights` texture: its colours class each face
+        # (`texture`, lamp_colour), the tail lamps cut first along their bands (`textureCuts`,
+        # probed off the texture: red, a smoked band from 0.806 to 0.850 with the reverse lamp at
+        # its outer end, red, and a smoked fog block on the lower inner corner). Their covers are
+        # `glass` like the windows: the headlight covers their own mesh at the nose, the tail
+        # covers part of the rear glass at the corners below the hatch window; both clear.
+        'texture': [r'^Lights$'],
+        'textureCuts': [('z', 0.806), ('z', 0.850), ('x', 0.672), ('x', 0.720), ('z', 0.706), ('z', 0.750), ('x', 0.588)],
+        # The headlamps' two reflector bowls and their bulbs glow (the bezel round them stays
+        # chrome; the bowls sit behind its front, y > -1.975); the small red round lens between
+        # them is an unlit reflector, the fog lamp under it unlit. The reverse lamp stays the
+        # texture's bright chrome: as a clear lens it read as a hole onto the black housing.
+        'recolor': [(lambda c, n, m: m == 'Glass' and c.y < -1.5, 'Lens'),
+                    (lambda c, n, m: m == 'Glass' and c.y > 1.55 and c.z < 0.95 and abs(c.x) > 0.4, 'Lens'),
+                    # The bowls' texture has dark streaks (classed Black); the housing's floor under
+                    # them faces straight up, a bowl's bottom up and forward.
+                    (lambda c, n, m: m in ('Chrome', 'Black') and -1.975 < c.y < -1.8 and n.z < 0.85
+                     and (math.hypot(abs(c.x) - 0.442, c.z - 0.618) < 0.06 or math.hypot(abs(c.x) - 0.627, c.z - 0.648) < 0.072), 'HeadLight'),
+                    (lambda c, n, m: m in ('TailLight', 'Black') and math.hypot(abs(c.x) - 0.522, c.z - 0.674) < 0.03 and -1.93 < c.y < -1.9, 'Reflector'),
+                    # The third brake light: the red strip across the top of the rear glass.
+                    (lambda c, n, m: m == 'TailLight' and c.z > 1.2, 'BrakeLight'),
+                    # The reverse lamp's texture is white stripes on smoke, and the fog block's has
+                    # specks: each block one colour, the reverse lamp bright, the fog block dark.
+                    (lambda c, n, m: m in LAMP_MATS + ('Chrome', 'Black') and m != 'Lens' and c.y > 1.6 and 0.806 < c.z < 0.85 and 0.672 < abs(c.x) < 0.72, 'Chrome'),
+                    (lambda c, n, m: m in ('Chrome', 'TailLight', 'Light') and c.y > 1.6 and 0.706 < c.z < 0.75 and abs(c.x) < 0.588, 'Black')],
         # The paint disc behind the grille badge, and the roof antenna's stub. The disc's box stops
         # short of the bumper's top lip (z 0.57 to 0.585) and the hood's leading edge (from 0.685):
         # at 0.57 to 0.70 it cut both, and the shipped file had them filled back in by hand.
@@ -97,6 +119,11 @@ DONORS = {
         # behind the grille, at the bars' height) joins the two ends of each bar, as in the shipped
         # file.
         'bridges': [((-0.058, -2.07, 0.60), (0.058, -2.03, 0.67))],
+        # The grille (two body colour bars from headlamp to headlamp over a black panel) and the
+        # lower intake (three openings on clean outlines, painted rims, closed black pockets) were
+        # rebuilt by hand on 2026-10-27: the reduction leaves a tangle of slivers in both. They
+        # are kept as pieces (wendtStrom.pieces.glb, save_pieces) and spliced in on every rebuild.
+        'pieces': True,
     },
     'kazamaRotor': {
         'name': '1999 Mazda RX-7 (FD3S)',
@@ -325,6 +352,55 @@ AUTO = [
     (r'(?i)black|plastic|trim|grill|rubber|detail|matte|mirror', 'Black'),
 ]
 TIRES = r'(?i)tire|tyre|llanta'
+
+
+_TEXTURES = {}
+
+
+def _texture_map(mat):
+    """The base colour image of a material as an (h, w, 3) array, cached by image name: the
+    image texture feeding the Principled BSDF's Base Color, through any nodes between. None when
+    the colour is not an image."""
+    if not mat.node_tree:
+        return None
+    bsdf = next((n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+    stack = [bsdf.inputs['Base Color']] if bsdf else []
+    while stack:
+        sock = stack.pop()
+        for link in sock.links:
+            node = link.from_node
+            if node.type == 'TEX_IMAGE' and node.image:
+                im = node.image
+                if im.name not in _TEXTURES:
+                    w, h = im.size
+                    a = np.empty(w * h * 4, np.float32)
+                    im.pixels.foreach_get(a)
+                    _TEXTURES[im.name] = a.reshape(h, w, 4)[..., :3]
+                return _TEXTURES[im.name]
+            stack += list(node.inputs)
+    return None
+
+
+def _sample(tex, f, uv):
+    """The colour of `tex` at a bmesh face's UV center (its corners sit on band edges once the
+    face is cut along them, and would pull in the neighbour's colour)."""
+    h, w = tex.shape[:2]
+    p = sum((l[uv].uv for l in f.loops), Vector((0, 0))) / len(f.loops)
+    return tex[min(h - 1, int((p.y % 1) * h)), min(w - 1, int((p.x % 1) * w))]
+
+
+def lamp_colour(rgb):
+    """The shared class of a lamp face from the colour its texture paints it (recipe `texture`):
+    red a tail lamp, amber an indicator, bright (reflectors, chrome, a clear lens) Chrome, the rest
+    (housings, smoked bands) Black. The recipe's `recolor` then says which bright faces glow (the
+    reflector bowls) or are clear (a reverse lamp), by position."""
+    import colorsys
+    h, s, v = colorsys.rgb_to_hsv(*[float(x) for x in rgb])
+    if s > 0.4 and (h < 0.05 or h > 0.93):
+        return 'TailLight'
+    if s > 0.4 and h < 0.17:
+        return 'Light'
+    return 'Chrome' if v >= 0.35 else 'Black'
 
 
 def _classify(R, mat_name):
@@ -717,14 +793,37 @@ def donor(cid, root):
         sn = me.attributes.new('src_normal', 'FLOAT_VECTOR', 'CORNER')
         sn.data.foreach_set('vector', [x for c in me.corner_normals for x in c.vector])
         names = [_classify(R, m.name) if m else 'drop' for m in me.materials] or ['drop']
+        # Lamps painted in a texture over their geometry (recipe `texture`): each face takes the
+        # class of the colour under it, ahead of and behind the axles (between them the cabin's
+        # lamps keep the positional pass).
+        maps = [_texture_map(m) if m and any(re.search(t, _base(m.name)) for t in R.get('texture', ())) else None for m in me.materials]
         doomed = [p.index for p in me.polygons if names[p.material_index] == 'drop']
         tmp = bmesh.new()
         tmp.from_mesh(me)
         tmp.faces.ensure_lookup_table()
         bmesh.ops.delete(tmp, geom=[tmp.faces[i] for i in doomed], context='FACES')
+        uv = tmp.loops.layers.uv.active
+        half_wb = (ry - fy) / 2
+        # A texture's bands rarely follow the lamp's faces: cut the textured faces along the band
+        # edges first (recipe `textureCuts`, (axis, value) in car space, mirrored across x = 0
+        # for 'x'), so each piece lies in one colour and the edges run straight.
+        cuts = R.get('textureCuts', ())
+        if cuts and any(m is not None for m in maps):
+            for axis, value in cuts:
+                for v in ((value, -value) if axis == 'x' else (value,)):
+                    faces = [f for f in tmp.faces if maps[f.material_index] is not None and abs(f.calc_center_median().y) > half_wb]
+                    if not faces:
+                        continue
+                    geom = list({e for f in faces for e in f.edges}) + faces + list({x for f in faces for x in f.verts})
+                    no = Vector((1, 0, 0)) if axis == 'x' else Vector((0, 1, 0)) if axis == 'y' else Vector((0, 0, 1))
+                    bmesh.ops.bisect_plane(tmp, geom=geom, plane_co=no * v, plane_no=no)
+            tmp.faces.ensure_lookup_table()
         # Every piece indexes the full shared list ('Lamp' resolved after the join), so they merge as is.
         for f in tmp.faces:
             n = names[f.material_index]
+            tex = maps[f.material_index]
+            if tex is not None and uv is not None and abs(f.calc_center_median().y) > half_wb:
+                n = R.get('textureClass', lamp_colour)(_sample(tex, f, uv))
             f.material_index = SHARED.index('HeadLight' if n == 'Lamp' else n) + (100 if n == 'Lamp' else 0)
         tmp.to_mesh(me)
         tmp.free()
@@ -1342,17 +1441,17 @@ def _set_custom_normals(o):
 
 def _inside_lenses(o, reach=0.3):
     """A test of a point (Blender space): inside a lamp, under a clear cover (`Lens`) within `reach`
-    m outward, along the car (toward its nearer end) or across it (toward its nearer side). A box
-    round the cover would not do: the RX-7's tail cover is one curved bar, and its box held the
-    panel and the lettering below it."""
+    m outward along the car (toward its nearer end). A box round the cover would not do: the
+    RX-7's tail cover is one curved bar, and its box held the panel and the lettering below it.
+    Nor a ray across the car: from the Golf's grille it met the headlamp cover's inboard side,
+    and the grille bars were taken for lamp parts."""
     me = o.data
     names = [m.name.split('.')[0] if m else '' for m in me.materials]
     covers = [list(p.vertices) for p in me.polygons if names[p.material_index] == 'Lens']
     if not covers:
         return lambda c: False
     tree = BVHTree.FromPolygons([v.co.copy() for v in me.vertices], covers)
-    return lambda c: any(tree.ray_cast(c, d, reach)[0] is not None
-                         for d in (Vector((0, 1 if c.y > 0 else -1, 0)), Vector((1 if c.x > 0 else -1, 0, 0))))
+    return lambda c: tree.ray_cast(c, Vector((0, 1 if c.y > 0 else -1, 0)), reach)[0] is not None
 
 
 def lamp_faces(o, extra=()):
@@ -1375,7 +1474,7 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     either balloon (all smooth) or facet at random (split by angle), and on a game-ready donor
     whose panels are slightly wavy they show every ripple. The cabin is reduced apart, to its own
     budget; the lamps first, to theirs, then welded back and held while the shell collapses round
-    them. Prints the culling and how far the low vertices drift from the full surface (mean and
+    them to what the two leave of CAR_BUDGET (at most `budget`). Prints the culling and how far the low vertices drift from the full surface (mean and
     95th percentile, mm)."""
     full = bpy.data.objects[f'donor:{cid}.Full']
     skin = _copy(full, f'donor:{cid}.Skin')
@@ -1412,9 +1511,13 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     kept = tris(lamp) if lamp.data.polygons else 0
     print(f'{cid}: lamps {lamp_tris} -> {kept} tris')
     bpy.data.objects.remove(lamp)
-    # The shell gets the budget less the lamps' share, however many the lamps kept: squeezed by them
-    # to 10,000, the RX-7's doors fell inside its cabin.
-    _collapse(low, budget - min(lamps, kept) + kept, lock='lamp')
+    if cabin.data.polygons:
+        _collapse(cabin, interior)
+    # The shell takes what the cabin and the lamps leave of the car's budget, up to `budget`: a
+    # fixed share set aside for lamps squeezed the Golf's shell (whose cabin is 938 triangles) to
+    # 12,000 and its grille bars collapsed; squeezed to 10,000, the RX-7's doors fell inside its cabin.
+    shell = min(budget, CAR_BUDGET - kept - tris(cabin))
+    _collapse(low, shell + kept, lock='lamp')
     if low.data.attributes.get('lamp'):
         low.data.attributes.remove(low.data.attributes['lamp'])
     for g in list(low.vertex_groups):
@@ -1426,9 +1529,12 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
         lamp_strip(low, points, height, material)
     for center, radius, material in DONORS[cid].get('discs', ()):
         lamp_disc(low, center, radius, material)
+    # Hand-made pieces (recipe `pieces`) go in last, into the reduced shell: spliced in before the
+    # collapse, the shell round them folded into slivers.
+    if DONORS[cid].get('pieces'):
+        splice_pieces(cid, low)
     turned = shade_from_source(low, skin)
     if cabin.data.polygons:
-        _collapse(cabin, interior)
         turned += shade_from_source(cabin, skin)
         _carry_custom_normals(cabin)
         _carry_custom_normals(low)
@@ -1449,6 +1555,107 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
           f'drift mean {sum(d) / len(d) * 1000:.1f} mm, p95 {d[int(len(d) * 0.95)] * 1000:.1f} mm; '
           f'lost p95 {lost[int(len(lost) * 0.95)] * 1000:.1f} mm, max {lost[-1] * 1000:.0f} mm')
     return low
+
+
+def _pieces_path(cid):
+    return os.path.join(REPO, f'assets/source/eshell/{cid}/{cid}.pieces.glb')
+
+
+def save_pieces(cid, boxes, src=None):
+    """Keep hand-modelled regions of a shipped car as pieces a reimport splices back (recipe
+    `pieces`, splice_pieces): for each `name: (lo, hi)` in `boxes` (Blender space), the faces of
+    `src` (default `<cid>.Body`) centered in the box become an object `piece_<name>` carrying the
+    box, all written to `assets/source/eshell/<cid>/<cid>.pieces.glb` (a GLB: saving part of the
+    live session as a .blend crashes Blender 5.2). For work no recipe rule can express, such as the
+    Golf's grille bars and lower intake, rebuilt by hand on 2026-10-27."""
+    body = bpy.data.objects[src or f'{cid}.Body']
+    names = [m.name.split('.')[0].split('_')[-1] for m in body.data.materials]
+    made = []
+    for name, (lo, hi) in boxes.items():
+        lo, hi = Vector(lo), Vector(hi)
+        o = _copy(body, f'piece_{name}')
+        o.matrix_world = Matrix.Identity(4)
+        _delete_indices(o, lambda p: not all(lo[i] <= p.center[i] <= hi[i] for i in range(3)))
+        for i, n in enumerate(names):
+            o.data.materials[i] = shared_mat(n)
+        o['cut_lo'], o['cut_hi'] = list(lo), list(hi)
+        made.append(o)
+        print(f'{cid}: piece {name}: {len(o.data.polygons)} faces')
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in made:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = made[0]
+    bpy.ops.export_scene.gltf(filepath=_pieces_path(cid), use_selection=True, export_extras=True, export_apply=True)
+    for o in made:
+        bpy.data.objects.remove(o)
+
+
+def splice_pieces(cid, low, snap=0.01, reach=0.1):
+    """Splice the car's kept pieces (save_pieces) into the reduced shell: the faces centered in
+    each piece's box go, the piece's faces come in, and every vertex on the piece's open edge is
+    snapped to the nearest vertex on the hole's edge within `snap` m and welded, so the seam
+    closes. Returns the triangles spliced in."""
+    from mathutils.kdtree import KDTree
+    path = _pieces_path(cid)
+    if not os.path.exists(path):
+        raise FileNotFoundError(f'{cid}: recipe `pieces` but no {path} (save_pieces)')
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=path)
+    pieces = [o for o in set(bpy.data.objects) - before if o.type == 'MESH']
+    added = 0
+    for piece in pieces:
+        bake(piece)
+        lo, hi = Vector(piece['cut_lo']), Vector(piece['cut_hi'])
+        # Only what the piece covers goes: a face in the box the piece hides seen along the car,
+        # within `reach` in front or behind (the reduced grille's tangle sat between the piece's
+        # bars and its back panel, and its teeth just off the hood edge), and only a face wholly
+        # in the box: the box alone cut the bumper's corner beside the Golf's side intake, and
+        # faces reaching past it the hood's and the bumper's lips, and left holes.
+        cover = surface_tree([piece])
+        covered = lambda c: any(cover.ray_cast(c, Vector((0, d, 0)), reach)[0] is not None for d in (1, -1))
+        verts = low.data.vertices
+        whole = lambda p: all(lo[i] <= verts[v].co[i] <= hi[i] for v in p.vertices for i in range(3))
+        _delete_indices(low, lambda p: whole(p) and covered(p.center))
+        bm = bmesh.new()
+        bm.from_mesh(low.data)
+        hole = [v for v in bm.verts if any(e.is_boundary for e in v.link_edges)
+                and all(lo[i] - snap <= v.co[i] <= hi[i] + snap for i in range(3))]
+        tree = KDTree(len(hole))
+        for i, v in enumerate(hole):
+            tree.insert(v.co, i)
+        tree.balance()
+        start = len(bm.verts)
+        idx = {m.name.split('.')[0]: mat_index(low, m.name.split('.')[0]) for m in piece.data.materials if m}
+        pm = bmesh.new()
+        pm.from_mesh(piece.data)
+        bmesh.ops.triangulate(pm, faces=pm.faces[:])
+        own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+        vmap = {v: bm.verts.new(v.co) for v in pm.verts}
+        for f in pm.faces:
+            try:
+                g = bm.faces.new([vmap[v] for v in f.verts])
+            except ValueError:
+                continue
+            m = piece.data.materials[f.material_index]
+            g.material_index = idx[m.name.split('.')[0]] if m else 0
+            g[own] = 1
+            g.smooth = f.smooth
+            added += 1
+        welds = []
+        for v, nv in vmap.items():
+            if any(e.is_boundary for e in v.link_edges) and hole:
+                co, _, d = tree.find(nv.co)
+                if d <= snap:
+                    nv.co = co
+                    welds.append(nv)
+        pm.free()
+        if welds:
+            bmesh.ops.remove_doubles(bm, verts=welds + hole, dist=1e-5)
+        bm.to_mesh(low.data)
+        bm.free()
+        print(f'{cid}: spliced {piece.name}: {len(piece.data.polygons)} faces, {len(welds)} edge vertices welded')
+        bpy.data.objects.remove(piece)
+    return added
 
 
 def lamp_disc(o, center, radius, material, segments=24):
