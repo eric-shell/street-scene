@@ -886,6 +886,61 @@ def bumper_lip(src, target, center=(0, -1.55), angles=None, band=(0.165, 0.235),
     return secs
 
 
+def section_cut(o, z, x, y_back, skin_y=None):
+    """A sectioned rear bumper: remove everything below the straight line z between |x| < x (the line
+    joining the tops of the exhaust notches; the Wendt Strom's rims top out at z 0.338, so 0.34) and
+    close the skin's cut edge with a black return running in to a straight back edge at y_back.
+    Every face with a vertex on each side of the line is bisected (a face-centre test skipped a big
+    face and left a vertex hanging), and a vertex still below the line inside the span afterwards
+    (a notch rim vertex owned by faces centred outboard) is snapped up onto it. The return is one
+    strip through the cut edge's points sorted by x: built per boundary edge it left gaps that hung
+    fins. `skin_y` picks the outer skin's edge from inner panels (default: 6 cm in from the rearmost
+    point on the line). Returns the skin edge points."""
+    carry = stash_normals(o)
+    me = o.data
+    black = [m.name.split('.')[0] for m in me.materials].index('Black')
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    cross = [f for f in bm.faces if min(v.co.z for v in f.verts) < z < max(v.co.z for v in f.verts)
+             and min(abs(v.co.x) for v in f.verts) < x + 0.02]
+    geom = list({v for f in cross for v in f.verts}) + list({e for f in cross for e in f.edges}) + cross
+    bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-5, plane_co=Vector((0, 0, z)), plane_no=Vector((0, 0, 1)))
+    gone = [f for f in bm.faces if f.calc_center_median().z < z and abs(f.calc_center_median().x) < x]
+    bmesh.ops.delete(bm, geom=gone, context='FACES')
+    snapped = [v for v in bm.verts if v.link_faces and abs(v.co.x) < x - 0.002 and z - 0.02 < v.co.z < z - 1e-4]
+    for v in snapped:
+        v.co.z = z
+    bm.edges.ensure_lookup_table()
+    on = [e for e in bm.edges if e.is_boundary and all(abs(v.co.z - z) < 2e-4 and abs(v.co.x) <= x + 1e-3 for v in e.verts)]
+    if skin_y is None:
+        skin_y = max(v.co.y for e in on for v in e.verts) - 0.06
+    line = []
+    for v in sorted({v for e in on for v in e.verts if v.co.y > skin_y}, key=lambda v: v.co.x):
+        if line and abs(v.co.x - line[-1].co.x) < 0.004:
+            if v.co.y > line[-1].co.y:
+                line[-1] = v
+        else:
+            line.append(v)
+    for v in snapped:   # out onto the cut edge, between the edge points either side
+        for a, b in zip(line, line[1:]):
+            if a.co.x <= v.co.x <= b.co.x and v not in (a, b):
+                v.co.y = (a.co.y + b.co.y) / 2
+    backs = [bm.verts.new((v.co.x, y_back, z)) for v in line]
+    for a, b, ba, bb_ in zip(line, line[1:], backs, backs[1:]):
+        f = bm.faces.new((a, b, bb_, ba))
+        f.normal_update()
+        if f.normal.z > 0:
+            f.normal_flip()
+        f.material_index = black
+    edge = [v.co.copy() for v in line]
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    if carry:
+        restore_normals(o)
+    return edge
+
+
 def punch_holes(o, holes, r, depth=0.015, sides=16, wall='Black', back='Black', skin=0.012, stretch=0.0, along='z'):
     """Real round holes through a panel (speed holes, vents): for each (center, normal), `center` on the
     surface and `normal` pointing out of it, the faces round it are cut along a `sides`-gon of radius r

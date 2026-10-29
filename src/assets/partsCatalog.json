@@ -210,6 +210,22 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_rearBumper_sectionedEuro",
+      "displayName": "Sectioned Euro",
+      "carId": "wendtStrom",
+      "slot": "rearBumper",
+      "file": "parts/wendtStrom_rearBumper_sectionedEuro.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 931,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",
