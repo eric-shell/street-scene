@@ -102,6 +102,23 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_frontBumper_trackWild",
+      "displayName": "Track Wild",
+      "carId": "wendtStrom",
+      "slot": "frontBumper",
+      "file": "parts/wendtStrom_frontBumper_trackWild.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 5373,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",

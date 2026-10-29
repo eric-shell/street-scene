@@ -770,8 +770,10 @@ def sweep(o, sections, name, outward=None):
     in order round the profile), joined side by side into quads and capped at both ends. Each side
     is smooth along the path and sharp at the profile's corners: its corner normals are written into
     `src_normal` when the piece carries authored normals (stash_normals first), otherwise the faces are
-    smooth with sharp profile edges marked. `outward(i)`, a plan direction per station, orients the
-    sides; by default they face away from each section's centroid. Lips, blades, rubbing strips."""
+    smooth with sharp profile edges marked. Sides face out by the profile's own winding round the path,
+    so an L or a lipped profile (a splitter with its air dam, a canard with an end lip) comes out
+    right; facing away from the section's centroid, the first rule, turned a concave profile's inner
+    faces inside out. Lips, blades, rubbing strips."""
     k = len(sections[0])
     me = o.data
     bm = bmesh.new()
@@ -783,10 +785,19 @@ def sweep(o, sections, name, outward=None):
     n = len(sections)
     tangent = [(cent[min(i + 1, n - 1)] - cent[max(i - 1, 0)]).normalized() for i in range(n)]
 
+    def winding(i):
+        """+1 when the section runs counterclockwise seen along the path (Newell's normal), else -1."""
+        sec = [Vector(p) for p in sections[i]]
+        nw = Vector()
+        for a, b in zip(sec, sec[1:] + sec[:1]):
+            nw += Vector(((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y)))
+        return 1 if nw.dot(tangent[i]) > 0 else -1
+
+    wind = [winding(i) for i in range(n)]
+
     def side_normal(i, s):
         a, b = Vector(sections[i][s]), Vector(sections[i][(s + 1) % k])
-        nr = tangent[i].cross(b - a).normalized()
-        return nr if nr.dot((a + b) / 2 - cent[i]) > 0 else -nr
+        return ((b - a).cross(tangent[i]) * wind[i]).normalized()
 
     for i in range(n - 1):
         for s in range(k):
@@ -794,8 +805,7 @@ def sweep(o, sections, name, outward=None):
             f.material_index = mi
             f.smooth = True
             f.normal_update()
-            mid = (sum((v.co for v in f.verts), Vector()) / 4) - (cent[i] + cent[i + 1]) / 2
-            if f.normal.dot(mid) < 0:
+            if f.normal.dot(side_normal(i, s) + side_normal(i + 1, s)) < 0:
                 f.normal_flip()
             if sn is not None:
                 for loop in f.loops:
@@ -981,7 +991,7 @@ SHEET_ANGLES = (0, 8, 16, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 52.5, 54, 55.5
 
 def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 0.235), thick=0.013,
               proud=0.03, end_proud=0.012, taper_from=70, tuck=0.04, butt=0.004, chamfer=0.006, full=True,
-              from_face=True, face_band=0.4, smooth=3, crisp=False, material='Black'):
+              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, material='Black'):
     """A flat splitter cut from sheet stock (half inch HDPE) under a front bumper: top and bottom flat
     all the way round at the height of the bumper's underside at the nose, its outline through `angles`
     (degrees about `center`, one half, mirrored), with a 45 degree `chamfer` on the top front edge.
@@ -999,7 +1009,10 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
     underside is still above it. The Wendt Strom's Track bumper. Carries authored normals. Returns the
     sections."""
     E = lower_edge(src, center, list(angles), *band)
-    top = E[0].z - 0.002
+    # `drop` lowers the sheet below the bumper (a race splitter), `dam` > 0 closes the gap it opens
+    # with a vertical panel that thick from the bumper's bottom edge down to the sheet, following the
+    # bumper round to the arches: one L section, so the panel and the sheet share their edge.
+    top = E[0].z - 0.002 - drop
     keep = [i for i, e in enumerate(E) if full or e.z >= top + 0.001 or i == 0]
     E = [E[i] for i in keep]
     A = [angles[i] for i in keep]
@@ -1043,6 +1056,14 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
         n3 = Vector((N[i].x, N[i].y, 0))
         tk = tuck if e.z >= top + 0.001 else butt
         front = Vector((P[i].x, P[i].y, 0))
+        if dam > 0:
+            edge = front - n3 * ext[i]
+            zu = e.z + 0.003
+            secs.append([tuple(edge - n3 * dam + Vector((0, 0, zu))), tuple(edge + Vector((0, 0, zu))),
+                         tuple(edge + Vector((0, 0, top))), tuple(front - n3 * chamfer + Vector((0, 0, top))),
+                         tuple(front + Vector((0, 0, top - chamfer))), tuple(front + Vector((0, 0, bot))),
+                         tuple(edge - n3 * dam + Vector((0, 0, bot)))])
+            continue
         back = front - n3 * (ext[i] + tk)
         secs.append([tuple(back + Vector((0, 0, top))),
                      tuple(front - n3 * chamfer + Vector((0, 0, top))),
@@ -1061,7 +1082,7 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
 
 
 def canard(src, target, side, a0, a1, z0, rise=0.03, width=(0.06, 0.02), thick=0.004, embed=0.006,
-           chamfer=0.0, curve=0.0, corner=(0.0, 0.0), center=(0, -1.55), stations=5, material='Black'):
+           chamfer=0.0, curve=0.0, corner=(0.0, 0.0), lip=0.0, center=(0, -1.55), stations=5, material='Black'):
     """A canard (dive plane) on a bumper's corner: a thin plate standing out of the corner face from
     `a0` to `a1` degrees about `center` (plan, 0 toward -y; `side` +1 the car's left, -1 its right), its
     root following the face (plan rays at each station) from height z0 at the front end to z0 + `rise`
@@ -1099,12 +1120,53 @@ def canard(src, target, side, a0, a1, z0, rise=0.03, width=(0.06, 0.02), thick=0
         w = width[0] + (width[1] - width[0]) * f
         w -= max(pull(along, corner[0]), pull(total - along, corner[1]))
         up = Vector((0, 0, thick / 2))
-        if chamfer > 0:
+        if lip > 0:
+            # A vertical end plate along the outer edge, `lip` m tall above the plate, `thick` thick.
+            L = Vector((0, 0, lip))
+            secs.append([tuple(s - n * embed + up), tuple(s + n * (w - thick) + up), tuple(s + n * (w - thick) + up + L),
+                         tuple(s + n * w + up + L), tuple(s + n * w - up), tuple(s - n * embed - up)])
+        elif chamfer > 0:
             ch = Vector((0, 0, chamfer))
             secs.append([tuple(s - n * embed + up), tuple(s + n * (w - chamfer) + up), tuple(s + n * w + up - ch),
                          tuple(s + n * w - up), tuple(s - n * embed - up)])
         else:
             secs.append([tuple(s - n * embed + up), tuple(s + n * w + up), tuple(s + n * w - up), tuple(s - n * embed - up)])
+    carry = stash_normals(target)
+    sweep(target, secs, material)
+    if carry:
+        restore_normals(target)
+    return secs
+
+
+def tow_strap(target, root, direction, length=0.10, width=0.035, strap=(0.022, 0.004), segments=20, material='Chrome'):
+    """A tow hook loop: a flat strap bent into a racetrack loop `length` m long and `width` wide from
+    `root` (where it leaves the panel, a few mm inside it) along `direction`, the strap `strap`
+    (width, thickness) m in section, its broad face across the loop's plane. Track cars carry one in a
+    lower intake (the Wendt Strom's Track Wild, passenger side). Carries authored normals."""
+    d = Vector(direction).normalized()
+    side = d.cross(Vector((0, 0, 1))).normalized()
+    if side.length < 1e-6:
+        side = Vector((1, 0, 0))
+    up = side.cross(d).normalized()
+    r = width / 2
+    straight = max(length - width, 0.0)
+    root = Vector(root)
+    # The loop's centreline: up one side, round the far end, back down the other, round the root end.
+    path = []
+    half = segments // 2
+    for k in range(half + 1):
+        a = math.pi * k / half
+        path.append(root + d * (r + straight + r * math.sin(a)) + side * (r * math.cos(a)))
+    for k in range(half + 1):
+        a = math.pi * k / half
+        path.append(root + d * (r - r * math.sin(a)) - side * (r * math.cos(a)))
+    path.append(path[0])
+    w, t = strap[0] / 2, strap[1] / 2
+    secs = []
+    for i, p in enumerate(path):
+        tg = (path[min(i + 1, len(path) - 1)] - path[max(i - 1, 0)]).normalized()
+        out = tg.cross(up).normalized()
+        secs.append([tuple(p + up * w + out * t), tuple(p - up * w + out * t), tuple(p - up * w - out * t), tuple(p + up * w - out * t)])
     carry = stash_normals(target)
     sweep(target, secs, material)
     if carry:
