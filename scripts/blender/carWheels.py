@@ -265,8 +265,10 @@ WHEELS = {
                                   # 109k triangles of spoke went as bolts
     'fuuga': {'name': 'RAYS G025', 'uid': '8b14891bb44b43729d07f1e4e2744488', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
             'drop': r'^material\.001$',   # the spoke sticker
+            'lugs': 0,   # the center cap covers the lug circle
             'chunks': True},   # a scan in chunks, as the 57CR
     'hinoko': {'name': 'RAYS HOMURA 2x7', 'uid': 'f2da4e9b0d04418aa1b53022d692ea6b', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
+             'cap_disc': 0.12,   # the turned cap sat 3 to 20 mm behind the donor's own flat hub disc (r 24 mm, a second Rim layer in front of it); take the disc in so the cap is the one surface, short of the lug circle (r 36 mm) on the cone
              'chunks': True},   # a scan in chunks, as the 57CR
     # 2026-10-28, two more (CC BY 4.0)
     'shirabe': {'name': 'Konig Countergram 5x120 Wheel / FREE MODEL', 'uid': 'c3bffbcaafbe4f5388f14feed6b38cca', 'maker': 'Konig', 'author': 'shevchenkovisuals', 'license': 'CC Attribution',

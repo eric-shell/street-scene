@@ -285,13 +285,6 @@
       "displayName": "Fuuga",
       "group": "Genbu",
       "lip": "rim",
-      "lugs": {
-        "count": 5,
-        "r": 0.05921,
-        "phase": -0.96291,
-        "x": 0.06299,
-        "size": 0.016
-      },
       "carId": "universal",
       "slot": "wheels",
       "file": "parts/wheel_fuuga.glb",
@@ -657,7 +650,7 @@
         "RimLip",
         "Tire"
       ],
-      "tris": 9853,
+      "tris": 9807,
       "generated": true
     },
     {
