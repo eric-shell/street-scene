@@ -116,12 +116,6 @@
     color: var(--soft);
   }
 }
-/* The new city's menu: its cards rise in as the iris opens (the title lockup never left). */
-.menu.is-reseeded > .rail__step > * {
-  @include media.motion {
-    animation: rise-in 0.5s var(--ease-out) calc(120ms + var(--i, 0) * 60ms) both;
-  }
-}
 @keyframes shift-rays {
   to {
     transform: rotate(1turn);

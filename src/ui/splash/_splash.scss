@@ -344,18 +344,14 @@
   }
 }
 /* The menu under the splash: laid out but unseen (.is-pending), so the title has a place to land; then
-   everything but the title lockup rises in while the title flies down (.is-arriving). */
+   everything but the title lockup cascades in while the title flies down (.is-arriving, the menu's opening in
+   _menu.scss). */
 .menu {
   &.is-pending > * {
     visibility: hidden;
   }
   &.is-arriving > .title-lockup {
     visibility: hidden;
-  }
-  &.is-arriving > .rail__step > * {
-    @include media.motion {
-      animation: rise-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i, 0) * 60ms) both;
-    }
   }
 }
 /* Without the animations the tagline that would track in and the rule that would draw out are simply there. */

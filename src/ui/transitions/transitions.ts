@@ -72,11 +72,24 @@ export interface WipeCard {
 }
 
 let busy = false;
+/** Who waits for the cover to start lifting (uncovered). */
+const lifting: (() => void)[] = [];
 
 /** True while a transition covers the screen. */
 export function transitioning(): boolean {
   return busy;
 }
+
+/**
+ * Resolves as the transition covering the screen starts to uncover it, or at once when none does: the
+ * moment a screen built under the cover starts its entrance, so it plays in sight.
+ */
+export function uncovered(): Promise<void> {
+  return busy ? new Promise((r) => lifting.push(r)) : Promise.resolve();
+}
+const lift = () => {
+  for (const r of lifting.splice(0)) r();
+};
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Two frames: the covered screen is on the glass before the work blocks the main thread. */
@@ -107,8 +120,10 @@ async function run(overlay: HTMLElement, cover: () => Promise<void>, work: () =>
     if (left > 0) await new Promise((r) => setTimeout(r, left));
     // The new screen gets its first frame under the cover, so the reveal shows it whole.
     await painted();
+    lift();
     await uncover();
   } finally {
+    lift();
     overlay.remove();
     unblock();
     busy = false;
@@ -222,7 +237,7 @@ export function door(sign: string, work: () => void | Promise<void>): Promise<vo
  * The shift to a new city behind the menu: `burn` gets the nitrous to put on
  * the city (the one leaving, then the one arriving) at once, the frame closes
  * onto the card, the work builds the new city, and `reveal` runs as the frame
- * opens onto it (the menu's cards rising in).
+ * opens onto it.
  */
 export function shift(card: WipeCard, work: () => void | Promise<void>, burn: (src: NitroSource) => void, reveal?: () => void): Promise<void> {
   if (busy) return Promise.resolve();

@@ -462,13 +462,8 @@ function showMenu(step: MenuStep = 'home'): void {
       // The city floors it into the dark, the new one builds behind the seed's card and arrives in the warp, its menu rising in.
       const card = { kicker: s === null ? "Today's event" : 'New city', title: `#${next}`, sub: 'Building the streets' };
       musicDip.on = true;
-      void shift(card, use, (src) => (arrival = src), () => {
-        // The music comes back up with the new city.
-        musicDip.on = false;
-        const el = menuEl?.querySelector('.menu');
-        el?.classList.add('is-reseeded');
-        setTimeout(() => el?.classList.remove('is-reseeded'), 1200);
-      }).finally(() => (musicDip.on = false));
+      // The music comes back up with the new city (its menu cascades in on its own as the frame opens).
+      void shift(card, use, (src) => (arrival = src), () => (musicDip.on = false)).finally(() => (musicDip.on = false));
     },
     onHideUi: () => setCinematic(true),
     onStep: (s) => showreel.setMode(STEP_CAMERA[s]),
