@@ -816,6 +816,140 @@ def sweep(o, sections, name, outward=None):
     me.update()
 
 
+def _sstep(x):
+    x = max(0.0, min(1.0, x))
+    return x * x * (3 - 2 * x)
+
+
+def bumper_lip(src, target, center=(0, -1.55), angles=None, band=(0.165, 0.235), gap=0.015, plate=0.008,
+               centre=0.28, rise=0.40, proud=(0.035, 0.020, 0.005), tuck=(0.050, 0.025), tip=(70, 12),
+               chamfer=0.012, posts=12.0, post_size=(0.014, 0.025), material='Black'):
+    """A chin lip under a front bumper, swept along its bottom edge from arch to arch into `target`
+    (a copy of `src`, the part it goes on). The defaults are the Wendt Strom's Cupra R as shipped, the
+    shape five rounds of the user's photos settled (.claude/skills/parts, Lessons):
+    - a flat bottom at one height all the way round (a lip's bottom is one line);
+    - under the centre grille (|x| < `centre`) a `plate` m plate hanging `gap` m clear of the bumper,
+      `proud[0]` ahead of its edge and `tuck[0]` under it, on two posts (`posts` degrees either side,
+      `post_size` wide and deep), which is how the real one mounts ("cut the two centre posts");
+    - from `centre` to `rise` the top climbs to the bumper's underside, so outboard of the centre grille
+      the lip is full depth from the bumper to the flat bottom, `proud[1]` ahead, with a 45 degree
+      `chamfer` on its top front edge;
+    - past `tip` (start, span in degrees) proud and depth run out to `proud[2]` at the wheel well.
+    The +x half is traced (`lower_edge`) and mirrored: a donor's two sides differ by 2 to 3 cm at the
+    arches. Carries authored normals (stash_normals / restore_normals). Returns the sections, so a tweak
+    can be measured before it is looked at."""
+    if angles is None:
+        angles = [0, 4, 8, 12, 16, 20, 24, 26, 28, 30, 32, 34, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 79, 82]
+    E = lower_edge(src, center, angles, *band)
+    E = [Vector((-e.x, e.y, e.z)) for e in reversed(E[1:])] + E
+    A = [-a for a in reversed(angles[1:])] + list(angles)
+    zc = E[A.index(0)].z
+    zb = zc - gap - plate
+    secs = []
+    for i, (e, a) in enumerate(zip(E, A)):
+        p, q = E[max(i - 1, 0)].to_2d(), E[min(i + 1, len(E) - 1)].to_2d()
+        tg = (q - p).normalized()
+        n = Vector((tg.y, -tg.x))
+        if n.dot(e.to_2d() - Vector(center)) < 0:
+            n = -n
+        r = _sstep((abs(e.x) - centre) / (rise - centre))
+        t = _sstep((abs(a) - tip[0]) / tip[1])
+        top = max((zc - gap) * (1 - r) + e.z * r, zb + 0.003)
+        ext = (proud[0] * (1 - r) + proud[1] * r) * (1 - t) + proud[2] * t
+        tk = tuck[0] * (1 - r) + tuck[1] * r
+        ch = 0.0015 + (chamfer - 0.0015) * r * (1 - t)     # every station keeps 5 points: 1.5 mm where flat
+        chz = min(ch, (top - zb) * 0.45)
+        n3 = Vector((n.x, n.y, 0))
+        secs.append([tuple(Vector((e.x, e.y, top + 0.002)) - n3 * tk),
+                     tuple(Vector((e.x, e.y, top - 0.002)) + n3 * (ext - ch)),
+                     tuple(Vector((e.x, e.y, top - 0.002 - chz)) + n3 * ext),
+                     tuple(Vector((e.x, e.y, zb)) + n3 * (ext - 0.002)),
+                     tuple(Vector((e.x, e.y, zb)) - n3 * tk)])
+    carry = stash_normals(target)
+    sweep(target, secs, material)
+    if posts:
+        w, d = post_size
+        for e in lower_edge(src, center, [-posts, posts], *band):
+            box(target, (e.x - w / 2, e.y, e.z - gap + 0.001), (e.x + w / 2, e.y + d, e.z + 0.004), material)
+    if carry:
+        restore_normals(target)
+    return secs
+
+
+def ray_map(objs, x0, x1, z0, z1, step=0.005, skip=('Lens', 'Glass', 'ClearLens'), deep=-1.8):
+    """What the eye sees through the front, one letter per material: rays along +y over x0..x1, z1..z0,
+    passing through `skip` (clear covers) to the first face behind. `O` marks a ray whose first hit lies
+    behind `deep` (y), a hole into the car. `look` draws every material alike and the lens covers
+    opaque, so this is how a lamp or grille is judged: it found the Wendt Strom's black crescent (a
+    grille back panel standing in front of the inner reflector bowls). Prints rows, returns them."""
+    from mathutils.bvhtree import BVHTree
+    bm = bmesh.new()
+    names = []
+    for o in objs:
+        tmp = bpy.data.meshes.new('ray_map')
+        src = o.data.copy()
+        src.transform(o.matrix_world)
+        base = len(names)
+        names += [m.name.split('.')[0] if m else '' for m in src.materials]
+        for p in src.polygons:
+            p.material_index += base
+        bm.from_mesh(src)
+        bpy.data.meshes.remove(src)
+        bpy.data.meshes.remove(tmp)
+    bm.faces.ensure_lookup_table()
+    t = BVHTree.FromBMesh(bm)
+    code = {'HeadLight': 'H', 'TailLight': 'T', 'BrakeLight': 'B', 'Light': 'a', 'Chrome': 'c', 'Black': '#',
+            'Paint': 'p', 'Trim': 't', 'Reflector': 'r', 'Grille': 'g', 'Interior': 'i'}
+    d = Vector((0, 1, 0))
+    rows = []
+    nz = int(round((z1 - z0) / step))
+    nx = int(round((x1 - x0) / step))
+    for zi in range(nz + 1):
+        z = z1 - zi * step
+        row = ''
+        for xi in range(nx + 1):
+            o = Vector((x0 + xi * step, -5, z))
+            ch = ' '
+            for _ in range(12):
+                h = t.ray_cast(o, d, 10)
+                if not h[0]:
+                    break
+                m = names[bm.faces[h[2]].material_index]
+                if m not in skip:
+                    ch = code.get(m, '?') if h[0].y < deep else 'O'
+                    break
+                o = h[0] + d * 1e-4
+            row += ch
+        rows.append((round(z, 3), row))
+        print(f'{z:.3f} {row}')
+    bm.free()
+    return rows
+
+
+def save_working_copy(cids, path):
+    """The save step before saveCar.py: drop the `preview` collection, remap every Car and Parts mesh
+    onto the shared materials, show every collection and unhide the car pieces (`show` toggles
+    collections, an object hidden with hide_set stays hidden and drops out of the export), hide the
+    loose objects at the scene root, and save a copy of the session at `path` (the session's own file
+    is untouched). Then: blender -b <path> --python scripts/blender/saveCar.py -- <cid> <cid>.blend."""
+    pc = bpy.data.collections.get('preview')
+    if pc:
+        for o in list(pc.objects):
+            bpy.data.objects.remove(o)
+        bpy.data.collections.remove(pc)
+    for cid in cids:
+        for sub in ('Car', 'Parts'):
+            for o in bpy.data.collections[f'{cid}:{sub}'].objects:
+                if o.type == 'MESH':
+                    remap_materials(o)
+                o.hide_set(False)
+    show()
+    for o in bpy.context.scene.collection.objects:
+        if o.type != 'CAMERA':
+            o.hide_set(True)
+    bpy.ops.wm.save_as_mainfile(filepath=path, copy=True)
+
+
 def split_off(src, name, pred, cname=None):
     """Move the faces for which pred(center, material_name, normal) is true out of src into a new object
     `name` (in src's collection, or `cname`). Unlike split_parts this carries custom normals through the

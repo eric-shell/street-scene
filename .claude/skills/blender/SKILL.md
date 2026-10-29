@@ -34,6 +34,9 @@ Authored cars are `assets/source/eshell/<carId>/<carId>.blend` (collections `Car
 | Setting `o.location` for a side by side view, then `bake` | The offset is baked into the mesh | Lay out with `preview()` (linked duplicates), keep sources at the origin |
 | Saving while `show()`/`preview()` hid the car collections | Hidden objects cannot be selected, so a `use_selection` glTF export writes the wrong objects (giant wheels, 47 validation errors) | `exportCar.py` now unhides everything and checks the selection; still call `show()` before saving a working copy |
 | Two cars appended into one session | Their materials become `Paint` and `Paint.001`; a mesh left on a suffixed one exports a name validation rejects | `remap_materials` on every mesh before saving; `saveCar.py` purges the orphans |
+| A work object put in the `preview` collection | The next `preview()` call empties that collection and deletes it (the Cupra R lip vanished mid build) | Keep work objects in a collection of their own; `show([...])` can list both |
+| Judging lamps, grilles or colours with `look` | `look` draws every material in one colour and lens covers opaque, so a black panel in front of a headlamp bowl cannot be seen | `ray_map([objs], x0, x1, z0, z1)` (carKit.py): one letter per material seen through the covers |
+| bmesh edits on a donor body or anything cut from it | Its authored normals are dropped; the export reshades and every collapse sliver shows | `stash_normals(o)` before, `restore_normals(o)` after (`split_off`, `bumper_lip`, `patch_out` already do) |
 
 ## Recipes
 

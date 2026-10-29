@@ -1,6 +1,6 @@
 ---
 name: parts
-description: Body panel customization - split an imported car into its stock pieces (Bumper_Front, Bumper_Rear, Skirts, Hood, Roof) along the car's own shut lines, make aftermarket parts from those pieces (a marker delete, a lip, a kit), save, export, verify in the game, and log what was learned. Use for any task about a car's bumpers, skirts, hood, roof, spoilers, side markers, badges, a "Stock" vs a named part, or the parts catalog; read it before /blender for that work.
+description: Body panel customization - split an imported car into its stock pieces (Bumper_Front, Bumper_Rear, Skirts, Hood, Roof) along the car's own shut lines, make aftermarket parts from those pieces (a marker delete, fog lamps, a lip, a kit) from the user's reference photos, save, export, verify in the game, and log what was learned. Use for any task about a car's bumpers, skirts, hood, roof, spoilers, side markers, badges, lips, lamps in a bumper, a "Stock" vs a named part, or the parts catalog; read it before /blender for that work.
 argument-hint: [carId] [slot]
 ---
 # Body panels: stock pieces and parts
@@ -18,55 +18,88 @@ Every donor import (`docs/carDonors.md`) arrives as one `Body`. Before any after
 | `Skirts` | the sill between the arches, outside the floor, below the door's lower edge | the doors, the floor |
 | `Hood`, `Roof` | panel lines (optional: only when a car will get hood or roof parts) | cowl, glass |
 
-Rules the first split (the Wendt Strom's front bumper, 2026-10-29) settled:
+- **Cut where the car is already cut.** A donor body models its panel gaps as grooves; find them with `groove_z(body, (x, y), direction, z0, z1)` at several stations and read the seam off the numbers (front: rays along +y at |x| 0, 0.3, 0.5, 0.65; corner: radial rays round the bumper's corner; side: rays along -x at several y). Groove depth 3 to 40 mm is a shut line, under 2 mm a crease. Never cut at a round height picked from a picture.
+- **Bisect first, then move faces.** `cut(body, planes)` with each plane limited by a `within` predicate to its band (a plane is infinite), then `split_off(body, '<carId>.Bumper_Front', pred)`: below the seam for that station, ahead of the arch opening (measured per height with rays), plus material exceptions for what stays.
+- **Keep the shading.** Donor bodies carry the source's normals (`authored_normals`); any bmesh edit drops them, and the exporter would then reshade from the reduced geometry and show every collapse sliver. `split_off`, `bumper_lip` and `patch_out` carry them; any other edit goes between `stash_normals(o)` and `restore_normals(o)`.
+- **Budgets follow the donor.** A whole donor bumper is 3,000 to 3,500 triangles and a part adds lamps and a lip to it; raise `TRI_BUDGETS` (`src/shared/parts.ts`) and the table in `docs/partsAuthoring.md` rather than decimate a stock piece (it would shade differently from the body beside it).
+- **Record the seam** in section 6 as soon as it is cut.
 
-- **Cut where the car is already cut.** A donor body models its panel gaps as grooves; find them with `groove_z(body, (x, y), direction, z0, z1)` (carKit.py) at several stations and read the seam off the numbers (front: rays along +y at |x| 0, 0.3, 0.5, 0.65; corner: radial rays round the bumper's corner; side: rays along -x at several y). The groove depth tells you it is a shut line (3 to 40 mm) and not a crease (under 2 mm). Never cut at a round height picked from a picture; a seam 1 cm off the groove leaves a sliver of the real one on the wrong piece.
-- **Bisect first, then move faces.** `cut(body, planes)` with each plane limited by a `within` predicate to the band it should slice (a plane is infinite), then `split_off(body, '<carId>.Bumper_Front', pred)`. The predicate is geometric (below the seam height for that station, ahead of the arch opening's front edge, measured per height with rays) plus material exceptions for what stays. `split_parts` is the older helper for authored bodies; `split_off` is the one for donors because it carries the authored normals (next rule).
-- **Keep the shading.** Donor bodies carry the source's normals (`authored_normals`); a bmesh round trip drops them and the exporter would reshade both halves from the reduced geometry, which shows every collapse sliver. `split_off` stashes them in a `src_normal` corner attribute and sets them back on both halves. Any later bmesh edit on a piece must do the same (`patch_out` in carDonors.py already reads `src_normal` when it is there).
-- **Budgets follow the donor, not the other way round.** A whole donor bumper with its intakes and lip is 3,000 to 3,500 triangles; raise `TRI_BUDGETS` (`src/shared/parts.ts`) and the table in `docs/partsAuthoring.md` rather than decimate a stock piece (decimating only the bumper makes it shade differently from the body beside it). `CAR_BYTES_BUDGET` (`scripts/validateParts.ts`, car plus parts) is a warning; a donor car with authored normals is over it already.
-- **Record the seam** in the table below as soon as it is cut. `tunerKits.py` `SEAMS` pins kit displacements to these numbers, so a kit built on a typed guess will not meet the body.
+## 2. References before modelling
 
-## 2. A part from a stock piece
+Every miss on the Wendt Strom's parts was a misread reference, not a modelling fault: the Cupra R Lip took five builds, the fog lamps three. So:
 
-1. `copy_part('<carId>.Bumper_Front', '<carId>.frontBumper_<partId>', '<carId>:Parts')`, then `o['displayName'] = '<Name>'`. Names are fictional tuners or plain descriptions of what the part is (Euro, Kurogane), never grades or numbers (memory: part names).
-2. Edit on the copy only, and copy the nearest part rather than stock when the new one is a variant of it (Euro w/ Fogs is the Euro plus lamps): a removed feature is pressed flush (`patch_out(o, lo, hi, flush=True, ring=0.05)` fits the panel round it and moves the recess onto it), a reshaped lip is a `displace` pinned to the seam (`plane_seam`), new geometry is `outline` + `slab` + `fin`, a lip or blade along the bumper's bottom edge is `lower_edge` + `sweep` (lessons, Cupra R), a round lamp is `round_lamp(o, center, normal, r_lens, r_bezel)`; new geometry goes between `stash_normals(o)` and `restore_normals(o)` (center from a ray onto the panel behind it; size and placement as fractions of the opening read off the user's photos). Lit lamps take `HeadLight` (white), `TailLight` or `BrakeLight`, the only materials that glow (`docs/partsAuthoring.md` section 3). Delete faces only for things lying on the surface (`delete_faces`, `delete_islands`); a hole in a stock piece is never left open.
-3. After a press, blend the pressed corners' normals from the ring of authored normals round the box (inverse-cube weights worked; the fitted quadratic's own normals read a shade lighter than the panel in the viewport). Carry custom normals through every bmesh step as in section 1.
-4. Look twice: the piece alone in `preview([[name]])` with `cam` close on the edit, and the piece on the car (both halves visible) from the three-quarter the garage uses. Print the triangle count and the materials; a part that lost a material slot (the markers' `Light`) is right, one that gained `Paint.001` is not (`remap_materials`).
+1. **Read every photo the user gives or links, all of them, before the first Blender call.** A linked page: `WebFetch` lists its images (often as relative paths); download them all with `curl` into `<scratchpad>/<part>/` (an Office-saved page keeps them in `<Page>_files/imageNNN.jpg`) and `Read` each one. Never build from the page's text or the first two photos.
+2. **Know what each kind of photo is good for.**
+   - Install sequences show how a part mounts: tabs, posts, what is cut or trimmed, where it ends. "Cut the two centre posts in half" meant the lip hangs clear of the bumper on posts in the middle.
+   - Product shots show shape in plan, but in perspective. Ends that rise in a front-on shot are the part wrapping back along the sides. A section that looks wider may be a drop, not a bulge.
+   - On-car photos show how it sits, and they are the ground truth. When there is none, ask for one before building.
+3. **Write the reading down in the reply before modelling**, in five lines: how it attaches, its shape in plan, its section (thickness, how far proud, any gap), where it ends, finish and material. A misread then costs the user one sentence, not a build.
+4. **Measure proportions, not sizes**: span of each section as a share of the whole, depth ratios, a lamp's size against its opening, its place as a fraction across it. Photos overstate small round things: the fog lamps came out 20 % big (start a lamp at 60 % of its opening's height, 30 % in from the outer edge, a little above centre).
 
-## 3. Save, export, verify
+## 3. A part from a stock piece
 
-1. `remap_materials` on every mesh of the car, delete the `preview` collection, `show()`, unhide the pieces (`o.hide_set(False)`: `show` toggles collections, not objects), save a working copy with `bpy.ops.wm.save_as_mainfile(filepath=<scratch>/work.blend, copy=True)`, then headless `blender -b work.blend --python scripts/blender/saveCar.py -- <carId> assets/source/eshell/<carId>/<carId>.blend`.
-2. `npm run assets` (ask first: it rewrites generated catalog entries and can touch other cars' GLBs when their export is not byte stable) and `npm run validate`. Read the catalog entry it wrote (`hides`, `materialSlots`, `tris`) and `npm run inspect` on the part and the car: the piece's bounds should sit inside the body's, and the body's own bounds should shrink by the piece.
-3. `/dev` garage, Body tab, the slot's list: Stock and the part, switched a few times, from the garage's own camera. The seam against the body is the thing to judge; a visible line means the cut missed the groove or the normals were lost.
-4. Commit: the `.blend`, both GLBs, the catalog, `assets/inspect.md`, and any budget change, with the seam numbers in the body.
+1. `copy_part(<nearest piece>, '<carId>.<slot>_<partId>', '<carId>:Parts')`, then `o['displayName'] = '<Name>'`. Copy the nearest part, not stock, when the new one is a variant (Euro w/ Fogs is the Euro plus lamps, the Cupra R Lip the Euro w/ Fogs plus a lip). Names: what the user calls it, else a fictional tuner name or a plain description (memory: part names).
+2. **Build an add-on alone first**, in its own collection (never `preview`: `preview()` empties it), and `look` at it from the reference photo's own angle before it goes on the part. Then build it into the copy.
+3. **Measure before looking.** Print a table per station (thickness, how far proud, gap to the part above it) and cast rays up from the add-on's top to the part. A render at game scale hid a 3 to 8 cm float under the bumper.
+4. **The helpers** (`scripts/blender/carKit.py`, docstrings say why):
+   - a removed feature is pressed flush: `patch_out(o, lo, hi, flush=True, ring=0.05)` (carDonors.py). Then blend the box's corner normals from the authored normals round it (inverse cube, same side): the fitted ones read a shade lighter.
+   - a round lamp set into an opening: `round_lamp(o, center, normal, r_lens, r_bezel, proud, segments)`, centre from a ray onto the panel behind it. Lit lamps are `HeadLight`, `TailLight` or `BrakeLight`, the only materials that glow.
+   - a chin lip along the bumper's bottom edge: `bumper_lip(src, target, ...)`. Its defaults are the shipped Cupra R Lip (flat bottom, centre plate on posts, full depth outboard, chamfer, run out at the wheel wells), so a new lip is a change of parameters. Underneath it are `lower_edge` (the face's bottom edge round the nose, by plan rays) and `sweep` (a section run along a path with its own normals).
+   - reshaping: `displace` pinned to the seam (`plane_seam`); flat plates and fins: `outline`, `slab`, `fin`.
+   - **materials cannot be judged by `look`**: it draws every material in one colour and lens covers opaque. `ray_map([objs], x0, x1, z0, z1)` prints what the eye sees through the covers, one letter per material, `O` for a hole into the car.
+5. Print the triangle count and materials. A part that lost a slot (the markers' `Light`) is right; one that gained `Paint.001` is not (`remap_materials`).
 
-## 4. Seams per car (Blender space, m)
+## 4. Reading the user's feedback
+
+- **"Slightly"** is about 10 % in size, or 1 to 2 cm in position. Change only what was named, leave the rest exactly as it was, and say which numbers moved: "bezel 84 → 76 mm, raised 1 cm".
+- **Words for a lip or blade.** Thickness is top to bottom. *Proud* is how far it stands ahead of the bumper's edge. *Taper* means it runs down along its length. A *flat bottom* is one height all the way round. *Chamfer* means a 45 degree bevel; the default is the top front edge, so offer the other edge in one line.
+- When the user says it is not close, stop tweaking parameters. Go back to section 2, say what was misread, and build the add-on alone again.
+
+## 5. Save, export, verify
+
+1. `save_working_copy([cid], '<scratch>/work.blend')` (it removes `preview`, remaps materials, unhides the car pieces, saves a copy), then headless `blender -b work.blend --python scripts/blender/saveCar.py -- <carId> assets/source/eshell/<carId>/<carId>.blend`.
+2. `npm run assets` and read its last lines (`validation passed`, the size warning). The first time in a session, ask first: it rewrites generated catalog entries. Once the user has said yes, run it every round. Check the catalog entry it wrote (`displayName`, `hides`, `materialSlots`, `tris`).
+3. `/dev` garage, Body tab: Stock and the part, switched a few times from the garage's camera, when the user asks or a seam is in doubt.
+4. Commit each round the user accepts, and push (memory: push on wrap-up). Stage only the `.blend`, the part GLB, the car GLB when the body changed, the catalog, `assets/inspect.md`, and any budget or doc change. Never stage `public/cars/daltonFiend.glb`: `npm run assets` rewrites it without changing it.
+
+## 6. Seams and shipped parts
+
+Seams (Blender space, m):
 
 | Car | Front shut line | Front arch edge (z → y) | Rear | Skirts |
 |---|---|---|---|---|
 | wendtStrom | z 0.584 under the grille (|x| < 0.42), 0.568 under the lamps to 40° round the corner, 0.594 along the side; corner plane through (±0.618, −1.960, 0.568) and (±0.728, −1.889, 0.594) | 0.25 → −1.645, 0.4 → −1.615, 0.5 → −1.565, 0.6 → −1.50 | not cut yet | not cut yet |
 | kazamaRotor, albrechtKombi | `tunerKits.py` SEAMS (typed when the bodies were authored; re-measure with `groove_z` before the next kit) | | | |
 
-## 5. Keep this skill honest
+Parts (front bumper budget 4,000):
 
-This file is the memory of the parts process; the first split took a whole session to find what is written above, and the next car should take an hour. After every part job, before the commit:
+| Car | Part (displayName) | Built from | What it is | Tris |
+|---|---|---|---|---|
+| wendtStrom | Stock (`Bumper_Front`) | Body | cut at the seam above | 3,237 |
+| wendtStrom | Euro | Stock | the amber corner markers pressed flush (box x 0.785 to 0.826, y −1.803 to −1.671, z 0.466 to 0.509) | 3,173 |
+| wendtStrom | Euro w/ Fogs | Euro | `round_lamp` in each outer intake (opening x 0.42 to 0.665, z 0.24 to 0.37): centre (±0.592, ray hit, 0.315), bezel r 0.038, lens r 0.027, 2 cm proud, aimed (±0.33, −0.94, −0.08), 22 segments | 3,481 |
+| wendtStrom | Cupra R Lip | Euro w/ Fogs | `bumper_lip` defaults: flat bottom z 0.148; centre plate (|x| < 0.28) 8 mm thick, 1.5 cm clear, 3.5 cm proud, on two 14 mm posts at |x| 0.114; full depth outboard of the centre grille (2.2 to 3.3 cm), 2 cm proud, 1.2 cm chamfer; runs out past 70 degrees | 3,991 |
 
-- **Lessons** go in the list below, one line each, dated, with the car: what read wrong, what fixed it, which helper now does it. When a lesson changes the process, move it up into sections 1 to 3 and delete the line.
-- **Helpers, not inline code.** Anything typed twice in `execute_blender_code` becomes a function in `carKit.py` (geometry) or `carDonors.py` (donor shading, presses) with a docstring that says why. The MCP cannot `inspect.getsource` an exec'd helper, so the docstring and this file are the only place its intent lives.
-- **The pipeline docs** change when the contract does: `docs/partsAuthoring.md` for slots, budgets, naming and catalog fields; `exportCar.py`'s docstring for the `.blend` layout; `docs/carDonors.md` when a split becomes part of a donor recipe.
+## 7. Keep this skill honest
+
+This file is the memory of the parts process. After every part job, before the commit:
+
+- **Lessons** go in the list below, one line each, dated, with the car: what read wrong, what fixed it, which helper now does it. When a lesson changes the process, move it up into sections 1 to 5 and delete the line. A shipped part gets its row in section 6.
+- **Helpers, not inline code.** Anything typed twice in `execute_blender_code` becomes a function in `carKit.py` (geometry) or `carDonors.py` (donor shading, presses) with a docstring that says why. The MCP cannot `inspect.getsource` an exec'd helper, so the docstring and this file are the only place its intent lives. Prove a helper that replaces inline work by rebuilding the shipped part with it and comparing vertices (`bumper_lip` matched the Cupra R Lip exactly).
+- **The pipeline docs** change when the contract does: `docs/partsAuthoring.md` for slots, budgets, naming and catalog fields; `exportCar.py`'s docstring for the `.blend` layout; `docs/carDonors.md` when a split or a fix belongs in a donor recipe (the grille back panel that drew a black crescent in the headlamps is there).
 - **Open questions** stay listed until answered; answer them in place and say where the answer went.
 
 ### Lessons
 
-- 2026-10-29 wendtStrom front: `patch_out(flush=True)` presses a marker recess clean, but its fitted normals read lighter than the authored panel; blending the box's corner normals from the surrounding ring (inverse-cube weights, same side only) fixed it. Candidate for a `blend_normals(o, box, ring)` helper when it happens a second time.
-- 2026-10-29 wendtStrom front: `show([...])` left the body hidden because an earlier `hide_set(True)` on the objects stuck; `look` framed an empty scene twice before that was found. Print `[o.name for o in scene.objects if o.visible_get()]` before a `look` that shows nothing.
-- 2026-10-29 wendtStrom Euro w/ Fogs: outer intake opening x 0.42 to 0.665, z 0.24 to 0.37, back panel 2.5 cm behind the rim facing (0.33, -0.93, -0.19). From two owner photos: the lamp sits 38 % in from the intake's outer edge, vertically centred, its chrome bezel 75 to 80 % of the opening's height and the lens 73 % of the bezel: center (±0.572, ray hit, 0.305), bezel r 0.047, lens r 0.034, 2 cm proud; after two rounds of "slightly smaller" plus "further out" and "up": shipped at (±0.592, ray hit, 0.315), bezel r 0.038 (about 60 % of the opening height), lens r 0.027 (the photos overstated the size by about 20 %: a lamp read off a photo starts at 60 % of the opening, centred a little high and 30 % in from the outer edge), aimed (±0.33, -0.94, -0.08). 22 segments to stay under 3,500 (24 came to 3,509). The intakes' honeycomb mesh is still a flat black panel.
-- 2026-10-29 wendtStrom Cupra R: a lip that follows the bumper's bottom edge from arch to arch is `lower_edge(o, (0, -1.55), angles, 0.165, 0.235)` (rays in plan from behind the bumper, so the corners and sides are sampled square on) then `sweep(o, sections, 'Black')` with a 4-point section per station. Trace one half and mirror it: the donor's two sides differ by 2 to 3 cm at the arches. From the install photos (billswebspace, 12 photos): matte black textured plastic, tabs slid between the bumper and its lower trim. Five builds to get it right. Missed: a 3 cm faced wedge (read as a splitter); a uniform blade with a taller middle face; a flat plate with a deep forward centre, read off the product photos alone ("the wide centre" is a drop, not a bulge); a 3 cm drop on a sharp step to a strip hugging the bumper ("too much space below", and a lip's bottom is one flat line). What the user's street photo, the install guide's "cut the two centre posts" step and the user's correction give, and what shipped: a **flat bottom** at one height (z 0.148: the centre plate's) all the way round; under the centre grille (|x| < 0.28) the plate hangs 1.5 cm clear of the bumper, 8 mm thick, 3.5 cm proud and 8.5 cm front to back, on two 14 mm posts at |x| 0.114; the top rises to the bumper's underside by the divider between the centre and side grilles (|x| 0.28 to 0.40), so under the side grilles and round the corners the lip is full depth from the bumper to the flat bottom (2.2 cm under the side grilles, 3.3 cm at the corner) and 2 cm proud; past 70 degrees both run out to 5 mm proud and 3 mm thick at the wheel well. (A version whose rise ran all the way to the corners read too thin under the side grilles.) The full depth sections carry a 45 degree chamfer on their top front edge, 1.2 cm back and 1.2 cm down (a fifth point in the section; 1.5 mm on the centre plate so every station has the same count), fading out by the wheel well. Also a helper bug: `lower_edge` first returned the face's outermost point, 3 to 4 cm up the curve where the lower face turns under, and the strip floated 3 to 8 cm below the face; it now returns the face's bottom edge (fixed in carKit). Stations every 4 degrees, 2 through the rise: 3,991 triangles (9 under the budget: the next addition to this part needs the budget or fewer stations). Lowest point 0.137 m, level with the body's. **Process lessons:** read every photo the user links (install sequences show how a part mounts: posts, gaps, tabs) before the product shots, which show shape but not fit; build an add-on as its own object and `look` at it from the photo's own angles before it goes on the part; and measure the gap between the add-on and the part (rays up from its top) before looking, since a render at game scale hides a 3 cm float.
-- 2026-10-29: `npm run assets` rewrote `public/cars/daltonFiend.glb` with no change to its report; the export is not byte stable for every car. Do not stage a GLB of a car the task did not touch.
+- 2026-10-29 wendtStrom front: `show([...])` left the body hidden because an earlier `hide_set(True)` on the objects stuck; `look` framed an empty scene twice. Print `[o.name for o in scene.objects if o.visible_get()]` before a `look` that shows nothing.
+- 2026-10-29 wendtStrom Cupra R Lip: five builds. A faced wedge; a uniform blade with a tall middle; a deep forward centre read off the product shots alone; a 3 cm drop on a sharp step ("too much space below": a lip's bottom is one line); then the shipped shape after the user's on-car photo and corrections. Section 2 is the fix. Also `lower_edge` first returned the face's outermost point, 3 to 4 cm up its under-curve, and the lip floated below the face; it returns the bottom edge now.
+- 2026-10-29 wendtStrom Euro w/ Fogs: the lamps read off two photos came out 20 % big, 2 cm too far in and 1 cm low; three rounds of "slightly". Section 2, point 4 now starts from the shipped proportions.
 
 ### Open questions
 
-- The split is not in the Wendt Strom's donor recipe: a rebuild from the donor (`ship_donor`) gives one `Body` again and the cut must be redone from the seam table. Answer: a `split` entry in the recipe (planes and predicates from the table) once two cars have been cut and the shape of the data is clear.
-- `SEAMS` in `tunerKits.py` should be read from the seam table above (or measured by `groove_z` at build time), not typed per car.
+- The split is not in the Wendt Strom's donor recipe: a rebuild from the donor (`ship_donor`) gives one `Body` again, and the cut and every part must be redone (the parts from the helpers' calls in section 6). Answer: a `split` entry in the recipe once two cars have been cut.
+- `SEAMS` in `tunerKits.py` should be read from the seam table (or measured by `groove_z` at build time), not typed per car.
 - Rear bumpers will likely need the `rearBumper` budget raised as the front's was; measure the first one before changing it.
-- `CAR_BYTES_BUDGET` (700 KB) predates authored normals; decide whether the budget moves or the normals get quantized at export.
+- `CAR_BYTES_BUDGET` (700 KB) predates authored normals and per-part copies of a whole bumper: the Wendt Strom with three bumpers is 1,056 KB. Decide whether the budget moves, the normals get quantized at export, or a variant part ships only its difference.
+- The Cupra R Lip is 9 triangles under the 4,000 budget: anything more on that part needs fewer lip stations or a budget change.
+- The intakes' honeycomb mesh (on the user's photos) is still a flat black panel.

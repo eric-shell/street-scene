@@ -37,7 +37,7 @@
     },
     {
       "id": "wendtStrom_frontBumper_cupraR",
-      "displayName": "Cupra R",
+      "displayName": "Cupra R Lip",
       "carId": "wendtStrom",
       "slot": "frontBumper",
       "file": "parts/wendtStrom_frontBumper_cupraR.glb",
