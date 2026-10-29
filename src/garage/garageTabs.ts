@@ -365,8 +365,8 @@ export function renderTabContent(host: TabHost): void {
       break;
     case 'tint': {
       // The glass in the lit room, catching the shop's lights: the side and rear windows' tint (the windshield stays
-      // clear), then the banner across the windshield's top, whose controls show while it is on. The banner is the
-      // tint until Color is on; then it takes a color from the palette, or the body's paint while Match body is lit.
+      // clear), then the banner across the windshield's top, whose controls show while it is on: the tint's film
+      // under the glass, or with Vinyl on a vinyl over it, painted like every other surface (Custom or Match body).
       const banner = v.banner;
       host.body.append(
         section(
@@ -405,42 +405,17 @@ export function renderTabContent(host: TabHost): void {
                 ),
                 revealable(
                   field(
-                    'Color',
-                    onOffSwitch(banner.colored, (on) => {
-                      banner.colored = on;
+                    'Vinyl',
+                    onOffSwitch(banner.vinyl, (on) => {
+                      banner.vinyl = on;
                       void host.changed(true);
-                    }, 'Color the banner'),
+                    }, 'Vinyl banner'),
                   ),
-                  'banner-color',
+                  'banner-vinyl',
                 ),
-                ...(banner.colored
-                  ? [
-                      revealable(
-                        h(
-                          'div',
-                          { class: 'row' },
-                          toggle(Paintbrush, 'Match body', banner.match, banner.match ? 'Banner wears the body paint' : 'Banner wears its own color', () => {
-                            banner.match = !banner.match;
-                            // Unmatched, it starts from the body's color, so nothing jumps.
-                            if (!banner.match) banner.color = v.paint.color;
-                            void host.changed(true);
-                          }),
-                        ),
-                        'banner-match',
-                      ),
-                      ...(banner.match
-                        ? []
-                        : [
-                            revealable(
-                              colorPicker(banner.color, (c) => {
-                                banner.color = c;
-                                host.changed();
-                              }),
-                              'banner-colors',
-                            ),
-                          ]),
-                    ]
-                  : [revealable(note('Matches the window tint.'), 'banner-tint')]),
+                banner.vinyl
+                  ? revealable(paintPicker(banner.paint, PAINT_FINISHES, () => host.changed(), [matchBody(banner.paint, v.paint)]), 'banner-paint')
+                  : revealable(note('The window tint, under the glass.'), 'banner-tint'),
               ]
             : []),
         ),

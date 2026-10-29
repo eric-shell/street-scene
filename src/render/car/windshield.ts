@@ -1,17 +1,18 @@
 /**
  * The windshield, split from a car's glass once per loaded model (CarAssetLibrary.carModel), so the build's tint
- * dresses only the side and rear windows (the windshield stays clear) and the banner, a band of the tint's film or
- * of paint across its top, can take its place there. No car model names its windshield: it is the glass in the front half
+ * dresses only the side and rear windows (the windshield stays clear) and the banner, a band across its top of the
+ * tint's film under the glass or of vinyl over it, can be drawn on it. No car model names its windshield: it is the glass in the front half
  * that leans forward and up (its inside back and down) with little sideways lean (WINDSHIELD), in the one glass mesh
  * with the most of it (a sunroof in a mesh of its own has a few such faces on its bevels), which picks it on every
  * shipped car and leaves the side glass, the backlight and a sunroof. The windshield and the banner are two
  * meshes under the glass mesh, sharing its attributes with an index of their own, so they ride its node and hide
  * with it; CarView.bindMaterials gives them their runtime materials (carMaterial on the placeholders). The band is
  * as deep all the way across: each vertex carries its drop below the top edge (topEdge), and the banner draws where
- * that is under the build's depth while the windshield draws only where it is not, so the two never overlap.
+ * that is under the build's depth.
  */
 import * as THREE from 'three';
 import type { BannerHeight } from '../../shared/carBuild';
+import { VEHICLE_ORDER } from '../vehicleMask';
 
 /** The face tests, on unit face normals in car space (+Y up, +Z forward). */
 const WINDSHIELD = {
@@ -165,6 +166,9 @@ export function splitWindshield(root: THREE.Object3D, isGlass: (m: THREE.Materia
       placeholder.userData.carMaterial = key satisfies WindshieldMaterial;
       const part = new THREE.Mesh(shieldGeo, placeholder);
       part.name = name;
+      // The windshield draws after the banner (the car's opaque order, maskVehicleMesh), so a tint banner, which
+      // is see-through like the glass, lies under it.
+      part.renderOrder = key === 'Banner' ? VEHICLE_ORDER : VEHICLE_ORDER + 1;
       mesh.add(part);
     }
     root.userData.windshield = { bottom, top } satisfies WindshieldSpan;

@@ -509,7 +509,7 @@ export class CarView {
     this.visual = v;
     applyVisualToMaterials(this.materials, v);
     const span = this.baseModel?.userData.windshield as WindshieldSpan | undefined;
-    setBannerDepth(this.materials, span && v.banner.enabled ? bannerDepth(span, v.banner.height) : -1);
+    setBannerDepth(this.materials, span && v.banner.enabled ? bannerDepth(span, v.banner.height) : -1, !v.banner.vinyl);
     this.applyStance();
     this.applyUnderglow(0);
 

@@ -163,11 +163,10 @@ export interface VisualBuild {
   banner: {
     enabled: boolean;
     height: BannerHeight;
-    /** Off, the band is the windows' tint; on, it is painted: `color` in gloss, or the body's paint while matched. */
-    colored: boolean;
-    color: string;
-    /** While colored, it wears the body's paint (following later body changes). */
-    match: boolean;
+    /** Off, the band is the windows' tint film, under the glass; on, it is a vinyl over the glass in `paint`. */
+    vinyl: boolean;
+    /** The vinyl's paint, or the body's while matched. */
+    paint: AccentPaint;
   };
   underglow: {
     enabled: boolean;
@@ -208,7 +207,7 @@ export function defaultVisual(): VisualBuild {
     decals: [],
     stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
-    banner: { enabled: false, height: 'medium', colored: false, color: '#f2f2f2', match: false },
+    banner: { enabled: false, height: 'medium', vinyl: false, paint: { color: '#f2f2f2', finish: 'gloss', match: false } },
     underglow: { enabled: false, color: '#00e5ff', color2: '#ff3df2', pattern: 'steady', brightness: 1, speed: 1, size: 1 },
     popsBangs: 1,
   };
@@ -341,9 +340,8 @@ export function validateVisual(v: unknown): VisualBuild {
     banner: {
       enabled: banner.enabled === true,
       height: oneOf(banner.height, BANNER_HEIGHTS, d.banner.height),
-      colored: banner.colored === true,
-      color: hexColor(banner.color, d.banner.color),
-      match: banner.match === true,
+      vinyl: banner.vinyl === true,
+      paint: validAccent(banner.paint, d.banner.paint, PAINT_FINISHES),
     },
     underglow: {
       enabled: glow.enabled === true,

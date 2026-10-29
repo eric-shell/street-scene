@@ -214,7 +214,7 @@ const SHORT: Record<string, string> = {
   darkness: 'dk',
   banner: 'bn',
   height: 'hg',
-  colored: 'cd',
+  vinyl: 'vy',
   underglow: 'ug',
   enabled: 'en',
   pattern: 'pn',
