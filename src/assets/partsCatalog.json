@@ -178,11 +178,11 @@
       "generated": true
     },
     {
-      "id": "wendtStrom_rearBumper_cut",
-      "displayName": "Cut Bumper",
+      "id": "wendtStrom_rearBumper_sectioned",
+      "displayName": "Sectioned",
       "carId": "wendtStrom",
       "slot": "rearBumper",
-      "file": "parts/wendtStrom_rearBumper_cut.glb",
+      "file": "parts/wendtStrom_rearBumper_sectioned.glb",
       "hides": [
         "Bumper_Rear"
       ],
