@@ -17,7 +17,11 @@ and the differences in construction found (docs/carDesign.md, "Donor models").
 
 A recipe classifies by regex: `materials` maps the import's material names to a shared
 material, None (drop those faces) or 'Lamp' (HeadLight ahead of the axles' midpoint, TailLight
-behind, Light between the axles: mirror repeaters); `drop` removes whole meshes whose name or
+behind, Light between the axles: mirror repeaters). Only the main lamps glow in the game, so a
+donor whose lamps are modelled in layers maps them finer: the clear covers to `Lens` (unlit,
+see-through), indicators and markers to `Light` (amber) or `Reflector` (red), and only the main
+lamps' own elements to HeadLight / TailLight. A main lamp needs something that glows: one modelled
+as a bare cover over chrome stays 'Lamp'. `drop` removes whole meshes whose name or
 any parent's name matches (the imports name parts on the empties above the meshes); `recolor`
 fixes faces after the join (a glass roof to Paint, lamp covers cut from the window glass);
 `cull` deletes stray faces after the join; `bridges` (boxes) lofts the grille bars across the gap a badge
@@ -35,7 +39,12 @@ exec(open(os.path.join(REPO, 'scripts/blender/meshopt.py')).read())   # meshopt_
 
 BUDGET = 16000   # triangles per car for the reduced donor shell, the same for every car: at 8,000 mirrors, handles and lamp edges smeared
 INTERIOR_BUDGET = 2500   # triangles for the donor's own cabin (dash, seats, door cards), seen through the glass
+LAMP_BUDGET = 4000   # triangles of BUDGET set aside for the lamps (lenses, and the reflectors and housings behind a clear cover); the shell keeps the rest whatever the lamps take
+LAMP_ERROR = 0.003   # the lamps' collapse stops at this share of their extent (the whole car's length: 13 mm), not MESHOPT's 1 %; the RX-7's take 4,900
 REDUCER = 'meshopt'   # _collapse: 'meshopt' (meshopt.py) or 'blender' (the Decimate modifier, mirror-symmetric)
+
+# The RX-7's raised pop-up lamps (shell and bucket), clear of the hood round them.
+POPUP = lambda c: 0.47 < abs(c.x) < 0.76 and -1.86 < c.y < -1.48 and c.z > 0.6
 
 DONORS = {
     'brandtKombi': {
@@ -93,18 +102,42 @@ DONORS = {
         'license': 'CC Attribution',
         'mm': {'length': 4285, 'wheelbase': 2425},
         'turn': (-90, 0, 0),   # -Y up, nose at -Z
-        # `material` is the wheels, Material__1..4 the number plates; clear and orange glass are the
-        # lamp lenses (pop-ups modelled raised, bumper lamps, indicators), not windows.
-        'materials': {r'^material$': None, r'^Material__\d$': None, r'^(clearglass|orangeglass)$': 'Lamp', r'^redglass$': 'TailLight',
+        # The tail lettering sits on a smooth panel, not in a recess: pressed flush, the panel dented.
+        'press': False,
+        # `material` is the wheels, Material__1..4 the number plates. The lamps are modelled in layers:
+        # clear glass the covers and bulbs (the tail bar's one cover over three round lamps a side,
+        # the pop-ups, the bumper lamps, the markers), orange glass the indicators and markers, red
+        # glass the tail lamps' round lenses: those glow, the rest are unlit lenses.
+        'materials': {r'^material$': None, r'^Material__\d$': None, r'^clearglass$': 'Lens', r'^orangeglass$': 'Light', r'^redglass$': 'TailLight',
                       r'^windowglass$': 'Glass', r'^carpaint$': 'Paint', r'^black$': 'Black', r'^chrome$': 'Chrome', r'^mirror$': 'Black'},
-        # The pop-up lamps are modelled raised, with black lids: on the car the lids are body panels,
-        # and black ones read as bars hung in front of the lamps.
-        'recolor': [(lambda c, n, m: m == 'Black' and 0.45 < abs(c.x) < 0.78 and -1.9 < c.y < -1.58 and c.z > 0.58, 'Paint')],
+        # The pop-up lamps are modelled raised, as on the car: a shell in the body colour (lid and
+        # both sides) over a black bucket, the bezel round the lamp. The bucket's ceiling behind the
+        # lens lies a few mm under the lid, and the lamps' collapse pushed it through in black
+        # patches: it is paint (the bezel's top lip, ahead of the lens, stays black). The pop-ups' chrome reflector is what glows, behind their clear covers; the red strip across
+        # the middle of the tail bar is a reflector, not a lamp.
+        'recolor': [(lambda c, n, m: m == 'Black' and POPUP(c) and c.y > -1.74 and c.z > 0.765 and abs(n.z) > 0.5, 'Paint'),
+                    (lambda c, n, m: m == 'Chrome' and 0.48 < abs(c.x) < 0.7 and -1.75 < c.y < -1.69 and 0.63 < c.z < 0.79, 'HeadLight'),
+                    (lambda c, n, m: m == 'TailLight' and abs(c.x) < 0.25, 'Reflector')],
+        # The pop-ups are reduced with the lamps, at their tighter error: in the shell's collapse
+        # their lids and housings went to a few coarse facets.
+        'lamps': [lambda c, n, m: POPUP(c)],
+        # What strip_wipers leaves (the blades: black islands of 184 to 248 faces, four on the cowl
+        # and two on the hatch glass) and the antenna's base on the hatch; then the decklid lock,
+        # pressed flush against the panel close round it (the 12 cm default ring reached the curve up
+        # into the tail bar and dented it). By hand on the shipped file on 2026-10-29, kept here so
+        # a rebuild does them, with the windshield seal's bottom edge in `cull`.
+        'islands': [lambda k, a, b, mats: set(mats) == {'Black'} and k < 400 and -0.73 < (a.y + b.y) / 2 < -0.6 and 0.83 < (a.z + b.z) / 2 < 0.87,
+                    lambda k, a, b, mats: set(mats) == {'Black'} and k < 400 and 1.25 < (a.y + b.y) / 2 < 1.4 and 1.0 < (a.z + b.z) / 2 < 1.1,
+                    lambda k, a, b, mats: set(mats) == {'Black'} and k < 2500 and 0.35 < (a.x + b.x) / 2 < 0.39 and 1.8 < (a.y + b.y) / 2 < 1.85],
+        'patches': [((-0.02, 2.1, 0.64), (0.02, 2.17, 0.685), ('Paint',), True, 0.04)],
         # The nose and tail badges and the tail lettering: chrome islands of 2,000 to 2,700 faces,
         # past the de-badge limit, which the tail lamps' chrome reflectors (1,856) must stay under.
-        # Then the inboard flap of each raised pop-up lid, a plane floating over the lamp (cut by
-        # hand in the shipped file on 2026-10-22, kept here so a rebuild cuts it too).
-        'cull': [lambda c, n, m: 0.46 < abs(c.x) < 0.53 and -1.95 < c.y < -1.6 and 0.76 < c.z < 0.83,
+        # The windshield seal's bottom edge: a thin strip on the glass the collapse folds into black
+        # crosses above the cowl, and its right corner. Then the top of the cabin's mirror mount, which
+        # stood through the roof. By hand on the shipped file on 2026-10-29.
+        'cull': [lambda c, n, m: m == 'Black' and abs(c.x) < 0.5 and -0.78 < c.y < -0.665 and 0.8 < c.z < 0.87,
+                 lambda c, n, m: m == 'Black' and 0.39 < c.x < 0.68 and -0.67 < c.y < -0.47 and 0.8 < c.z < 0.85,
+                 lambda c, n, m: m == 'Interior' and abs(c.x) < 0.035 and -0.1 < c.y < -0.03 and c.z > 1.15,
                  lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y < -1.89 and 0.55 < c.z < 0.63,
                  lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y > 2.11 and 0.68 < c.z < 0.77,
                  lambda c, n, m: m == 'Chrome' and 0.26 < abs(c.x) < 0.35 and c.y > 2.1 and 0.69 < c.z < 0.73],
@@ -266,6 +299,8 @@ AUTO = [
     (r'(?i)tire|tyre|rubber|llanta|rim|wheel|brake|disc|disk|calip|engine|badge|emblem|logo|licen[cs]e|plate|dome|shadow|ground|poster', None),
     # The cabin ships (reduced hard, seen through the glass): a car without one reads hollow.
     (r'(?i)interior|seat|dash|steer|headliner|carpet|cloth|leather|gauge|stitch|pedal|console', 'Interior'),
+    # Before glass: `orangeglass` is an indicator lens, not a window.
+    (r'(?i)indicator|blinker|turn.?signal|marker|amber|orange', 'Light'),
     (r'(?i)glass|window|windiw|vidrio', 'Glass'),
     (r'(?i)light|lamp|lens|reflector|luz', 'Lamp'),
     (r'(?i)paint|body|carroc', 'Paint'),
@@ -702,8 +737,8 @@ def donor(cid, root):
         delete_faces(full, pred)
     for pred in R.get('islands', ()):
         delete_islands(full, pred)
-    for lo, hi, mats, flush in R.get('patches', ()):
-        print(f'{cid}: patched {patch_out(full, Vector(lo), Vector(hi), mats, flush)} faces')
+    for lo, hi, mats, flush, *ring in R.get('patches', ()):
+        print(f'{cid}: patched {patch_out(full, Vector(lo), Vector(hi), mats, flush, *ring)} faces')
     # Hubs, lug nuts, calipers and discs the material names did not give away (the RX-7's are
     # plain black and chrome): loose islands inside the tires' cylinders, out at the track.
     hubs = delete_islands(full, lambda k, a, b, mats: 'Paint' not in mats and abs((a.x + b.x) / 2) > track / 2 - 0.3
@@ -716,9 +751,13 @@ def donor(cid, root):
     # The bounds of every badge island that goes, to press the panel it sat on flush below.
     gone = []
 
+    # What sits inside a lamp's clear cover (reflector rings, bulbs) is the lamp, never a badge: the
+    # RX-7's tail lamp reflectors went as badges, and pressing them flush dented the tail panel.
+    in_lamp = _inside_lenses(full)
+
     def badge(pred):
         def wrapped(k, a, b, mats):
-            hit = pred(k, a, b, mats)
+            hit = not in_lamp((a + b) / 2) and pred(k, a, b, mats)
             if hit:
                 gone.append((a.copy(), b.copy()))
             return hit
@@ -731,9 +770,9 @@ def donor(cid, root):
                                             and abs((a.y + b.y) / 2) > ends and (a.z + b.z) / 2 > 0.45 and k < 1500))
         # Anywhere on the body: emblems, scripts and stickers are thin (under 12 mm) and small (under
         # 0.35 m) loose islands of any paint-free material, lying on a panel. Lamps and glass are not.
-        badges += delete_islands(full, badge(lambda k, a, b, mats: k < 300 and not set(mats) & {'Glass', 'HeadLight', 'TailLight', 'Light', 'Paint'}
+        badges += delete_islands(full, badge(lambda k, a, b, mats: k < 300 and not set(mats) & {'Glass', 'Paint', *LAMP_MATS}
                                              and sorted(b - a)[0] < 0.012 and sorted(b - a)[2] < 0.35 and (a.z + b.z) / 2 > 0.2))
-    pressed = press_recesses(full, gone)
+    pressed = press_recesses(full, gone) if R.get('press', True) else 0
     print(f'{cid}: pressed {pressed} badge recesses flush ({len(gone)} badge islands removed)')
     for lo, hi in R.get('bridges', ()):
         d, a, n = bridge_bars(full, lo, hi)
@@ -847,12 +886,13 @@ def _view_dirs(n=160, min_z=-0.35):
     return out
 
 
-def cull_hidden(o, dirs=None, through=('Glass',)):
+def cull_hidden(o, dirs=None, through=('Glass', 'Lens')):
     """Keep only the outer skin: a face survives when a ray from it escapes the car in some view
     direction, from its front or its back (then it is flipped to face out). Inner door jambs,
     panel flanges, double layers and anything boxed in go: they are invisible, cost triangles, and
     a collapse that welds them to the skin is what blotches a reduced car. The `through` materials
-    (glass) do not block a ray: what sits behind a window, the cabin, is seen in the game too.
+    (glass, lamp covers) do not block a ray: what sits behind a window, the cabin, is seen in the game too,
+    and so are a lamp's reflectors and bulbs behind its clear cover.
     Returns (deleted, flipped)."""
     dirs = dirs or _view_dirs()
     bm = bmesh.new()
@@ -880,8 +920,9 @@ def cull_hidden(o, dirs=None, through=('Glass',)):
         elif not seen.get(1):
             flip.append(f)
     # Glass keeps only its outer layer: an inner pane seen through the other windows survives the
-    # ray test, and the collapse folds the two layers into dark wedges.
-    gi = [i for i, m in enumerate(o.data.materials) if m and m.name.split('.')[0] == 'Glass']
+    # ray test, and the collapse folds the two layers into dark wedges. A lamp cover likewise: it is
+    # modelled as a solid, and its inner face doubles the triangles and the sheen.
+    gi = [i for i, m in enumerate(o.data.materials) if m and m.name.split('.')[0] in ('Glass', 'Lens')]
     zc = sum(v.co.z for v in bm.verts) / max(1, len(bm.verts))
     for f in bm.faces:
         if f.material_index in gi and f not in gone:
@@ -903,22 +944,31 @@ def cull_hidden(o, dirs=None, through=('Glass',)):
     return len(gone), len(flip)
 
 
-def _collapse(o, budget):
+def _collapse(o, budget, finish=True, error=None, flags=(), lock=None):
     """Planar dissolve then a collapse to about `budget` triangles: meshoptimizer's, which weighs
     the `src_normal` shading and keeps material edges, as far as it goes without tearing parts
     off; the Decimate modifier's mirror-symmetric collapse finishes the rest (all of it with
-    REDUCER = 'blender')."""
+    REDUCER = 'blender'). `error` overrides meshoptimizer's stop (MESHOPT['max_error']), `flags`
+    go to it ('LockBorder'), `lock` names a boolean face attribute whose faces' vertices stay put
+    (through the Decimate too, and no planar dissolve then: it would merge across them), and
+    `finish=False` stops where it stops, over the budget, for a piece the Decimate would mangle."""
     bm = bmesh.new()
     bm.from_mesh(o.data)
-    bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(2.0), verts=bm.verts, edges=bm.edges, delimit={'MATERIAL'})
+    if not lock:
+        bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(2.0), verts=bm.verts, edges=bm.edges, delimit={'MATERIAL'})
     bmesh.ops.triangulate(bm, faces=bm.faces[:])
     bm.to_mesh(o.data)
     bm.free()
     have = tris(o)
     if have > budget and REDUCER == 'meshopt':
-        have = meshopt_reduce(o, budget, uv=False)[0]
-    if have > budget:
+        have = meshopt_reduce(o, budget, uv=False, error=error, flags=flags, lock=lock)[0]
+    if have > budget and finish:
         mod = o.modifiers.new('reduce', 'DECIMATE')
+        if lock and lock in o.data.attributes:
+            held = {v for p, f in zip(o.data.polygons, o.data.attributes[lock].data) if f.value for v in p.vertices}
+            vg = o.vertex_groups.new(name='free')
+            vg.add([v.index for v in o.data.vertices if v.index not in held], 1.0, 'REPLACE')
+            mod.vertex_group = vg.name
         mod.decimate_type = 'COLLAPSE'
         mod.ratio = budget / have
         mod.use_collapse_triangulate = True
@@ -1079,12 +1129,14 @@ def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV, material='Black', f
     verts = [v.co.copy() for v in me.vertices]
     tree = BVHTree.FromPolygons(verts, [list(p.vertices) for p in me.polygons])
     mats = [names[p.material_index] for p in me.polygons]
-    lamps = [list(p.vertices) for p in me.polygons if mats[p.index] in ('HeadLight', 'Light', 'TailLight')]
+    lamps = [list(p.vertices) for p in me.polygons if mats[p.index] in LAMP_MATS]
     ltree = BVHTree.FromPolygons(verts, lamps) if lamps else None
     nose = min(v.y for v in verts)
     floor_z = min(v.z for v in verts) + 0.08
-    # Grilles live in the front fascia: below the top of the front 0.3 m (the hood's leading edge).
-    fascia_top = max(v.z for v in verts if v.y < nose + 0.3)
+    # Grilles live in the front fascia: below the top of the front 0.3 m (the hood's leading edge),
+    # taken at the middle: raised pop-up lamps stand above it outboard, and between them the rays
+    # over the hood read as an open grille (the RX-7 got two black quads floating over its nose).
+    fascia_top = max(v.z for v in verts if v.y < nose + 0.3 and abs(v.x) < 0.3)
     in_zone = lambda q: q.y < nose + 0.45 and q.y < -half_wb - 0.25 and floor_z < q.z < fascia_top - 0.04
     hit_faces, cell, near = set(), {}, {}   # cell[(row, col)]: 'open', 'near' (the fascia) or absent (missed the car)
     xs = [v.x for v in verts]
@@ -1114,7 +1166,7 @@ def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV, material='Black', f
     g = {k for k, (fi, _) in near.items() if fi in hit_faces}
     for _ in range(2):
         for (zi, xi), (fi, loc) in near.items():
-            if fi in hit_faces or mats[fi] in ('Glass', 'HeadLight', 'TailLight', 'Light') or not in_zone(loc):
+            if fi in hit_faces or mats[fi] in ('Glass', *LAMP_MATS) or not in_zone(loc):
                 continue
             side = lambda dz, dx: any((zi + dz * d, xi + dx * d) in g for d in range(1, 5))
             # Grille on both sides and above or below: a logo can fill a slim grille's whole height.
@@ -1139,7 +1191,7 @@ def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV, material='Black', f
     for p in me.polygons:
         c = p.center
         k = (round(c.z / step), round(c.x / step))
-        if p.index not in hit_faces and k in depth and mats[p.index] not in ('Glass', 'HeadLight', 'TailLight', 'Light') \
+        if p.index not in hit_faces and k in depth and mats[p.index] not in ('Glass', *LAMP_MATS) \
                 and depth[k] - 0.08 < c.y < depth[k] + 0.01 and max((verts[i] - c).length for i in p.vertices) < 0.08:
             hit_faces.add(p.index)
     # Only faces wholly inside the grille zone: a big Black triangle reaching under the car stays Black.
@@ -1215,6 +1267,20 @@ def back_panels(o, panels, material='Black'):
     me.update()
 
 
+def _delete_indices(o, pred):
+    """Delete the faces for which pred(polygon) is true (delete_faces by index or anything else of the face)."""
+    me = o.data
+    doomed = [p.index for p in me.polygons if pred(p)]
+    if doomed:
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[bm.faces[i] for i in doomed], context='FACES')
+        bm.to_mesh(me)
+        bm.free()
+        me.update()
+
+
 def _carry_custom_normals(o):
     """The object's custom normals written into its `src_normal` corner attribute, so a bmesh join
     keeps them; _set_custom_normals reads them back."""
@@ -1230,26 +1296,85 @@ def _set_custom_normals(o):
         me.normals_split_custom_set([v.vector.copy() for v in sn.data])
 
 
-def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET):
+def _inside_lenses(o, reach=0.3):
+    """A test of a point (Blender space): inside a lamp, under a clear cover (`Lens`) within `reach`
+    m outward, along the car (toward its nearer end) or across it (toward its nearer side). A box
+    round the cover would not do: the RX-7's tail cover is one curved bar, and its box held the
+    panel and the lettering below it."""
+    me = o.data
+    names = [m.name.split('.')[0] if m else '' for m in me.materials]
+    covers = [list(p.vertices) for p in me.polygons if names[p.material_index] == 'Lens']
+    if not covers:
+        return lambda c: False
+    tree = BVHTree.FromPolygons([v.co.copy() for v in me.vertices], covers)
+    return lambda c: any(tree.ray_cast(c, d, reach)[0] is not None
+                         for d in (Vector((0, 1 if c.y > 0 else -1, 0)), Vector((1 if c.x > 0 else -1, 0, 0))))
+
+
+def lamp_faces(o, extra=()):
+    """Indices of the lamp faces: every lamp material, what sits inside a clear cover (`Lens`) in
+    any material but Paint (the chrome reflectors, black housings and bulbs seen through it), and
+    the faces any of `extra` (the recipe's `lamps`, pred(center, normal, material)) takes."""
+    me = o.data
+    names = [m.name.split('.')[0] if m else '' for m in me.materials]
+    inside = _inside_lenses(o)
+    return {p.index for p in me.polygons if names[p.material_index] in LAMP_MATS
+            or (names[p.material_index] not in ('Paint', 'Interior') and inside(p.center))
+            or any(f(p.center, p.normal, names[p.material_index]) for f in extra)}
+
+
+def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=LAMP_BUDGET):
     """`donor:<cid>.Low` at about `budget` triangles, in three steps: collapse to `mid` (a copy,
     `.Skin`), cull what cannot be seen from outside (cull_hidden), collapse the skin to the
     budget. Shading is the source's own: the authored normals ride along as an attribute and are
     set back on the reduced corners (shade_from_source); normals recomputed on a reduced mesh
     either balloon (all smooth) or facet at random (split by angle), and on a game-ready donor
-    whose panels are slightly wavy they show every ripple. Prints the culling and how far the low
-    vertices drift from the full surface (mean and 95th percentile, mm)."""
+    whose panels are slightly wavy they show every ripple. The cabin is reduced apart, to its own
+    budget; the lamps first, to theirs, then welded back and held while the shell collapses round
+    them. Prints the culling and how far the low vertices drift from the full surface (mean and
+    95th percentile, mm)."""
     full = bpy.data.objects[f'donor:{cid}.Full']
     skin = _copy(full, f'donor:{cid}.Skin')
     _collapse(skin, mid)
     gone, flipped = cull_hidden(skin)
     # The cabin is reduced apart, to its own budget: it touches nothing of the shell, and in one
     # collapse its 30,000 triangles of seats and dash would starve the mirrors and handles.
+    # The lamps go first, on their own: an error-driven collapse eats small features first, and a
+    # round tail lens or a reflector's facets are exactly that. They spread over the car's length,
+    # so MESHOPT's 1 % let a cover drift 4 cm, and the Decimate finish cut the RX-7's round lenses
+    # to diamonds. Their open edges stay where the shell meets them, so they weld back; the shell
+    # then collapses round them with every lamp vertex held. Cut out and collapsed apart, the shell
+    # pulled its open edge into shards on the panels round the lamps.
     low = _copy(skin, f'donor:{cid}.Low')
     cabin = _copy(skin, f'donor:{cid}.Cabin')
+    lamp = _copy(skin, f'donor:{cid}.Lamps')
     ii = [i for i, m in enumerate(low.data.materials) if m and m.name.split('.')[0] == 'Interior']
-    delete_faces(low, lambda c, n, m: m == 'Interior')
+    lit = lamp_faces(skin, DONORS[cid].get('lamps', ()))
+    _delete_indices(low, lambda p: p.index in lit or low.data.materials[p.material_index].name.split('.')[0] == 'Interior')
     delete_faces(cabin, lambda c, n, m: m != 'Interior')
-    _collapse(low, budget)
+    _delete_indices(lamp, lambda p: p.index not in lit)
+    lamp_tris = tris(lamp)
+    if lamp.data.polygons:
+        _collapse(lamp, lamps, finish=False, error=LAMP_ERROR, flags=('LockBorder',))
+        shell = len(low.data.polygons)
+        bm = bmesh.new()
+        bm.from_mesh(low.data)
+        bm.from_mesh(lamp.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+        bm.to_mesh(low.data)
+        bm.free()
+        held = low.data.attributes.new('lamp', 'BOOLEAN', 'FACE')
+        held.data.foreach_set('value', [i >= shell for i in range(len(low.data.polygons))])
+    kept = tris(lamp) if lamp.data.polygons else 0
+    print(f'{cid}: lamps {lamp_tris} -> {kept} tris')
+    bpy.data.objects.remove(lamp)
+    # The shell gets the budget less the lamps' share, however many the lamps kept: squeezed by them
+    # to 10,000, the RX-7's doors fell inside its cabin.
+    _collapse(low, budget - min(lamps, kept) + kept, lock='lamp')
+    if low.data.attributes.get('lamp'):
+        low.data.attributes.remove(low.data.attributes['lamp'])
+    for g in list(low.vertex_groups):
+        low.vertex_groups.remove(g)
     recolored, quads = grille_surface(low, full['wheelbase'] / 2)
     if DONORS[cid].get('backPanels'):
         back_panels(low, DONORS[cid]['backPanels'])

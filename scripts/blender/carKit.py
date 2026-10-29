@@ -20,7 +20,10 @@ from mathutils.bvhtree import BVHTree
 from mathutils.geometry import intersect_point_line
 
 REPO = globals().get('REPO') or os.getcwd()
-SHARED = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap']
+SHARED = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap', 'Lens', 'Reflector']
+# Every lamp material: only HeadLight and TailLight glow in the game; Light (amber indicators and markers),
+# Reflector (red) and Lens (the clear covers, see-through) are unlit lenses (src/shared/parts.ts).
+LAMP_MATS = ('HeadLight', 'TailLight', 'Light', 'Lens', 'Reflector')
 
 
 # ----- scene ---------------------------------------------------------------
@@ -388,7 +391,7 @@ def lift_liners(o, wheels, r, lift=LINER_LIFT, reach=0.22):
     end, `r` the tire radius; Blender space. Returns the number of vertices moved."""
     me = o.data
     names = [m.name.split('.')[0] for m in me.materials]
-    skin = {'Paint', 'Glass', 'HeadLight', 'TailLight', 'Light', 'Trim', 'Chrome'}
+    skin = {'Paint', 'Glass', 'Trim', 'Chrome', *LAMP_MATS}
     liner = set()
     for p in me.polygons:
         if names[p.material_index] in skin:

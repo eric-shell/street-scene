@@ -129,7 +129,11 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   }
   m.HeadLight = new THREE.MeshStandardMaterial({ name: 'HeadLight', color: 0xffffff, emissive: 0xeaf2ff, emissiveIntensity: LAMP_GLOW.head });
   m.TailLight = new THREE.MeshStandardMaterial({ name: 'TailLight', color: 0x330000, emissive: 0xff1a2a, emissiveIntensity: LAMP_GLOW.tail });
-  m.Light = new THREE.MeshStandardMaterial({ name: 'Light', color: 0x332200, emissive: 0xffa040, emissiveIntensity: LAMP_GLOW.marker });
+  // The unlit lenses: amber indicators and markers, red reflectors, and the clear covers over the main lamps
+  // (see-through, so the reflectors and bulbs behind read as the lamp's detail, the way the window glass shows the cabin).
+  m.Light = new THREE.MeshPhysicalMaterial({ name: 'Light', color: 0xc8700f, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
+  m.Reflector = new THREE.MeshPhysicalMaterial({ name: 'Reflector', color: 0x7a0610, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
+  m.Lens = new THREE.MeshPhysicalMaterial({ name: 'Lens', color: 0xdfe6ee, metalness: 0, roughness: 0.03, transparent: true, opacity: 0.22, depthWrite: false });
   m.Interior = new THREE.MeshStandardMaterial({ name: 'Interior', color: 0x1a1a1e, roughness: 0.8 });
   const grille = grilleTexture(GRILLE_PATTERN);
   // Bright metal bars on dark holes: the map darkens the holes, the bump map raises the bars.
@@ -141,7 +145,7 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   for (const k of ['Paint', 'Trim', 'Black', 'Chrome', 'Interior', 'Grille'] as const) m[k].side = THREE.DoubleSide;
   // Cars carry their own (stronger) environment reflections so they read clearly at night.
   if (envMap) {
-    const boost: Partial<Record<MaterialName, number>> = { ...PAINT_ENV, Black: 1, Chrome: 2.2, Glass: 1.7, Tire: 0.8, Interior: 0.6 };
+    const boost: Partial<Record<MaterialName, number>> = { ...PAINT_ENV, Black: 1, Chrome: 2.2, Glass: 1.7, Lens: 2, Tire: 0.8, Interior: 0.6 };
     for (const k of MATERIAL_NAMES) {
       const mat = m[k] as THREE.MeshStandardMaterial;
       mat.envMap = envMap;
@@ -259,11 +263,11 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
 }
 
 /**
- * The lamp lenses' emissive at full (the night street): head, tail (lit, and under braking) and the side
- * markers. A scene that shows the car parked (the garage) scales them with `lamps`, so the lenses read as lit
+ * The main lamps' emissive at full (the night street): head and tail (lit, and under braking). The side
+ * markers and indicators are unlit lenses (`Light`). A scene that shows the car parked (the garage) scales them with `lamps`, so the lenses read as lit
  * without blooming into blobs under the room's lights.
  */
-export const LAMP_GLOW = { head: 1.3, tail: 1.4, brake: 4.5, marker: 0.8 } as const;
+export const LAMP_GLOW = { head: 1.3, tail: 1.4, brake: 4.5 } as const;
 
 /** Brake lights follow the pedal; the rotors glow with their heat (0 cold to 1, the car view's rotorHeat); `lamps` scales the lenses (CarView.setLampLevel). */
 export function setBrake(m: CarMaterialSet, braking: boolean, heat = braking ? 1 : 0, lamps = 1): void {

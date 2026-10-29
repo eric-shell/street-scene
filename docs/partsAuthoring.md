@@ -49,12 +49,14 @@ Parts must use the shared material names. The game swaps each one for a runtime 
 | `Glass` | Windows | Window tint |
 | `Rim` | The wheel (everything but the tire) | Wheel color (front and rear can differ) |
 | `Tire` | Tire rubber | fixed |
-| `HeadLight` | Headlight lenses | fixed cool white glow |
-| `TailLight` | Taillight lenses | fixed red glow, brighter when braking |
-| `Light` | Indicators, fog lights | fixed amber glow |
+| `HeadLight` | The main headlamps (the lens, or the reflector behind a clear `Lens`) | fixed cool white glow |
+| `TailLight` | The main tail lamps | fixed red glow, brighter when braking |
+| `Light` | Indicators, side markers | amber lens, unlit |
+| `Reflector` | Red reflectors and markers | red lens, unlit |
+| `Lens` | Clear lamp covers, reverse and fog lamps | clear, see-through, unlit |
 | `Interior` | Seats, dash | fixed |
 
-Name the Blender material exactly that (e.g. `Paint`). Suffixes like `Paint.001` are fine. Colors you set in Blender are ignored at runtime. They only matter for your own preview.
+Only `HeadLight` and `TailLight` glow: a lamp that is not one of the big headlamps or tail lamps takes an unlit lens. Name the Blender material exactly that (e.g. `Paint`). Suffixes like `Paint.001` are fine. Colors you set in Blender are ignored at runtime. They only matter for your own preview.
 
 ## 4. Triangle budgets
 

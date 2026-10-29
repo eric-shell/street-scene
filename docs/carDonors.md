@@ -44,7 +44,9 @@ The size the importer reports does not matter: the pipeline scales from the publ
 Most of the classification is automatic. `AUTO` in `carDonors.py` maps material names by keyword:
 - dropped: tire, rim, wheel, brake, engine, badge, emblem, licence and plate, ground and shadow;
 - `Interior` for the cabin (interior, seat, dash, steering, headliner, carpet, cloth, leather, gauges): it ships, reduced hard, because the game's glass is 70 % opaque and a car without a cabin reads hollow;
-- `Glass`, lamps, `Paint`, `Chrome` and `Black` by their usual words.
+- `Glass`, lamps, `Paint`, `Chrome` and `Black` by their usual words; indicator, blinker, marker, amber and orange to `Light`, before glass, so `orangeglass` is not a window.
+
+Only the main lamps glow in the game. A donor whose lamps are modelled in layers (a clear cover over reflectors and bulbs, round lenses in a tail bar) maps them finer than `'Lamp'`: the covers to `Lens` (unlit, see-through, so the reflectors and bulbs behind read as the lamp's detail), indicators and markers to `Light` (amber) or `Reflector` (red), and only the main lamps' own lenses, or the reflector behind a clear cover (`recolor`), to `HeadLight` and `TailLight`. A main lamp modelled as a bare cover over chrome stays `'Lamp'`, or it would not glow at all.
 
 Names are matched without Blender's `.001` suffix, so several donors can sit in one session.
 
@@ -57,9 +59,11 @@ A recipe adds only what that donor needs:
 | `drop` | whole meshes to drop by object or parent name |
 | `nose` | `'+y'` when the model faces +Y |
 | `turn` | Euler degrees (XYZ) that stand a model lying on its side up Z-up, before `nose`: `(-90, 0, 0)` for one with -Y up facing -Z |
-| `patches` | boxes to remove (`flush=False`: a roof plate) or press flush into the panel (sunroof, fuel door) |
+| `patches` | boxes to remove (`flush=False`: a roof plate) or press flush into the panel (sunroof, fuel door); a fifth value is the ring (m) the panel is fitted over, 0.12 by default, smaller on a curved panel (the RX-7's decklid lock) |
 | `recolor`, `cull` | face fixes after the join (a glass roof to `Paint`) |
 | `islands` | loose islands to delete after the join, `pred(faces, lo, hi, materials)`: what `cull`'s face boxes would cut too wide (wiper arms over a black cowl, an antenna) |
+| `lamps` | predicates `(center, normal, material)` for faces reduced with the lamps at their tighter error: a lamp housing outside its cover (the RX-7's raised pop-ups) |
+| `press` | `False` leaves the panels under removed badges as they are: for lettering that sits on a smooth panel rather than in a recess, where pressing dents it (the RX-7's tail) |
 | `debadge` | `False` skips the badge island passes: for a donor whose badges are materials of their own (drop them in `materials`) and whose grilles are meshes of thousands of small flat cells, which the passes take for badges and press flat (the R33's: 2,423 islands) |
 | `bridges` | boxes `(lo, hi)` across a gap in the grille's bars: a `cull` or a badge mount cut them where it sat. The faces centered in the box go, then each bar end on the box's left face is lofted to its match on the right (same material, nearest z), so the bar runs across in one piece (the Golf's two bars, in front of the black panel behind them) |
 | `rawNames` | the donor's materials are `Material.001`, `Material.002`: the `.001` suffix is the name, so classification must not strip it (the Runabout's) |
@@ -84,7 +88,7 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 - turns the car to face -Y, and centers it on its tires when they sit off x = 0 (the R33 import sat 1.12 m to one side);
 - scales it to the published wheelbase, then checks its length against the published one;
 - keeps the authored normals as an attribute; flat-shaded sources are smoothed at 30 degrees first;
-- assigns lamps by position: ahead of the axles `HeadLight`, behind them `TailLight`, between them `Light`, and well inboard between the axles (a dome or dash lamp) `Interior`;
+- assigns `'Lamp'` by position: ahead of the axles `HeadLight`, behind them `TailLight`, between them `Light`, and well inboard between the axles (a dome or dash lamp) `Interior`;
 - removes badges on the nose and tail, thin decals anywhere on the body, wipers and antennas, and applies the recipe's patches;
 - presses the panel flush where each badge sat: the badge's bounds, grown 2 cm, that hold Paint faces (a hood's leading edge, a bumper's top lip) get `patch_out(flush=True)`, so no notch is left. A badge in a grille has no Paint under it and is left to the next step;
 - bridges the recipe's `bridges` (`bridge_bars`): the grille bars the badge cut are lofted across the gap, so the grille runs from lamp to lamp. Both steps log how many they did;
@@ -92,8 +96,8 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 
 `reduce_donor()` does this:
 1. Collapses to 60k triangles. Both collapses are meshoptimizer's simplifier (`scripts/blender/meshopt.py`, run in Node from the npm package by `scripts/meshoptSimplify.ts`; nothing to install, but `node` must be findable: PATH, `$NODE`, or nvm/Homebrew). It weighs the authored normals and keeps material edges. It stops at 1 % of the car's size rather than tear a part off, and the Decimate modifier's mirror-symmetric collapse finishes the rest. `REDUCER = 'blender'` in `carDonors.py` goes back to Decimate alone.
-2. Culls every face that cannot be seen from outside: jambs, flanges, double layers and inner glass. Glass does not block the test rays, so the cabin behind the windows counts as seen, as it is in the game.
-3. Collapses the shell to `BUDGET` (16,000) and the cabin apart to `INTERIOR_BUDGET` (2,500): the cabin touches nothing of the shell, and in one collapse its 30,000 triangles of seats and dash would starve the mirrors and handles. Small features are what an error-driven collapse eats first, so a part that must survive gets its own budget (the wheel set does the same per kind: `docs/carWheels.md`).
+2. Culls every face that cannot be seen from outside: jambs, flanges, double layers and inner glass. Glass and `Lens` do not block the test rays, so the cabin behind the windows and the reflectors behind a lamp cover count as seen, as they are in the game; both keep only their outer layer.
+3. Collapses the shell to `BUDGET` (16,000) and the cabin apart to `INTERIOR_BUDGET` (2,500): the cabin touches nothing of the shell, and in one collapse its 30,000 triangles of seats and dash would starve the mirrors and handles. The lamps (every lamp material, and what is not paint inside a `Lens` cover's box) are collapsed apart too, first, at a tighter error (`LAMP_ERROR`, 0.3 % of their extent: they span the car, so the usual 1 % let a cover drift 4 cm), with their open edges held so they weld back to the shell, and without the Decimate finish, which cut the RX-7's round tail lenses to diamonds. The shell then collapses round them with every lamp vertex held (cut out and collapsed apart, it pulled its open edge into shards on the panels round the lamps), to `BUDGET` less `LAMP_BUDGET` (4,000) whatever the lamps kept. What sits under a lamp cover is never a badge. Small features are what an error-driven collapse eats first, so a part that must survive gets its own budget (the wheel set does the same per kind: `docs/carWheels.md`).
 4. Sets the authored normals back on the reduced faces, matched within the same material, from the skin as it is after the cull: the cull turns faces only their back is seen from and negates their authored normals with them, which rights a donor modelled inside out; a skin from before the cull would turn them back.
 5. Closes the front grilles: the donor's own grille geometry stays as it is, matte `Black` (at night a grille reads dark; the patterned `Grille` plate every car once wore read as a silver sticker), logos inside a grille become black too, and an open grille gets one flat black quad 0.12 m behind the nose so nobody sees into the body. `grille_surface(..., material='Grille', flatten=True)` is the old patterned plate, for a donor whose grille is only a texture.
 6. Strips what the wipers leave on the glass (pivots, nozzles, the mirror's mount: small black islands lying on it) with the wiper arms and antennas.

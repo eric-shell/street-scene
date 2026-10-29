@@ -34,6 +34,8 @@ interface Request {
   /** Relative error to stop at (1 is the mesh's whole extent); large means the target alone decides. */
   error: number;
   flags?: SimplifierFlags[];
+  /** Vertices that must not move or collapse (indices into the input's vertices). */
+  lock?: number[];
   /** Move the kept vertices to fit (simplifyWithUpdate) rather than keep them where they were. */
   update: boolean;
 }
@@ -49,7 +51,12 @@ const attributes = new Float32Array(slice(posBytes, attrBytes));
 const indices = new Uint32Array(slice(posBytes + attrBytes, req.indices * 4));
 
 await MeshoptSimplifier.ready;
-const args = [indices, positions, 3, attributes, req.stride, req.weights, null, req.target, req.error, req.flags ?? []] as const;
+let lock: Uint8Array | null = null;
+if (req.lock?.length) {
+  lock = new Uint8Array(req.vertices);
+  for (const v of req.lock) lock[v] = 1;
+}
+const args = [indices, positions, 3, attributes, req.stride, req.weights, lock, req.target, req.error, req.flags ?? []] as const;
 let count: number;
 let error: number;
 if (req.update) [count, error] = MeshoptSimplifier.simplifyWithUpdate(...args);

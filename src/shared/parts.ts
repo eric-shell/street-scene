@@ -26,9 +26,13 @@ export const SLOT_LABELS: Record<PartSlot, string> = {
 
 /**
  * Shared material names. Source assets are renamed to these during import and
- * new parts must use them, so paint and tint apply automatically.
+ * new parts must use them, so paint and tint apply automatically. Only the main
+ * lamps glow (`HeadLight`, `TailLight`); the other lamp lenses are unlit: `Light`
+ * the amber indicators and side markers, `Reflector` red reflectors and markers,
+ * `Lens` the clear covers and unlit clear lamps (reverse, fog), see-through so a
+ * lamp's reflectors and bulbs show behind it.
  */
-export const MATERIAL_NAMES = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap'] as const;
+export const MATERIAL_NAMES = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap', 'Lens', 'Reflector'] as const;
 export type MaterialName = (typeof MATERIAL_NAMES)[number];
 
 /** Triangle budgets per slot used by validation. */

@@ -1205,9 +1205,7 @@ export class CarView {
     const k = Math.max(0, Math.min(1, level));
     this.lampLevel = k;
     const head = this.materials.HeadLight as THREE.MeshStandardMaterial | undefined;
-    const marker = this.materials.Light as THREE.MeshStandardMaterial | undefined;
     if (head) head.emissiveIntensity = LAMP_GLOW.head * k;
-    if (marker) marker.emissiveIntensity = LAMP_GLOW.marker * k;
   }
 
   /** Show or hide one wheel (0 FL, 1 FR, 2 RL, 3 RR), e.g. a car on a garage lift with its wheels off. Kept across reloads. */

@@ -70,12 +70,14 @@ def _read(attr, n, width, dtype=np.float32):
     return a.reshape(n, width)
 
 
-def meshopt_reduce(o, budget, uv=True, flags=()):
+def meshopt_reduce(o, budget, uv=True, flags=(), error=None, lock=None):
     """`o` reduced in place to about `budget` triangles (see the module comment). `uv=False` drops
     the UV maps instead of keeping their seams: a donor's UVs are replaced later, and their islands
     would only pin the collapse. Returns (triangles, error), the error relative to the mesh's
     extent. It stops above the budget rather than pass MESHOPT['max_error'], or when only
-    seams and open borders are left to collapse."""
+    seams and open borders are left to collapse. `error` overrides MESHOPT['max_error'] (relative to this mesh's extent: a piece spread over the
+    whole car, such as its lamps, needs a smaller share). `lock` names a boolean face attribute:
+    every vertex of a flagged face stays where it is (a piece reduced on its own, welded back)."""
     me = o.data
     bm = bmesh.new()
     bm.from_mesh(me)
@@ -148,6 +150,11 @@ def meshopt_reduce(o, budget, uv=True, flags=()):
     mean = np.zeros((ns, 3))
     np.add.at(mean, inverse, normal)
     split_values[:, :3] = mean / np.maximum(np.linalg.norm(mean, axis=1, keepdims=True), 1e-12)
+    locked = []
+    if lock and lock in me.attributes:
+        held = np.zeros(nv, bool)
+        held[cv[_read(me.attributes[lock], nf, 1, bool)[:, 0][cface]]] = True
+        locked = np.flatnonzero(held[split_vert]).tolist()
 
     work = tempfile.mkdtemp(prefix='meshopt')
     try:
@@ -158,7 +165,7 @@ def meshopt_reduce(o, budget, uv=True, flags=()):
             f.write(indices.tobytes())
         with open(req, 'w') as f:
             json.dump({'input': src, 'output': dst, 'vertices': ns, 'indices': len(indices), 'stride': stride, 'weights': weights,
-                       'target': min(budget, nf) * 3, 'error': MESHOPT['max_error'], 'flags': list(flags), 'update': MESHOPT['update']}, f)
+                       'target': min(budget, nf) * 3, 'error': MESHOPT['max_error'] if error is None else error, 'flags': list(flags), 'lock': locked, 'update': MESHOPT['update']}, f)
         run = subprocess.run([node_bin(), '--experimental-strip-types', '--disable-warning=ExperimentalWarning',
                               os.path.join(REPO, 'scripts', 'meshoptSimplify.ts'), req], capture_output=True, text=True, cwd=REPO)
         if run.returncode != 0:
