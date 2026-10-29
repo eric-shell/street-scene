@@ -3,6 +3,7 @@
  * material is named e.g. "Paint" gets the player's paint, so new parts pick up
  * paint and glass tint automatically. Lamp colors are fixed, not a build choice.
  * The body, the wheels and their trims and the calipers are all paints (a color and a finish, applyPaint).
+ * The windshield is split from the glass at load (windshield.ts): it stays clear, and the banner is drawn over it.
  */
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
@@ -10,15 +11,21 @@ import { type AccentPaint, type Paint, type PaintFinish, type VisualBuild, type 
 import { BRAKE, caliperLogoTexture, rotorTexture } from './brakes';
 import { TIRE_BUMP, acquireTireTexture, releaseTireTexture, tireShader } from './tireTread';
 import { chromeEnvironment } from './chromeEnv';
+import { BANNER } from './windshield';
 
 /**
  * The shared runtime materials, plus the rear axle's own wheel material so front and rear wheel colors
- * can differ, and the brake unit's rotor and caliper (brakes.ts), which no part GLB names.
+ * can differ, the brake unit's rotor and caliper (brakes.ts), which no part GLB names, and the windshield and
+ * its banner (windshield.ts), split from the glass at load.
  */
-export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material; RimLipRear: THREE.Material; RimCapRear: THREE.Material; Rotor: THREE.Material; Caliper: THREE.Material; RoofPaint: THREE.Material; Lug: THREE.Material; LugRear: THREE.Material; Hardware: THREE.Material; HardwareRear: THREE.Material };
+export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material; RimLipRear: THREE.Material; RimCapRear: THREE.Material; Rotor: THREE.Material; Caliper: THREE.Material; RoofPaint: THREE.Material; Lug: THREE.Material; LugRear: THREE.Material; Hardware: THREE.Material; HardwareRear: THREE.Material; Windshield: THREE.Material; Banner: THREE.Material };
 
 /** Each painted material's environment reflection strength (the boost createCarMaterials gives it); candy raises it. */
 const PAINT_ENV = { Paint: 1.9, Trim: 1.3, Rim: 1.8, RimLip: 1.8, RimCap: 1.8, Caliper: 1.2 } as const;
+/** The glass's environment reflection strength (the boost createCarMaterials gives it), which a linked banner's film shares. */
+const GLASS_ENV = 1.7;
+/** Untinted glass: the color a tint fades to as its darkness goes to 0, and the windshield's always. */
+const CLEAR_GLASS = new THREE.Color(0x8fa0b0);
 
 /**
  * The polished look of the Chrome material (createCarMaterials), which a chrome finish wears, always in this color.
@@ -151,7 +158,7 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   for (const k of ['Paint', 'Trim', 'Black', 'Chrome', 'Interior', 'Grille'] as const) m[k].side = THREE.DoubleSide;
   // Cars carry their own (stronger) environment reflections so they read clearly at night.
   if (envMap) {
-    const boost: Partial<Record<MaterialName, number>> = { ...PAINT_ENV, Black: 1, Chrome: 2.2, Glass: 1.7, Lens: 2, Tire: 0.8, Interior: 0.6 };
+    const boost: Partial<Record<MaterialName, number>> = { ...PAINT_ENV, Black: 1, Chrome: 2.2, Glass: GLASS_ENV, Lens: 2, Tire: 0.8, Interior: 0.6 };
     for (const k of MATERIAL_NAMES) {
       const mat = m[k] as THREE.MeshStandardMaterial;
       mat.envMap = envMap;
@@ -184,7 +191,35 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   };
   // The roof's Paint faces (bindRoof in carView.ts): a clone of the body paint, so a matched roof is the same look.
   m.RoofPaint = m.Paint.clone();
+  // The windshield: the glass's look, never tinted.
+  m.Windshield = m.Glass.clone();
+  tintGlass(m.Windshield as THREE.MeshPhysicalMaterial, CLEAR_GLASS, 0);
+  // The banner, on the windshield's own faces: pulled toward the camera so the glass behind loses the depth test,
+  // and clipped below the build's height (setBannerFrom) by each vertex's car height (carY, windshield.ts).
+  const from = { value: Infinity };
+  m.Banner = new THREE.MeshPhysicalMaterial({ name: 'Banner', polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, envMap, visible: false });
+  m.Banner.userData.from = from;
+  m.Banner.onBeforeCompile = (shader) => {
+    shader.uniforms.bannerFrom = from;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float carY;\nvarying float vCarY;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vCarY = carY;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float bannerFrom;\nvarying float vCarY;')
+      .replace('#include <clipping_planes_fragment>', 'if (vCarY < bannerFrom) discard;\n#include <clipping_planes_fragment>');
+  };
   return m;
+}
+
+/** The car height (m) the banner starts at (windshield.ts bannerFrom): below it the banner is clipped away. */
+export function setBannerFrom(m: CarMaterialSet, y: number): void {
+  (m.Banner.userData.from as { value: number }).value = y;
+}
+
+/** Tint glass: `darkness` (0..1) of the way from clear to the tint's color, and as much less see-through. */
+function tintGlass(mat: THREE.MeshPhysicalMaterial, color: THREE.ColorRepresentation, darkness: number): void {
+  mat.color.set(color).lerp(CLEAR_GLASS, 1 - darkness);
+  mat.opacity = 0.35 + darkness * 0.62;
 }
 
 const FINISH: Record<PaintFinish, Partial<THREE.MeshPhysicalMaterialParameters>> = {
@@ -220,8 +255,7 @@ function applyPaint(mat: THREE.MeshPhysicalMaterial, p: Paint<AccentFinish>, env
     // One look, never tinted: the paint's color is ignored (validPaint stores CHROME_COLOR for it anyway).
     mat.color.set(CHROME.color);
     mat.setValues(CHROME.surface);
-    // The studio dims with the showroom's lights (envScale) like the paint's reflections.
-    mat.envMapIntensity = wheel ? (CHROME.wheelEnv * env) / PAINT_ENV.Rim : CHROME.env;
+    mat.envMapIntensity = wheel ? CHROME.wheelEnv : CHROME.env;
     mat.needsUpdate = true;
     return;
   }
@@ -240,34 +274,41 @@ function applyPaint(mat: THREE.MeshPhysicalMaterial, p: Paint<AccentFinish>, env
 }
 
 /**
- * Dress the materials in a build. The lip, cap and lug nuts resolve per axle ('face' wears that axle's wheel paint). `envScale` scales the painted surfaces' environment reflections (1 the night street's; the
- * garage turns it down with its lights, since the paint's own map still holds them lit).
+ * Dress the materials in a build. The lip, cap and lug nuts resolve per axle ('face' wears that axle's wheel paint).
  */
-export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, braking = false, envScale = 1): void {
+export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, braking = false): void {
   // A matched accent wears the body's paint.
   const accent = <F extends AccentFinish>(p: AccentPaint<F>): Paint<AccentFinish> => (p.match ? v.paint : p);
-  applyPaint(m.Paint as THREE.MeshPhysicalMaterial, v.paint, PAINT_ENV.Paint * envScale);
+  applyPaint(m.Paint as THREE.MeshPhysicalMaterial, v.paint, PAINT_ENV.Paint);
   // The roof's own copy of the body paint: the same look while matched, its own paint otherwise.
-  applyPaint(m.RoofPaint as THREE.MeshPhysicalMaterial, v.roof.match ? v.paint : v.roof, PAINT_ENV.Paint * envScale);
-  applyPaint(m.Rim as THREE.MeshPhysicalMaterial, accent(v.wheels.paint), PAINT_ENV.Rim * envScale, true);
-  applyPaint(m.RimRear as THREE.MeshPhysicalMaterial, accent(v.wheels.rearPaint), PAINT_ENV.Rim * envScale, true);
+  applyPaint(m.RoofPaint as THREE.MeshPhysicalMaterial, v.roof.match ? v.paint : v.roof, PAINT_ENV.Paint);
+  applyPaint(m.Rim as THREE.MeshPhysicalMaterial, accent(v.wheels.paint), PAINT_ENV.Rim, true);
+  applyPaint(m.RimRear as THREE.MeshPhysicalMaterial, accent(v.wheels.rearPaint), PAINT_ENV.Rim, true);
   // A trim resolves per axle: its own paint, the body's, or that axle's face or cap.
   const wears = (t: WheelTrim, face: Paint<AccentFinish>, cap: Paint<AccentFinish>): Paint<AccentFinish> =>
     t.mode === 'paint' ? t : t.mode === 'body' ? v.paint : t.mode === 'cap' ? cap : face;
   const axle = (face: Paint<AccentFinish>, lip: THREE.Material, capMat: THREE.Material, lug: THREE.Material, hw: THREE.Material): void => {
     const cap = wears(v.wheels.cap, face, face);
-    applyPaint(lip as THREE.MeshPhysicalMaterial, wears(v.wheels.lip, face, cap), PAINT_ENV.Rim * envScale, true);
-    applyPaint(capMat as THREE.MeshPhysicalMaterial, cap, PAINT_ENV.Rim * envScale, true);
-    applyPaint(lug as THREE.MeshPhysicalMaterial, wears(v.wheels.lugNuts, face, cap), PAINT_ENV.Rim * envScale, true);
-    applyPaint(hw as THREE.MeshPhysicalMaterial, wears(v.wheels.hardware, face, cap), PAINT_ENV.Rim * envScale, true);
+    applyPaint(lip as THREE.MeshPhysicalMaterial, wears(v.wheels.lip, face, cap), PAINT_ENV.Rim, true);
+    applyPaint(capMat as THREE.MeshPhysicalMaterial, cap, PAINT_ENV.Rim, true);
+    applyPaint(lug as THREE.MeshPhysicalMaterial, wears(v.wheels.lugNuts, face, cap), PAINT_ENV.Rim, true);
+    applyPaint(hw as THREE.MeshPhysicalMaterial, wears(v.wheels.hardware, face, cap), PAINT_ENV.Rim, true);
   };
   axle(accent(v.wheels.paint), m.RimLip, m.RimCap, m.Lug, m.Hardware);
   axle(accent(v.wheels.rearPaint), m.RimLipRear, m.RimCapRear, m.LugRear, m.HardwareRear);
-  applyPaint(m.Caliper as THREE.MeshPhysicalMaterial, accent(v.calipers), PAINT_ENV.Caliper * envScale);
-  applyPaint(m.Trim as THREE.MeshPhysicalMaterial, TRIM_PAINT, PAINT_ENV.Trim * envScale);
-  const glass = m.Glass as THREE.MeshPhysicalMaterial;
-  glass.color.set(v.tint.color).lerp(new THREE.Color(0x8fa0b0), 1 - v.tint.darkness);
-  glass.opacity = 0.35 + v.tint.darkness * 0.62;
+  applyPaint(m.Caliper as THREE.MeshPhysicalMaterial, accent(v.calipers), PAINT_ENV.Caliper);
+  applyPaint(m.Trim as THREE.MeshPhysicalMaterial, TRIM_PAINT, PAINT_ENV.Trim);
+  // The side and rear glass; the windshield stays clear.
+  tintGlass(m.Glass as THREE.MeshPhysicalMaterial, v.tint.color, v.tint.darkness);
+  // The banner: linked, a band of the tint's film (the glass's polish, at least BANNER.film dark, and opaque);
+  // unlinked, its own paint or the body's.
+  const banner = m.Banner as THREE.MeshPhysicalMaterial;
+  banner.visible = v.banner.enabled;
+  if (v.banner.link) {
+    applyPaint(banner, { color: v.tint.color, finish: 'gloss' }, GLASS_ENV);
+    banner.color.set(v.tint.color).lerp(CLEAR_GLASS, 1 - Math.max(v.tint.darkness, BANNER.film));
+    banner.roughness = 0.04;
+  } else applyPaint(banner, accent(v.banner.paint), PAINT_ENV.Paint);
   setTireLettering(m, v.wheels.lettering === true);
   setBrake(m, braking);
 }
@@ -312,4 +353,6 @@ export function disposeCarMaterials(m: CarMaterialSet): void {
   (m.Caliper as THREE.MeshStandardMaterial).map?.dispose();
   m.Caliper.dispose();
   m.RoofPaint.dispose();
+  m.Windshield.dispose();
+  m.Banner.dispose();
 }

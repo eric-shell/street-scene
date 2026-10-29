@@ -9,7 +9,7 @@
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partById, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, CarBuild, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
+import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, BANNER_HEIGHTS, CarBuild, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
@@ -363,8 +363,10 @@ export function renderTabContent(host: TabHost): void {
     case 'vinyl':
       renderVinyls(host);
       break;
-    case 'tint':
-      // The glass in the lit room, catching the shop's lights.
+    case 'tint': {
+      // The glass in the lit room, catching the shop's lights: the side and rear windows' tint (the windshield stays
+      // clear), then the banner across the windshield's top, whose controls show while it is on.
+      const banner = v.banner;
       host.body.append(
         section(
           'Window tint',
@@ -377,11 +379,41 @@ export function renderTabContent(host: TabHost): void {
             v.tint.color = c;
             host.changed();
           }),
+          note('The side and rear windows; the windshield stays clear.'),
+        ),
+        sectionWith(
+          'Windshield banner',
+          [bannerLink(host)],
+          field(
+            'Banner',
+            onOffSwitch(banner.enabled, (on) => {
+              banner.enabled = on;
+              void host.changed(true);
+            }, 'Windshield banner'),
+          ),
+          ...(banner.enabled
+            ? [
+                revealable(
+                  field(
+                    'Height',
+                    cycler(BANNER_HEIGHTS.map((x) => ({ value: x, label: capital(x) })), banner.height, (x) => {
+                      banner.height = x;
+                      host.changed();
+                    }),
+                  ),
+                  'banner-height',
+                ),
+                banner.link
+                  ? revealable(note('Linked to the tint: a darker band of its film.'), 'banner-film')
+                  : revealable(paintPicker(banner.paint, PAINT_FINISHES, () => host.changed(), [matchBody(banner.paint, v.paint)]), 'banner-paint'),
+              ]
+            : []),
         ),
       );
       break;
+    }
     case 'neon': {
-      // The underglow with the room's lights down, so the glow reads on the floor.
+      // The underglow, shot low and wide so the glow reads on the floor.
       const g = v.underglow;
       host.body.append(
         section(
@@ -497,6 +529,15 @@ function linkToggle(host: TabHost): HTMLElement {
       host.renderTab();
     },
   );
+}
+
+/** The banner's link, at the right of its title: linked, a darker band of the tint's film; unlinked, a paint of its own or the body's. */
+function bannerLink(host: TabHost): HTMLElement {
+  const b = host.build.visual.banner;
+  return toggle(b.link ? Link2 : Link2Off, 'Link', b.link, b.link ? 'Banner linked to the tint' : 'Banner painted', () => {
+    b.link = !b.link;
+    void host.changed(true);
+  });
 }
 
 /**

@@ -1,6 +1,6 @@
 /**
  * A car build as the garage saves and shares it: the car, a name, the visual half (paint, parts, wheels,
- * calipers, vinyls, stance, tint, underglow; read only by the renderer and the garage, never by the sim) and the
+ * calipers, vinyls, stance, tint, windshield banner, underglow; read only by the renderer and the garage, never by the sim) and the
  * performance half (sim/build.ts, the only part the sim reads, through applyBuild). Validation clamps
  * anything imported from storage or share codes and migrates old saves.
  */
@@ -63,6 +63,10 @@ export interface WheelTrim {
 
 export const VINYL_SHAPES = ['stripe', 'twinStripe', 'flame', 'tribal', 'sponsorA', 'sponsorB', 'sponsorC', 'number', 'star', 'chevron'] as const;
 export type VinylShape = (typeof VINYL_SHAPES)[number];
+
+/** The windshield banner's heights, shortest first (render/car/windshield.ts BANNER sets each one's share of the glass). */
+export const BANNER_HEIGHTS = ['short', 'medium', 'tall'] as const;
+export type BannerHeight = (typeof BANNER_HEIGHTS)[number];
 
 /** Underglow patterns, in the garage's order. */
 export const GLOW_PATTERNS = ['steady', 'pulse', 'strobe', 'chase', 'rainbow'] as const;
@@ -153,7 +157,17 @@ export interface VisualBuild {
   roof: AccentPaint;
   decals: DecalLayer[];
   stance: { front: AxleStance; rear: AxleStance };
+  /** The side and rear windows' tint; the windshield stays clear. */
   tint: { darkness: number; color: string };
+  /** A band across the top of the windshield. Builds from before it read off. */
+  banner: {
+    enabled: boolean;
+    height: BannerHeight;
+    /** Linked to the tint: a band of its film, in its color and at least BANNER.film dark; unlinked, it wears `paint`. */
+    link: boolean;
+    /** The band's own paint, or the body's while matched; worn while unlinked. */
+    paint: AccentPaint;
+  };
   underglow: {
     enabled: boolean;
     color: string;
@@ -193,6 +207,7 @@ export function defaultVisual(): VisualBuild {
     decals: [],
     stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
+    banner: { enabled: false, height: 'medium', link: true, paint: { color: '#f2f2f2', finish: 'gloss', match: false } },
     underglow: { enabled: false, color: '#00e5ff', color2: '#ff3df2', pattern: 'steady', brightness: 1, speed: 1, size: 1 },
     popsBangs: 1,
   };
@@ -250,6 +265,7 @@ export function validateVisual(v: unknown): VisualBuild {
   const wheels = obj(o.wheels);
   const stance = obj(o.stance);
   const tint = obj(o.tint);
+  const banner = obj(o.banner);
   const glow = obj(o.underglow);
   const partsIn = obj(o.parts);
   const parts: VisualBuild['parts'] = {};
@@ -321,6 +337,12 @@ export function validateVisual(v: unknown): VisualBuild {
       rear: axle(stance.rear, stance.camberRear),
     },
     tint: { darkness: num(tint.darkness, 0, 0.95, d.tint.darkness), color: hexColor(tint.color, d.tint.color) },
+    banner: {
+      enabled: banner.enabled === true,
+      height: oneOf(banner.height, BANNER_HEIGHTS, d.banner.height),
+      link: typeof banner.link === 'boolean' ? banner.link : d.banner.link,
+      paint: validAccent(banner.paint, d.banner.paint, PAINT_FINISHES),
+    },
     underglow: {
       enabled: glow.enabled === true,
       color: hexColor(glow.color, d.underglow.color),

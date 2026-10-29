@@ -647,7 +647,7 @@ export class GarageScreen implements TabHost {
     });
     // The open tab's hue colors its picks, sliders and section hairlines (_garage.scss keys it on data-tab).
     this.root.dataset.tab = t;
-    // The room shows what the tab edits: the camera on its shot, the lights down for the night look.
+    // The room shows what the tab edits: the camera on its shot.
     this.reframe();
     this.renderTab();
     if (!switched) return;

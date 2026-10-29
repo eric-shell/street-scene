@@ -22,9 +22,7 @@
  * to three minutes: the schedule's operator pedal drives a rev model and dyno
  * session (garage/customerDyno.ts), and its driven wheels and drums spin, the
  * wall screen draws the pull, the fan spools and the sound bed follows the
- * same revs. The lights go down for the Style tab
- * (setLightsDown): the battens and the room's lights to a floor, the neon, the
- * LED ring and the lamp under the lifted car left on.
+ * same revs.
  *
  * The room is merged primitives (one mesh per material, garage/showroomProps.ts)
  * and canvas textures (garage/showroomTextures.ts); the signs are
@@ -195,13 +193,6 @@ const DYNO = { x: 8.0, z: 6.6, yaw: Math.PI, fanR: 0.75 } as const;
 const FAN = { free: 14, idle: 3, full: 30, ease: 1.6 } as const;
 
 /**
- * The room's lights going down (the Style tab): what is left of the battens, the key, fill and bays lights and
- * the sky fill at the bottom (share), and how fast they ease (1/s). The neon, the LED ring, the lamp under the
- * lifted car and the exit sign stay, so the underglow and the neon carry the room.
- */
-const LIGHTS_DOWN = { floor: 0.12, ease: 2.2 } as const;
-
-/**
  * The welder by the back wall, arcing on the shop's schedule (shopSchedule.ts `weld`): where the arc burns
  * (m), its light (blue-white, flickering at `flickerHz`, up to `light` over `range` m, one more point light in
  * the room's shading on Medium and High) and the sparks it throws: `count` points living `life` s, thrown at
@@ -281,11 +272,6 @@ export class Showroom {
   readonly shop: ShopState = createShopState();
   /** The dying batten's brightness this frame, 0..1 (the sound bed's buzz follows it). */
   batten = 1;
-  /** The room's lights, 0 full to 1 down: where they are and where they are going (setLightsDown). */
-  private lightsDown = 0;
-  private lightsTarget = 0;
-  /** The lights that go down with the room, each with its full intensity. */
-  private readonly roomLights: { light: THREE.Light; base: number }[] = [];
   /** The welder's arc and sparks (Medium and High), or null. */
   private readonly weld: { light: THREE.PointLight; sparks: THREE.Points; pos: Float32Array; vel: Float32Array; life: Float32Array; alive: number } | null = null;
   private readonly signs: NeonSign[] = [];
@@ -591,17 +577,13 @@ export class Showroom {
     // Low and moody: a dim sky fill, the battens over the car as one soft spot, rim lights in the
     // garage's two accents (the neon's orange and cyan), a fill from the front, a cool wash over the
     // left bays, the signs' own light.
-    const dims = (light: THREE.Light) => {
-      this.roomLights.push({ light, base: light.intensity });
-      return light;
-    };
-    s.add(dims(new THREE.HemisphereLight(0x9aa2c0, 0x1a1714, 0.55)));
+    s.add(new THREE.HemisphereLight(0x9aa2c0, 0x1a1714, 0.55));
     // The battens over the turntable as one spot: strong enough to model the car, not so strong that a light
     // paint's roof saturates under it (a lighter spot and a touch more fill read better from above).
     // Held to what a light paint takes without saturating on the roof and hood (24 blew a white roof out).
     const key = new THREE.SpotLight(0xe8eeff, 9, 14, 1.0, 1, 1.2);
     key.position.set(0, ROOM.battenY - 0.05, 0);
-    s.add(dims(key), key.target);
+    s.add(key, key.target);
     const spot = (color: THREE.ColorRepresentation, intensity: number, x: number, y: number, z: number) => {
       const l = new THREE.SpotLight(color, intensity, 26, 0.32, 0.8, 1.4);
       l.position.set(x, y, z);
@@ -613,10 +595,10 @@ export class Showroom {
     fill.position.set(1.5, 3.2, 8);
     const bays = new THREE.PointLight(0xdfe8ff, 10, 12, 1.3);
     bays.position.set(-8.2, 4.5, 1.5);
-    s.add(dims(fill), dims(bays));
+    s.add(fill, bays);
     if (q.workLights) {
       // The batten over the second lift, the lamp hung under its car, the bench's strip, the dyno cell's batten
-      // (so a car on the rollers reads by more than its underglow). The lamp stays on when the lights go down.
+      // (so a car on the rollers reads by more than its underglow).
       const liftLight = new THREE.PointLight(0xe8eeff, 6, 8, 1.4);
       liftLight.position.set(LIFTS[1].x, 5.4, -6.6);
       const lamp = new THREE.PointLight(0xffb36a, 4, 4.5, 1.6);
@@ -625,7 +607,7 @@ export class Showroom {
       bench.position.set(10.4, 4.1, -2.5);
       const dynoLight = new THREE.PointLight(0xe8eeff, 8, 9, 1.4);
       dynoLight.position.set(DYNO.x, 4.7, DYNO.z);
-      s.add(dims(liftLight), lamp, dims(bench), dims(dynoLight));
+      s.add(liftLight, lamp, bench, dynoLight);
       // The welder: its light off until the schedule strikes an arc, its sparks a handful of points moved on
       // the CPU only while it burns.
       const arc = new THREE.PointLight(0x9fc4ff, 0, WELD.range, 2);
@@ -821,16 +803,6 @@ export class Showroom {
     this.fanLoad = load;
   }
 
-  /** Take the room's lights down (1) or bring them back (0); they ease over about a second (LIGHTS_DOWN). */
-  setLightsDown(down: number): void {
-    this.lightsTarget = Math.max(0, Math.min(1, down));
-  }
-
-  /** How far down the lights are this frame, 0..1 (the car's paint reflections follow it). */
-  get dimmed(): number {
-    return this.lightsDown;
-  }
-
   /** The customer's revs on the dyno, 0..1 of idle to redline (the sound bed follows them). */
   get customerRpm(): number {
     return this.customer.x;
@@ -858,20 +830,9 @@ export class Showroom {
     this.ringMat.color.copy(RING).multiplyScalar(1.45 + 0.3 * Math.sin(t * 1.6));
     shopSchedule(t, this.shop);
     this.updateCustomer(dt, t);
-    // The lights going down: the real lights and the battens' tubes (and their faked pools) to the floor.
-    const target = this.lightsTarget;
-    if (this.lightsDown !== target) {
-      this.lightsDown += (target - this.lightsDown) * damp(LIGHTS_DOWN.ease, dt);
-      if (Math.abs(this.lightsDown - target) < 0.002) this.lightsDown = target;
-      const lit = 1 - (1 - LIGHTS_DOWN.floor) * this.lightsDown;
-      for (const l of this.roomLights) l.light.intensity = l.base * lit;
-      this.mats.tube.color.copy(GLOW.tube).multiplyScalar(lit);
-      this.mats.poolTube.opacity = lit;
-    }
-    const lit = 1 - (1 - LIGHTS_DOWN.floor) * this.lightsDown;
     const f = battenFlicker(t);
     this.batten = f;
-    this.flickerMat.color.copy(GLOW.tube).multiplyScalar(f * lit);
+    this.flickerMat.color.copy(GLOW.tube).multiplyScalar(f);
     for (const sign of this.signs) sign.update(t);
     this.dustTime.value = t;
     if (this.weld) this.updateWeld(dt, this.shop.weld);

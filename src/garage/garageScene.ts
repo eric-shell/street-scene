@@ -19,8 +19,8 @@
  * All share the orbit camera (drag to rotate, pinch or scroll to zoom) and a
  * few camera presets in car space (the dyno has its own); the garage UI frames
  * the view beside its rail. The room follows what is being edited: each
- * Customize tab frames its own shot (`frame`), the Neon tab takes the room's
- * lights down, and on the Builds step, left alone, the camera tours the car in
+ * Customize tab frames its own shot (`frame`), and on the Builds step, left
+ * alone, the camera tours the car in
  * slow drifting shots over the turning turntable. The engine can be revved in
  * any: a free-rev model drives the synthesized engine voice and rocks the body
  * on its springs. On the turntable the steering keys turn the front wheels,
@@ -104,7 +104,7 @@ const FRAMES: Record<TabFrame, { shot: string | CameraPreset; spin: boolean }> =
   'paint:calipers': { shot: 'Wheel', spin: false },
   'paint:hardware': { shot: 'Wheel', spin: false },
   vinyl: { shot: 'Three quarter', spin: false },
-  // The glass at window height; with the lights down, the glow low and wide on the floor.
+  // The glass at window height; the glow low and wide on the floor.
   tint: { shot: { name: 'Tint', pos: [3.4, 1.35, 3.6], target: [0, 0.95, 0.2] }, spin: true },
   neon: { shot: { name: 'Neon', pos: [5.4, 0.75, 5.6], target: [0, 0.3, 0] }, spin: true },
   tune: { shot: { name: 'Exhaust', pos: [-3.2, 0.9, -4.3], target: [0, 0.5, -1.4] }, spin: false },
@@ -120,8 +120,6 @@ const FRAMES: Record<TabFrame, { shot: string | CameraPreset; spin: boolean }> =
 
 /** A parked car's lamp lenses: lit, but well under the street's glow, so they read as lenses under the room's lights rather than blooming. */
 const PARKED_LAMPS = 0.45;
-/** With the room's lights down the paint's reflections (its map still holds the lit battens) fall to this share. */
-const DIM_REFLECTIONS = 0.3;
 /**
  * The workshop's idle tour (the Builds step, nobody touching the camera for TOUR s): each shot holds `hold` s
  * while the camera pushes in (m/s) and sways across (m/s, at `swayHz`), then cuts to the next over `cut` s.
@@ -331,11 +329,9 @@ export class GarageScene {
   /**
    * Frame what a Customize tab edits (FRAMES), or null for the Builds step: back to the three quarter view and
    * the spin. A new frame always moves the camera; leaving one moves it back only if nobody dragged it
-   * meanwhile (then it stays where it was put). The Neon tab takes the room's lights down with it. The Street
-   * view's camera follows the car and is left alone.
+   * meanwhile (then it stays where it was put). The Street view's camera follows the car and is left alone.
    */
   frame(view: TabFrame | null): void {
-    this.showroom.setLightsDown(view === 'neon' ? 1 : 0);
     if (this.mode === 'street' || view === this.framed) return;
     this.framed = view;
     if (!view) {
@@ -709,8 +705,6 @@ export class GarageScene {
         p.comp[i] = -(w[0] * p.roll - w[2] * p.pitch);
       }
       view.update(p, this.time);
-      // With the lights down the paint's reflections go with them (its map still holds the lit battens).
-      view.setEnvScale(1 - (1 - DIM_REFLECTIONS) * this.showroom.dimmed);
     }
     this.updateCamera(dt);
     this.updateSound(dt);

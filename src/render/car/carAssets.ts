@@ -1,6 +1,7 @@
 /**
  * Loads the car manifest, parts catalog and GLB files (with Meshopt
- * decoding), caching each file once. Anything missing resolves to null so the
+ * decoding), caching each file once, a car's with its windshield split from
+ * its glass (windshield.ts). Anything missing resolves to null so the
  * caller can fall back to the code-built placeholder.
  */
 import * as THREE from 'three';
@@ -10,6 +11,8 @@ import manifestJson from '../../assets/carManifest.json';
 import catalogJson from '../../assets/partsCatalog.json';
 import type { PartEntry, PartSlot, PartsCatalog } from '../../shared/parts';
 import type { EngineSpec } from '../../shared/carSpec';
+import { resolveMaterialName } from './carMaterials';
+import { splitWindshield } from './windshield';
 
 export interface ManifestCar {
   id: string;
@@ -88,7 +91,13 @@ export class CarAssetLibrary {
   async carModel(carId: string): Promise<THREE.Object3D | null> {
     const car = manifestCar(carId);
     const scene = await this.loadFile(car.file);
-    return scene ? scene.clone(true) : null;
+    if (!scene) return null;
+    // Once per file, before any clone, so every car of the model shares the split.
+    if (!scene.userData.split) {
+      scene.userData.split = true;
+      splitWindshield(scene, (m) => resolveMaterialName(m.name, car.materialMap) === 'Glass');
+    }
+    return scene.clone(true);
   }
 
   /** A part object (cloned), or null when missing. */

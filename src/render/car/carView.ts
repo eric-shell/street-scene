@@ -7,7 +7,8 @@ import * as THREE from 'three';
 import { BODY_PART_SLOTS, PartSlot } from '../../shared/parts';
 import { STANCE_LIMITS, TireShape, VisualBuild, defaultVisual } from '../../shared/carBuild';
 import { CarAssetLibrary, ManifestCar, manifestCar, partById, partsFor } from './carAssets';
-import { CarMaterialSet, LAMP_GLOW, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBrake } from './carMaterials';
+import { CarMaterialSet, LAMP_GLOW, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBannerFrom, setBrake } from './carMaterials';
+import { bannerFrom, type WindshieldMaterial, type WindshieldSpan } from './windshield';
 import { makeRadialGlow } from '../textures/textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../../shared/features';
@@ -263,8 +264,6 @@ export class CarView {
   private rotorHeat = 0;
   /** How lit the lamp lenses are (1 the night street's full glow; the garage parks the car lower). */
   private lampLevel = 1;
-  /** The painted surfaces' environment reflections, 1 full (the garage turns them down with its lights). */
-  private envScale = 1;
   private beam: THREE.Mesh;
   /** The pool's colour before the wet road or the flash scale it. */
   private readonly beamBase = new THREE.Color();
@@ -508,7 +507,9 @@ export class CarView {
   /** Apply a visual build. Part swaps load asynchronously; everything else is instant. */
   async applyVisual(v: VisualBuild, token = ++this.loadToken): Promise<void> {
     this.visual = v;
-    applyVisualToMaterials(this.materials, v, false, this.envScale);
+    applyVisualToMaterials(this.materials, v);
+    const span = this.baseModel?.userData.windshield as WindshieldSpan | undefined;
+    if (span) setBannerFrom(this.materials, bannerFrom(span, v.banner.height));
     this.applyStance();
     this.applyUnderglow(0);
 
@@ -543,12 +544,13 @@ export class CarView {
     const parts = [...BODY_PART_SLOTS, 'body' as PartSlot].map((slot) => v.parts[slot] ?? '').join('|');
     if (parts !== this.clipParts) {
       this.clipParts = parts;
-      const glass = this.materials.Glass;
-      const shared = new Set<THREE.Material>(Object.values(this.materials));
+      const m = this.materials;
+      const glass = new Set([m.Glass, m.Windshield, m.Banner]);
+      const shared = new Set<THREE.Material>(Object.values(m));
       this.clip.measure((mesh) => {
         if (!visibleInTree(mesh, this.body)) return false;
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        return mats.every((m) => shared.has(m) && m !== glass);
+        return mats.every((x) => shared.has(x) && !glass.has(x));
       });
     }
     for (const [src, copy] of this.wheelCopies) {
@@ -994,7 +996,8 @@ export class CarView {
 
   /**
    * Assign shared runtime materials by source material name. The Paint faces of the stock Roof node and of a
-   * roof part (`roofPart`) take the roof's own paint material instead of the body's.
+   * roof part (`roofPart`) take the roof's own paint material instead of the body's; the windshield and its banner,
+   * split from the glass at load, name theirs (windshield.ts).
    */
   bindMaterials(obj: THREE.Object3D, roofPart = false): void {
     obj.traverse((o) => {
@@ -1003,6 +1006,8 @@ export class CarView {
       let roof = roofPart;
       for (let n: THREE.Object3D | null = mesh; !roof && n && n !== obj.parent; n = n.parent) roof = n.name === ROOF_NODE;
       const swap = (m: THREE.Material): THREE.Material => {
+        const own = m.userData.carMaterial as WindshieldMaterial | undefined;
+        if (own) return this.materials[own];
         const name = (m.userData.sourceName as string) ?? m.name;
         const resolved = resolveMaterialName(name, this.car.materialMap);
         if (!resolved) return m;
@@ -1195,18 +1200,6 @@ export class CarView {
   setHeadlightsEnabled(on: boolean): void {
     for (const h of this.headlights) h.visible = on;
     this.beam.visible = on;
-  }
-
-  /**
-   * Scale the paint's environment reflections (0..1 of the build's own): a room whose lights go down keeps
-   * the lit tubes in the paint's reflection map, so the garage turns them down with the lights. Re-dresses
-   * the painted materials, so call it on a change, not every frame.
-   */
-  setEnvScale(scale: number): void {
-    const k = Math.max(0, Math.min(1, scale));
-    if (Math.abs(k - this.envScale) < 0.004) return;
-    this.envScale = k;
-    applyVisualToMaterials(this.materials, this.visual, false, k);
   }
 
   /**
