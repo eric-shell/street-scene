@@ -11,7 +11,7 @@ Authored cars: albrechtKombi, daltonFiend, kazamaRotor, nakayaHorizon, tachibana
 | albrechtKombi | 333.2 KB |
 | daltonFiend | 270.0 KB |
 | kazamaRotor | 267.6 KB |
-| nakayaHorizon | 231.4 KB |
+| nakayaHorizon | 222.1 KB |
 | tachibanaRunabout | 141.7 KB |
 | tachibanaZenith | 261.9 KB |
 | wendtStrom | 263.5 KB |
@@ -86,7 +86,7 @@ Source: `assets/source/eshell/kazamaRotor/kazamaRotor.blend` (authored in car sp
 
 Source: `assets/source/eshell/nakayaHorizon/nakayaHorizon.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/nakayaHorizon.glb`: 231.4 KB, 18420 tris, nodes `Body`.
+- Base car `public/cars/nakayaHorizon.glb`: 222.1 KB, 18901 tris, nodes `Body`.
 - Parts: .
 - WARNING: wheel radius 0.324 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.324 m, width 0.24 m, wheelbase 2.72 m, track 1.526 m.

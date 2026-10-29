@@ -270,7 +270,17 @@ DONORS = {
         # The donor is unfinished at the headlamps: an empty paint recess inside a black outline.
         # Its faces become the lens; the hood's leading edge above it (z over 0.68, facing up) stays.
         'recolor': [(lambda c, n, m: m == 'Paint' and 0.30 < abs(c.x) < 0.86 and 0.60 < c.z < 0.75 and c.y < -1.85
-                     and not (c.z > 0.68 and n.z > 0.55), 'HeadLight')],
+                     and not (c.z > 0.68 and n.z > 0.55), 'HeadLight'),
+                    # Single faces at the recess's outer end, standing over the fender: paint.
+                    (lambda c, n, m: m == 'HeadLight' and abs(c.x) > 0.78 and c.y > -1.92 and c.z > 0.6, 'Paint'),
+                    # The red strip across the tail under the lamps is a reflector, the one on the
+                    # wing the third brake light; the four round lamps glow.
+                    (lambda c, n, m: m == 'TailLight' and c.y > 2.0 and c.z < 0.75, 'Reflector'),
+                    (lambda c, n, m: m == 'TailLight' and c.y > 2.0 and c.z > 0.95, 'BrakeLight')],
+        # The recess's faces are crumpled (the donor is unfinished there) and its tail lamps coarse:
+        # the lamps reduce at the shell's error, which smooths the recess into a clean lens; at the
+        # lamps' tighter one every crumple was kept.
+        'lampError': 0.01,
         # The emblem's mounting plate in the upper grille: four small black islands at the center.
         'islands': [lambda k, a, b, mats: set(mats) == {'Black'} and 40 < k < 400 and abs((a.x + b.x) / 2) < 0.05
                     and (a.y + b.y) / 2 < -2.1 and 0.59 < (a.z + b.z) / 2 < 0.66],
@@ -1967,8 +1977,10 @@ def ship_donor(cid, work):
     """`donor:<cid>.Low` into `<cid>.Body` and a working copy of the session at `work` for
     saveCar.py (docs/carDonors.md, Ship). The car's collections come from its authored .blend
     when the session does not hold them; the Rig empties and parts stay as they are, so this is for
-    a reimport of a car whose wheelbase and track did not change. Prints the commands that finish
-    it; nothing in the session's own file is touched (the copy is saved with copy=True)."""
+    a reimport of a car whose wheelbase and track did not change. A donor without a cabin keeps
+    the shipped body's transplanted one (carFeatures.py interior()), tucked inside the new shell.
+    Prints the commands that finish it; nothing in the session's own file is touched (the copy is
+    saved with copy=True)."""
     low = bpy.data.objects[f'donor:{cid}.Low']
     path = os.path.join(REPO, f'assets/source/eshell/{cid}/{cid}.blend')
     if f'{cid}:Car' not in bpy.data.collections:
@@ -1979,6 +1991,36 @@ def ship_donor(cid, work):
     body = bpy.data.objects[f'{cid}.Body']
     old = body.data
     me = low.data.copy()
+    # A donor without a cabin of its own ships with one transplanted by carFeatures.py interior():
+    # the shipped body's Interior faces carry over, tucked inside the new shell.
+    if not any(m and m.name.split('.')[0] == 'Interior' for m in me.materials) or \
+            not any(me.materials[p.material_index].name.split('.')[0] == 'Interior' for p in me.polygons):
+        cabin = body.copy()
+        cabin.data = old.copy()
+        bpy.context.scene.collection.objects.link(cabin)
+        delete_faces(cabin, lambda c, n, m: m != 'Interior')
+        if cabin.data.polygons:
+            tmp = bpy.data.objects.new('ship_tmp', me)
+            bpy.context.scene.collection.objects.link(tmp)
+            print(f'{cid}: kept the transplanted cabin, {len(cabin.data.polygons)} faces ({tuck_cabin(cabin, tmp)} tucked)')
+            bm = bmesh.new()
+            bm.from_mesh(me)
+            ii = mat_index(tmp, 'Interior')
+            remap = [mat_index(tmp, m.name.split('.')[0]) for m in cabin.data.materials]
+            cb = bmesh.new()
+            cb.from_mesh(cabin.data)
+            vmap = {v: bm.verts.new(v.co) for v in cb.verts}
+            for f in cb.faces:
+                g = bm.faces.new([vmap[v] for v in f.verts])
+                g.material_index = remap[f.material_index] if remap else ii
+                g.smooth = f.smooth
+            cb.free()
+            bm.to_mesh(me)
+            bm.free()
+            bpy.data.objects.remove(tmp)
+        data = cabin.data
+        bpy.data.objects.remove(cabin)
+        bpy.data.meshes.remove(data)
     for n in ('src_normal', 'own_normals'):
         if me.attributes.get(n):
             me.attributes.remove(me.attributes[n])
