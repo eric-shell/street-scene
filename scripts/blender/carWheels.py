@@ -196,7 +196,7 @@ WHEELS = {
     'ukigumo': {'name': 'VOSSEN VFS1', 'uid': 'b5ecbbe9ce254c20941d9db6dc3be57b', 'maker': 'Vossen', **_J},
     'usagi': {'name': 'Vossen HC-1', 'uid': 'a09cf8de7a8940fa9733c46198a46fd1', 'maker': 'Vossen', **_J},
     'wakaba': {'name': 'fifteen52 Turbomac', 'uid': '0dbadec625c249eea309d95eb015c9f4', 'maker': 'Fifteen52', 'author': 'portfoliorodrigues', 'license': 'CC Attribution'},
-    'yamabuki': {'name': 'Work Meister S1 3P', 'uid': '7205c04f3cb24a7dbdaf6a304fb31f21', 'maker': 'Work', 'author': 'alexanderlyreo', 'license': 'CC Attribution'},
+    'yamabuki': {'name': 'Work Meister S1 3P', 'uid': '7205c04f3cb24a7dbdaf6a304fb31f21', 'maker': 'Work', 'author': 'alexanderlyreo', 'license': 'CC Attribution'},   # its brake rotor and hat are welded into the one mesh, so the junk names miss them: deleted by hand after wheel() (the islands behind the spokes, x < 0.047 and r 0.055 to 0.12)
     'yoake': {'name': 'WORK MEISTER CR01', 'uid': '9b2bb4a769de4c6098efe95001072841', 'maker': 'Work', 'author': 'dermaks', 'license': 'CC Attribution'},
     'yuzu': {'name': 'SSR Minerva', 'uid': '704b405602b74a788a0678fd39ac4e51', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
     'zan': {'name': 'RAYS nismo LMGT1', 'uid': '6ed19c4728744e0b95246b5e125ea286', 'maker': 'Rays', 'author': 'dermaks', 'license': 'CC Attribution'},

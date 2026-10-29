@@ -222,7 +222,7 @@ Learnings:
 |---|---|---|---|
 | Inazuma | WORK EMOTION T5R 2P | dermaks | no overrides |
 | Kasane | WORK Equip 05 | dermaks | no overrides |
-| Yamabuki | Work Meister S1 3P | alexanderlyreo | by alexanderlyreo; one welded mesh |
+| Yamabuki | Work Meister S1 3P | alexanderlyreo | by alexanderlyreo; one welded mesh, its brake rotor and hat with it: deleted by hand after `wheel()` (the islands behind the spokes), or the game's brake sits behind a second rotor |
 | Yoake | WORK MEISTER CR01 | dermaks | Work badge sticker and black spoke faces stay `Black` |
 
 **Kamaitachi** (MAE; new group)
