@@ -985,10 +985,10 @@ def punch_holes(o, holes, r, depth=0.015, sides=16, wall='Black', back='Black', 
 
 # Stations for `sheet_lip`: coarse across the nearly straight nose, 3 degrees round the corner and 1.5
 # through its tightest part (51 to 69 degrees, where 3 degree steps turned the edge 11 degrees each).
-# The last, 83, is where the Wendt Strom's bottom edge meets the wheel well (y -1.652): ending at 82
-# left a 2.5 cm gap before the arch, which the user did not want.
+# They stop at 82: a station at 83 reached the wheel well but its bottom edge sits on the arch's lip,
+# 2.8 cm further out, and flared the ends; `to_well` carries the ends on to the well along the body.
 SHEET_ANGLES = (0, 8, 16, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 52.5, 54, 55.5, 57, 58.5, 60, 61.5, 63, 64.5,
-                66, 67.5, 69, 72, 75, 78, 80, 82, 83)
+                66, 67.5, 69, 72, 75, 78, 80, 82)
 
 
 def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 0.235), thick=0.013,
@@ -1138,12 +1138,18 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
     if to_well:
         well = max((v.co.y for v in src.data.vertices if abs(v.co.x) > 0.6 and v.co.z < band[0] + 0.035), default=None)
         if well is not None:
-            for j, k in ((0, 1), (len(secs) - 1, len(secs) - 2)):
-                cj = sum((Vector(p) for p in secs[j]), Vector()) / len(secs[j])
-                ck = sum((Vector(p) for p in secs[k]), Vector()) / len(secs[k])
-                tg = (cj - ck).normalized()
-                if tg.y > 1e-3:
-                    secs[j] = [tuple(Vector(p) + tg * ((well - 0.002 - p[1]) / tg.y)) for p in secs[j]]
+            # The end section replaced by the run before it carried straight on (each corner along
+            # its own line) to the well, so the ends keep the body's line: carried along the sheet's
+            # direction at the last station, which already bends out, they flared 3 to 5 degrees.
+            for j, k, m in ((0, 1, 2), (len(secs) - 1, len(secs) - 2, len(secs) - 3)):
+                if m < 0 or m >= len(secs):
+                    continue
+                new = []
+                for pk, pm in zip(secs[k], secs[m]):
+                    pk, pm = Vector(pk), Vector(pm)
+                    dv = pk - pm
+                    new.append(tuple(pk + dv * ((well - 0.002 - pk.y) / dv.y)) if dv.y > 1e-4 else tuple(pk))
+                secs[j] = new
     carry = stash_normals(target)
     if crisp:
         for i in range(len(secs) - 1):
