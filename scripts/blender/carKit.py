@@ -993,7 +993,7 @@ SHEET_ANGLES = (0, 8, 16, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 52.5, 54, 55.5
 
 def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 0.235), thick=0.013,
               proud=0.03, end_proud=0.012, taper_from=70, tuck=0.04, butt=0.004, chamfer=0.006, full=True,
-              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, dam_face=True, dam_band=0.1, to_well=True, straight_from=None,
+              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, dam_face=True, dam_band=0.1, dam_side_from=40, to_well=True, straight_from=None,
               material='Black'):
     """A flat splitter cut from sheet stock (half inch HDPE) under a front bumper: top and bottom flat
     all the way round at the height of the bumper's underside at the nose, its outline through `angles`
@@ -1023,6 +1023,7 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
     zout = [e.z for e in E]
     over_low = [0.0] * len(E)
     found = [False] * len(E)
+    profs = [None] * len(E)
     if from_face or dam_face:
         from mathutils.bvhtree import BVHTree
         t = BVHTree.FromObject(src, bpy.context.evaluated_depsgraph_get())
@@ -1039,14 +1040,24 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
             # it. Its first rule, the lower face's most forward point in a band, wandered off the line
             # round the corners (the face keeps coming forward there) and the user asked for the line.
             prof = []
+            mats = [m.name.split('.')[0] if m else '' for m in src.data.materials]
             for j in range(int(dam_band / 0.002)):
                 zz = band[0] + 0.006 + 0.002 * j
                 h = t.ray_cast(c + d * 3 + Vector((0, 0, zz)), -d, 3)
                 if h[0]:
-                    prof.append((zz, (h[0] - c).to_2d().length, h[1].z))
+                    prof.append((zz, (h[0] - c).to_2d().length, h[1].z, mats[src.data.polygons[h[2]].material_index]))
+            profs[i] = (prof, (e - c).to_2d().length)
+            # The line is the ledge (three upward-facing samples) or, round the corners, the first black
+            # surface above (the side intakes' black surround): stopping short of it left a ragged band
+            # of paint between the dam and the black (the user wanted black up to the bumper line).
             for k in range(1, len(prof) - 2):
-                if all(prof[k + m][2] > 0.3 for m in range(3)):
-                    zout[i] = prof[k][0]
+                if all(prof[k + m][2] > 0.3 for m in range(3)) or prof[k][3] == 'Black':
+                    # Under a side intake the face carries on 2 to 3 cm above a small lower ledge to the
+                    # intake's black surround: that surround is the line, not the ledge.
+                    # Only the top rises to it; the panel keeps its place in front of the ledge's face.
+                    kb = next((m for m in range(k, len(prof)) if prof[m][3] == 'Black' and prof[m][0] - prof[k][0] < 0.035), None) \
+                        if abs(a) >= dam_side_from else None
+                    zout[i] = prof[kb][0] if kb is not None else prof[k][0]
                     over_low[i] = max(0.0, prof[k - 1][1] - (e - c).to_2d().length)
                     found[i] = True
                     break
@@ -1062,14 +1073,17 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
                 k = lo if hi is None else hi
                 zout[i], over_low[i] = zout[k], over_low[k]
             else:
+                # The higher neighbour's line: where no ledge is found the face is smooth up to the next
+                # one, and an interpolated top fell short of it (paint showed above the dam).
                 f = (i - lo) / (hi - lo)
-                zout[i] = zout[lo] + (zout[hi] - zout[lo]) * f
+                zout[i] = max(zout[lo], zout[hi])
                 over_low[i] = over_low[lo] + (over_low[hi] - over_low[lo]) * f
     E = [Vector((-e.x, e.y, e.z)) for e in reversed(E[1:])] + E
     A = [-a for a in reversed(A[1:])] + A
     over = list(reversed(over[1:])) + over
     over_low = list(reversed(over_low[1:])) + over_low
     zout = list(reversed(zout[1:])) + zout
+    profs = list(reversed(profs[1:])) + profs
     bot = top - thick
     last = max(abs(x) for x in A)
 
@@ -1110,11 +1124,26 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
     for _ in range(smooth):
         ZU = [ZU[0]] + [ZU[i - 1] * 0.25 + ZU[i] * 0.5 + ZU[i + 1] * 0.25 for i in range(1, len(ZU) - 1)] + [ZU[-1]]
     ZU[0], ZU[-1] = ZU[1], ZU[-2]
+    # Round the corners (past `dam_side_from`) the line is taken as the highest within two stations
+    # either side: the crease there runs level, and single low readings left notches of paint.
+    zout = [max(zout[max(i - 2, 0):i + 3]) if abs(A[i]) >= dam_side_from else z for i, z in enumerate(zout)]
+    # The panel stands ahead of the face's most forward point below its top: round the corners the face
+    # bulges forward above the ledge, and a panel placed at the ledge showed paint in front of it.
+    for i in range(len(E)):
+        j = i if i < len(profs) and profs[i] else None
+        if j is None:
+            continue
+        prof, er = profs[j]
+        fr = [r for z, r, _, _ in prof if z <= zout[i] + 0.002]
+        if fr:
+            over_low[i] = max(over_low[i], max(fr) - er)
     ZT = list(zout)
     for _ in range(smooth):
         ZT = [ZT[0]] + [ZT[i - 1] * 0.25 + ZT[i] * 0.5 + ZT[i + 1] * 0.25 for i in range(1, len(ZT) - 1)] + [ZT[-1]]
         over_low = [over_low[0]] + [over_low[i - 1] * 0.25 + over_low[i] * 0.5 + over_low[i + 1] * 0.25
                                     for i in range(1, len(over_low) - 1)] + [over_low[-1]]
+    # Never below the line: smoothing pulled the top a few mm under it where the line steps up.
+    ZT = [max(z, max(zout[max(i - 1, 0):i + 2])) + 0.002 for i, z in enumerate(ZT)]
     secs = []
     for i, e in enumerate(E):
         n3 = Vector((N[i].x, N[i].y, 0))
@@ -1128,7 +1157,9 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
                 # 1 mm proud of the strip below the ledge, its top on the ledge: the panel's own smooth
                 # edge is then the line seen. Set 5 mm inside the strip, the visible edge was wherever
                 # the donor's uneven strip crossed the panel, ragged round the corners.
-                edge = front - n3 * (ext[i] - over_low[i] - 0.001)
+                # From the bumper's own edge, not the sheet's (smoothed, and straightened under a spat:
+                # measured from it the panel sank into the face there), 3 mm proud of the face.
+                edge = Vector((e.x, e.y, 0)) + n3 * (over_low[i] + 0.003)
                 zu = ZT[i] + 0.001
             else:
                 edge = front - n3 * ext[i]
