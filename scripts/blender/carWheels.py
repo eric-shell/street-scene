@@ -68,7 +68,7 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
           'SSR': 'Hiryu', 'BBS': 'Suzaku', 'Volk': 'Genbu', 'Enkei': 'Kohaku',
           'Advan': 'Kitsune', 'Avant Garde': 'Tengu', 'Brixton Forged': 'Oni', 'Kyusha Shoes': 'Tanuki', 'Velare': 'Yamabiko',
           'VIP Modular': 'Baku', 'Weds': 'Fujin', 'Brabus': 'Nue', 'Budnik': 'Orochi',
-          'Devil Japan': 'Shuten', 'Kansei': 'Nekomata', 'MAE': 'Kamaitachi',
+          'Devil Japan': 'Shuten', 'Kansei': 'Nekomata', 'MAE': 'Kamaitachi', 'Spoon': 'Kappa',
           'Rays': 'Genbu',   # Volk is a Rays brand: one group
           'Vossen-x-Work': 'Seiryu'}   # a Vossen collaboration, listed with Vossen
 
@@ -84,6 +84,9 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
 # `cap_fill` True closes a cap ring's open center, so the whole center wears the cap's paint (sora).
 # `cap_disc` (share of the lip): the turned cap takes in the face's front-facing faces inside this radius too, so the cap is the hub's whole round disc out to where the spokes begin, with no face-paint ring round it (homura).
 # `turn` (share of the lip): on a multi-piece wheel, turn the face's surfaces of revolution joined to faces outside it, as on a one-piece (a round flange the spokes stand on, which a collapse crumples: mio).
+# `chunks` True for a scan cut into chunks that each run from the hub to the lip: its islands are no parts (the ring ones are barrel
+# scraps, the narrow and flat ones pieces of spoke), so all but the hub's join the face and the lip is turned out of it as on a one-piece.
+# `keep` a regex of names the junk words would drop that are the wheel (the 57DR's spokes sit under a node named DISK).
 # `lugs` 0 when no lug circle shows (a cap or a solid face hides it), or (count, r over the lip) for the circle to take where the innermost is a decoration.
 _J = {'author': 'jonver87', 'license': 'CC Attribution'}
 WHEELS = {
@@ -233,6 +236,33 @@ WHEELS = {
                 'pick': ('y', -0.1085, 0.1085)},   # one scene of three wheels in a row along the axle (mk1, mk2, mk3 on one lip): the Mk2 spokes
     'koyomi': {'name': 'SSR Collection Mk3', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
               'pick': ('y', 0.1085, 1)},   # one scene of three wheels in a row along the axle (mk1, mk2, mk3 on one lip): the Mk3 spokes
+    # 2026-10-28, twelve from other authors (all CC BY 4.0)
+    'kawasemi': {'name': 'Spoon SW388', 'uid': '069b86d4b4a2492e92eb3349805479f9', 'maker': 'Spoon', 'author': 'TinoD2', 'license': 'CC Attribution',
+                 'drop': r'LowPoly|Tire'},   # a stand scene: a low poly copy beside the high poly wheel, both on tires
+    'kazakiri': {'name': 'Work Emotion CR-KAI', 'uid': '3025fa1677784df99abcf1cd2a30c5fa', 'maker': 'Work', 'author': 'gordeykomark', 'license': 'CC Attribution',
+                 'drop': r'Tire|Rough_metal'},   # its own tire, and the valve stem
+    'tatsumaki': {'name': 'Rotiform DAB', 'uid': '48ff08bbf17b43b4abbc2ee9113be954', 'maker': 'Rotiform', 'author': 'blakebella', 'license': 'CC Attribution',
+                 'drop': r'^tire$'},   # its own tire (the rotor goes as junk)
+    'kogane': {'name': 'BBS LM Gold Wheels', 'uid': '3aac505aa9484d088204fabef6a8a4c2', 'maker': 'BBS', 'author': 'zxargon', 'license': 'CC Attribution'},
+    'namida': {'name': 'S13 Teardrops Rims', 'uid': 'f8fe25efca84448994f449ef9d894d54', 'maker': 'Fifteen52', 'author': 'Once_a_goat_death', 'license': 'CC Attribution'},
+    'akane': {'name': 'SSR Hasemi Prot-S', 'uid': '581e5099da7a4620b11c3fc424c507de', 'maker': 'SSR', 'author': 'techtackofficial', 'license': 'CC Attribution',
+              'face': 1},   # its center cap and lip bolts face +X; the normal vote showed the spokes' backs deep in the barrel
+    'tsukimi': {'name': 'Rotiform CVT', 'uid': 'ed962ed287cf4430a5af531accef5221', 'maker': 'Rotiform', 'author': 'niev', 'license': 'CC Attribution',
+                 'drop': r'Nipel'},   # the valve stem
+    'himawari': {'name': 'WEDS Kranze LXZ', 'uid': '2eef2cea9a634c2fbe5dc187d67ba747', 'maker': 'Weds', 'author': 'blakebella', 'license': 'CC Attribution',
+                 'drop': r'^Material$'},   # its own tire, on a material of that name
+    'hibiki': {'name': 'RAYS GramLights 57DR', 'uid': '71a90d6c2d0a444d9d2ca7e3cf715c76', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
+             'drop': r'Sticker',   # the spoke stickers
+             'keep': r'^DISK\.'},   # its spokes sit under a node named DISK
+    'kaminari': {'name': 'Rays Gramlights 57CR', 'uid': '47063c38bdaa46ebaf2d2af2079c7118', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
+               'drop': r'^(7\.001|material)$',   # the spoke stickers
+               'chunks': True},   # a scan in chunks: the ring islands were barrel scraps (the face stood 18 cm proud of them), and
+                                  # 109k triangles of spoke went as bolts
+    'fuuga': {'name': 'RAYS G025', 'uid': '8b14891bb44b43729d07f1e4e2744488', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
+            'drop': r'^material\.001$',   # the spoke sticker
+            'chunks': True},   # a scan in chunks, as the 57CR
+    'hinoko': {'name': 'RAYS HOMURA 2x7', 'uid': 'f2da4e9b0d04418aa1b53022d692ea6b', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
+             'chunks': True},   # a scan in chunks, as the 57CR
 }
 
 
@@ -274,7 +304,7 @@ def _gather(root, R):
         while p is not None and p is not top:
             below.append(_base(p.name))
             p = p.parent
-        if o.type != 'MESH' or not o.data.polygons or any(re.search(JUNK, n) for n in below) or (R.get('drop') and any(re.search(R['drop'], n) for n in below)):
+        if o.type != 'MESH' or not o.data.polygons or any(re.search(JUNK, n) and not (R.get('keep') and re.search(R['keep'], n)) for n in below) or (R.get('drop') and any(re.search(R['drop'], n) for n in below)):
             continue
         me = o.data.copy()
         me.transform(o.matrix_world)
@@ -1291,6 +1321,10 @@ def wheel(name, root):
         raise ValueError(f'{name}: nothing left after dropping scene junk')
     L = _frame(bm)
     isl = _classify(bm, L, names, R0)
+    if R0.get('chunks'):   # a scan cut into chunks that each run hub to lip: its islands are no parts
+        for i in isl:
+            if i.kind in ('ring', 'bolt', 'decal'):
+                i.kind = 'face'
     sign = R0.get('face') or _face_sign(isl, L)
     if sign < 0:
         _xform(bm, Matrix.Diagonal((-1, 1, -1, 1)))

@@ -62,6 +62,8 @@ Most wheels need none. The fields:
 | `turn` | a share of the lip: on a multi-piece wheel, turn the face's surfaces of revolution joined to faces outside it, as on a one-piece, where a round flange the spokes stand on crumples in the collapse (`mio` 0.6) |
 | `cap_fill` | `True` closes a cap ring's open center, so the whole center takes the cap's paint (`sora`, `shizuku`) |
 | `lugs` | `0` when no lug circle shows (a cap or a solid face hides it), or `(count, r)` for the circle to take where the innermost is a decoration |
+| `keep` | a regex of names the junk words would drop that are the wheel (`hibiki`: its spokes sit under a node named `DISK`, and the whole face went as a brake disc) |
+| `chunks` | `True` for a scan cut into chunks that each run from the hub to the lip: its islands are no parts, so ring, bolt and decal islands all join the face and the lip is turned out of it as on a one-piece (`kaminari`, `fuuga`, `hinoko`) |
 
 ## 5. Check
 
@@ -381,6 +383,29 @@ The user: "ame, uzu, yuki, sazanka and taki need to be rescanned, the outer sect
 - **Stock lips.** A wheel is multi-piece when a ring of six or more bolts holds its lip or its title says 2P or 3P (`wheel()`'s default; the donor's separate lip mesh no longer decides, since jonver87 models cast wheels' lips as pieces too). 16 changed, then 49 chrome and 50 rim, now 50 and 49 with momiji's override: ayame and ibuki to chrome (lip bolt rings of 12 and 20); akatsuki, enishi, kagero, kaze, kiri, mio, momiji, ogi, sagi, sakura, shio, tora, uguisu and ukigumo to rim (no bolts; kaze's and kagero's `lip: 'chrome'` overrides went). Overrides: `gekko` and `yuzu` stay chrome (their rivets are moulded into the face, so no bolt circle is rebuilt), `hasu` stays rim (three heads, no lip ring).
 - **Kozue** (326 yabaking spoke) is retired with its Kirin group; 99 wheels.
 
+### Twelve from other authors (2026-10-28)
+
+The user sent 30 links; 12 were refused before import (no licence or not downloadable: the Mini JCW BBS LM-R, HRE 501, zakuro_inc's BBS FI-R, a TE37 style, BBS Super RS, Volk 21A, Fikse AR and 701; tagged `noai`: Dream_Labs' Car Wheel Sport and Race; Editorial: mozzarellaARC's BBS FI-R and CI-R, TinoD2's SSR Professor TF1) and 6 skipped (already shipped from the same uid: the T5R 2P, Longchamp XR4 and Minerva; a third TE37 beside `tamashii`; TinoD2's Equip 03, which its author calls not true to the original, against `yari`; blakebella's unfinished T5R beside `inazuma`). Twelve became wheels, 111 in the set, 5,511 to 10,645 triangles. Spoon is a new maker: **Kappa**.
+
+| Wheel | Donor | Author | Group | Recipe and notes |
+|---|---|---|---|---|
+| Kawasemi | Spoon SW388 | TinoD2 | Kappa (Spoon; new) | `drop: 'LowPoly\|Tire'`: a stand scene with a low poly copy, both on tires |
+| Kazakiri | Work Emotion CR-KAI | gordeykomark | Kaito | `drop` its tire and valve; a 4.3k game-ready model, so the face keeps every triangle (5,523 in all) |
+| Tatsumaki | Rotiform DAB | blakebella | Mizuchi | `drop` its tire (the rotor goes as junk); 450k triangles of lip rivets became 40 house heads; 24 s a build |
+| Kogane | BBS LM Gold Wheels | zxargon | Suzaku | no overrides; a 7.1k low poly model without a tire, 20 lip bolts |
+| Namida | S13 Teardrops Rims | Once_a_goat_death | Hotaru (filed under Fifteen52 at the user's call; its page calls it the Nissan S13's stock wheel) | no overrides; tagged `createdwithai` by its uploader (not `noai`) |
+| Akane | SSR Hasemi Prot-S | techtackofficial | Hiryu | `face: 1`: the vote put the spokes deep in the barrel, the center cap and lip bolts face +X |
+| Tsukimi | Rotiform CVT | niev | Mizuchi | `drop` the valve (`Nipel`) |
+| Himawari | WEDS Kranze LXZ | blakebella | Fujin | `drop` its tire (material `Material`) |
+| Hibiki | RAYS GramLights 57DR | ilvskf | Genbu | `drop` the stickers, `keep: '^DISK\.'` |
+| Kaminari | Rays Gramlights 57CR | ilvskf | Genbu | `drop` the stickers, `chunks`: without it the face stood 18 cm proud of barrel scraps read as the lip, and 109k triangles of spoke went as bolts |
+| Fuuga | RAYS G025 | ilvskf | Genbu | `drop` the sticker, `chunks` |
+| Hinoko | RAYS HOMURA 2x7 | ilvskf | Genbu | `chunks` |
+
+- **Check what a scan is made of.** ilvskf's four are 3D scans (376k to 704k triangles) that Sketchfab's processing cut into chunks of about 100k, each running from the hub to the lip; the islands the classifier sorts by radius are then pieces of one surface, not parts. Each also carries a node named `WORK_VS_XX_obj_cleaner_materialmerger_gles` (Sketchfab's name for a downloaded model) holding the barrel: it looks taken from jonver87's WORK VS-XX (CC BY 4.0, our `ryusei`), which ilvskf does not credit; the README credits it.
+- **Lugs.** `fit_lugs` found no circle on akane, hibiki, himawari, kazakiri and namida: a center cover hides them on akane, kazakiri and namida, and the pockets on hibiki and himawari sit at 0.28 to 0.34 of the lip, past `LUG['band']`, with too much noise for a blob even when the band is widened. They ship without house nuts.
+- `checkWheelFacing`: all twelve `front` 0.97 to 1.00, depth 0.02 to 0.32.
+
 ## Credits
 
 All by **jonver87** on Sketchfab, CC BY 4.0: WORK VS-TX, Work Equip 03, Work Equip 40, WORK EMITZ, WORK VS-KF, Work VS XV, WORK VS-XX, WORK ZISTANCE W5S, WORK Schwert SC2, Work Equip 02, Work Euroline DH, WORK IMPORT LABEL AL4, WORK LS CHIAREZZA SUV, Rotiform ZMO, Aerodisc, VCE, SIX, AVS, KB1, USF, MLW, OZR, BM1, WRO, CCV, LHR, LSR, KLU, SNA, KPS and PNT, 3D Vossen LC104T, Vossen LC109T, VPS302, VPS301, ERA3, GNS-1, VPS 315T and CG203, HRE P200, Fifteen52 Rally Sport, SSR Koenig, BBS E52, Volk Rays 21C. Each is kept as its face, lip and barrel, reduced, with its bolts, badges and tire replaced by the house's.
@@ -388,3 +413,5 @@ All by **jonver87** on Sketchfab, CC BY 4.0: WORK VS-TX, Work Equip 03, Work Equ
 Enkei Nt03+m Wheels by **flathat3d** and BBS CH-R + Goodyear Eagle F1 Supercar 3 by **MozzarellaARC** on Sketchfab, CC BY 4.0, each kept the same way (the CH-R's own tire cut away).
 
 The Fifty-six more set (2026-10-28), CC BY 4.0, kept the same way: 33 more by **jonver87** (HRE TUSK, Advan A3A, Velare VLR F1, Rotiform WRG, IHR, HVN, SEA, RSC and EMA, Kyusha Shoes Meteor FF, Brixton Forged TR06, VL7, PF6 and CM16, Avant Garde F450 and F142, HRE FF04 and 522M, Vossen VFS4, LC106, LC108T, VPS 310T, CG207, VFS2, VFS1 and HC-1, Vossen-x-Work VWS3, VIP Modular VXS410, VX510 and VXS610, Volk TE37SL 3spoke, Volk Rays 21A, Enkei Riverge), "fifteen52 Turbomac" by **portfoliorodrigues**, "Work Meister S1 3P" by **alexanderlyreo** and 18 wheels from 16 models by **dermaks** (WORK MEISTER CR01, SSR Minerva, RAYS nismo LMGT1, SSR COLLECTION (three wheels), SSR Longchamp XR4, Budnik Tusk, Weds Kranze Bazreia, BRABUS MONOBLOCK M, Devil Japan IF, WORK Equip 05, KANSEI TANDEM, O.Z MAE, WORK EMOTION T5R 2P, RAYS TE037, SSR Starshark, MAE CROWN JEWEL). The settings' credits list each one (`DONOR_CREDITS`).
+
+Twelve more (2026-10-28), CC BY 4.0, kept the same way: "Spoon SW388 (Low&High Poly)" by **TinoD2**, "Racing Wheel - Work Emotion CR-KAI" by **gordeykomark**, "Rotiform DAB" and "WEDS Kranze LXZ [Mid-Poly]" by **blakebella**, "[FREE] BBS LM Gold Wheels - Low poly" by **zxargon**, "S13 Teardrops Rims" by **Once_a_goat_death**, "SSR Hasemi Prot-S" by **techtackofficial**, "Rotiform CVT" by **niev**, and "RAYS GramLights 57DR", "Rays Gramlights 57CR", "RAYS G025" and "RAYS HOMURA 2x7" by **ilvskf** (their barrels apparently from jonver87's WORK VS-XX); their tires, stands, stickers and valves left out.

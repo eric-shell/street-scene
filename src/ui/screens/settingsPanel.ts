@@ -379,6 +379,18 @@ const DONOR_CREDITS: { use: string; title: string; uid: string; author: string }
   { use: 'Inazuma wheels', title: 'WORK EMOTION T5R 2P', uid: '38c31e5755494f7fa5e53fdbc95fa313', author: 'dermaks' },
   { use: 'Hanabi wheels', title: 'SSR Starshark', uid: '58970916a3be46a48d61de853149a22a', author: 'dermaks' },
   { use: 'Minamo wheels', title: 'MAE CROWN JEWEL', uid: '2c77da7f41df431aa1db7b7c2afa92ca', author: 'dermaks' },
+  { use: 'Kawasemi wheels', title: 'Spoon SW388 (Low&High Poly)', uid: '069b86d4b4a2492e92eb3349805479f9', author: 'TinoD2' },
+  { use: 'Kazakiri wheels', title: 'Racing Wheel - Work Emotion CR-KAI', uid: '3025fa1677784df99abcf1cd2a30c5fa', author: 'gordeykomark' },
+  { use: 'Tatsumaki wheels', title: 'Rotiform DAB', uid: '48ff08bbf17b43b4abbc2ee9113be954', author: 'blakebella' },
+  { use: 'Kogane wheels', title: '[FREE] BBS LM Gold Wheels - Low poly', uid: '3aac505aa9484d088204fabef6a8a4c2', author: 'zxargon' },
+  { use: 'Namida wheels', title: 'S13 Teardrops Rims', uid: 'f8fe25efca84448994f449ef9d894d54', author: 'Once_a_goat_death' },
+  { use: 'Akane wheels', title: 'SSR Hasemi Prot-S', uid: '581e5099da7a4620b11c3fc424c507de', author: 'techtackofficial' },
+  { use: 'Tsukimi wheels', title: 'Rotiform CVT', uid: 'ed962ed287cf4430a5af531accef5221', author: 'niev' },
+  { use: 'Himawari wheels', title: 'WEDS Kranze LXZ [Mid-Poly]', uid: '2eef2cea9a634c2fbe5dc187d67ba747', author: 'blakebella' },
+  { use: 'Hibiki wheels', title: 'RAYS GramLights 57DR', uid: '71a90d6c2d0a444d9d2ca7e3cf715c76', author: 'ilvskf' },
+  { use: 'Kaminari wheels', title: 'Rays Gramlights 57CR', uid: '47063c38bdaa46ebaf2d2af2079c7118', author: 'ilvskf' },
+  { use: 'Fuuga wheels', title: 'RAYS G025', uid: '8b14891bb44b43729d07f1e4e2744488', author: 'ilvskf' },
+  { use: 'Hinoko wheels', title: 'RAYS HOMURA 2x7', uid: 'f2da4e9b0d04418aa1b53022d692ea6b', author: 'ilvskf' },
 ];
 
 /** One credit in a credits group: what it is in the game, beside the work (linked) over its author and licence. */
