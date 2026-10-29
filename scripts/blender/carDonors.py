@@ -157,11 +157,16 @@ DONORS = {
         # behind the grille, at the bars' height) joins the two ends of each bar, as in the shipped
         # file.
         'bridges': [((-0.058, -2.07, 0.60), (0.058, -2.03, 0.67))],
-        # The grille (two body colour bars from headlamp to headlamp over a black panel) and the
-        # lower intake (three openings on clean outlines, painted rims, closed black pockets) were
-        # rebuilt by hand on 2026-10-27: the reduction leaves a tangle of slivers in both. They
-        # are kept as pieces (wendtStrom.pieces.glb, save_pieces) and spliced in on every rebuild.
+        # The grille (two body colour bars from headlamp to headlamp over a black panel), rebuilt by
+        # hand on 2026-10-27 because the reduction leaves a tangle of slivers in it, is kept as a
+        # piece (wendtStrom.pieces.glb, save_pieces, box x 0.376, z 0.585 to 0.705, cutting every
+        # shell face it hides) and spliced in on every rebuild. The lower intake was a piece too;
+        # with the lamps and the shading kept the reduction now leaves it clean, and the old
+        # piece carried that reduction's facets onto the bumper, so it went (2026-10-29).
         'pieces': True,
+        # The hood's leading edge, a tight lip over the grille and lamps, is reduced with the lamps
+        # at their finer error: in the shell's collapse it folded into teeth.
+        'lamps': [lambda c, n, m: m == 'Paint' and abs(c.x) < 0.8 and c.y < -1.8 and 0.66 < c.z < 0.8],
     },
     'kazamaRotor': {
         'name': '1999 Mazda RX-7 (FD3S)',
@@ -1610,6 +1615,7 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     lamps = DONORS[cid].get('lampBudget', lamps)
     lamp_error = DONORS[cid].get('lampError', LAMP_ERROR)
     car_budget = DONORS[cid].get('carBudget', CAR_BUDGET)
+    budget = DONORS[cid].get('shellBudget', budget)
     skin = _copy(full, f'donor:{cid}.Skin')
     # The lamps ride through the first collapse untouched (held), so their own pass works from
     # the source's detail: collapsed to 60,000 with the rest, the Kombi's round fog lamps were
@@ -1713,13 +1719,15 @@ def _pieces_path(cid):
     return os.path.join(REPO, f'assets/source/eshell/{cid}/{cid}.pieces.glb')
 
 
-def save_pieces(cid, boxes, src=None):
+def save_pieces(cid, boxes, src=None, whole=True):
     """Keep hand-modelled regions of a shipped car as pieces a reimport splices back (recipe
     `pieces`, splice_pieces): for each `name: (lo, hi)` in `boxes` (Blender space), the faces of
     `src` (default `<cid>.Body`) centered in the box become an object `piece_<name>` carrying the
     box, all written to `assets/source/eshell/<cid>/<cid>.pieces.glb` (a GLB: saving part of the
     live session as a .blend crashes Blender 5.2). For work no recipe rule can express, such as the
-    Golf's grille bars and lower intake, rebuilt by hand on 2026-10-27."""
+    Golf's grille bars and lower intake, rebuilt by hand on 2026-10-27. `whole=False` lets the
+    splice cut every shell face centred in the box (it hides), not only those wholly inside: for a
+    piece whose box sits inside an opening, where the donor's tangle reaches past it."""
     body = bpy.data.objects[src or f'{cid}.Body']
     names = [m.name.split('.')[0].split('_')[-1] for m in body.data.materials]
     made = []
@@ -1731,13 +1739,14 @@ def save_pieces(cid, boxes, src=None):
         for i, n in enumerate(names):
             o.data.materials[i] = shared_mat(n)
         o['cut_lo'], o['cut_hi'] = list(lo), list(hi)
+        o['cut_whole'] = whole
         made.append(o)
         print(f'{cid}: piece {name}: {len(o.data.polygons)} faces')
     bpy.ops.object.select_all(action='DESELECT')
     for o in made:
         o.select_set(True)
     bpy.context.view_layer.objects.active = made[0]
-    bpy.ops.export_scene.gltf(filepath=_pieces_path(cid), use_selection=True, export_extras=True, export_apply=True)
+    bpy.ops.export_scene.gltf(filepath=_pieces_path(cid), use_selection=True, use_active_scene=True, export_extras=True, export_apply=True)
     for o in made:
         bpy.data.objects.remove(o)
 
@@ -1753,7 +1762,10 @@ def splice_pieces(cid, low, snap=0.01, reach=0.1):
         raise FileNotFoundError(f'{cid}: recipe `pieces` but no {path} (save_pieces)')
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=path)
-    pieces = [o for o in set(bpy.data.objects) - before if o.type == 'MESH']
+    new = set(bpy.data.objects) - before
+    pieces = [o for o in new if o.type == 'MESH' and 'cut_lo' in o]
+    for o in new - set(pieces):
+        bpy.data.objects.remove(o)
     added = 0
     for piece in pieces:
         bake(piece)
@@ -1767,7 +1779,12 @@ def splice_pieces(cid, low, snap=0.01, reach=0.1):
         covered = lambda c: any(cover.ray_cast(c, Vector((0, d, 0)), reach)[0] is not None for d in (1, -1))
         verts = low.data.vertices
         whole = lambda p: all(lo[i] <= verts[v].co[i] <= hi[i] for v in p.vertices for i in range(3))
-        _delete_indices(low, lambda p: whole(p) and covered(p.center))
+        # Centred in the box and reaching at most 1 cm past it: a face reaching further leaves a gap
+        # the piece does not cover (the Golf's hood lip over the grille).
+        centred = lambda p: all(lo[i] <= p.center[i] <= hi[i] for i in range(3)) and \
+            all(lo[i] - 0.01 <= verts[v].co[i] <= hi[i] + 0.01 for v in p.vertices for i in range(3))
+        cut = whole if piece.get('cut_whole', True) else centred
+        _delete_indices(low, lambda p: cut(p) and covered(p.center))
         bm = bmesh.new()
         bm.from_mesh(low.data)
         hole = [v for v in bm.verts if any(e.is_boundary for e in v.link_edges)
@@ -2000,6 +2017,9 @@ def ship_donor(cid, work):
         bpy.context.scene.collection.objects.link(cabin)
         delete_faces(cabin, lambda c, n, m: m != 'Interior')
         if cabin.data.polygons:
+            _carry_custom_normals(cabin)
+            sn = me.attributes.get('src_normal') or me.attributes.new('src_normal', 'FLOAT_VECTOR', 'CORNER')
+            sn.data.foreach_set('vector', [x for c in me.corner_normals for x in c.vector])
             tmp = bpy.data.objects.new('ship_tmp', me)
             bpy.context.scene.collection.objects.link(tmp)
             print(f'{cid}: kept the transplanted cabin, {len(cabin.data.polygons)} faces ({tuck_cabin(cabin, tmp)} tucked)')
@@ -2017,6 +2037,7 @@ def ship_donor(cid, work):
             cb.free()
             bm.to_mesh(me)
             bm.free()
+            _set_custom_normals(tmp)
             bpy.data.objects.remove(tmp)
         data = cabin.data
         bpy.data.objects.remove(cabin)
@@ -2030,6 +2051,9 @@ def ship_donor(cid, work):
     for k in ('wheelbase', 'tireRadius', 'track'):
         body[k] = low[k]
     remap_materials(body)
+    # The source's normals ride on the reduced faces (shade_from_source): exportCar.py keeps them
+    # rather than reshade from the reduced geometry, whose slivers read as hard facets.
+    body['authored_normals'] = me.has_custom_normals
     bpy.ops.wm.save_as_mainfile(filepath=work, copy=True)
     print(f'{cid}: {len(me.polygons)} faces in {cid}.Body; then:\n'
           f'  /Applications/Blender.app/Contents/MacOS/Blender --background {work} --python scripts/blender/saveCar.py -- {cid} assets/source/eshell/{cid}/{cid}.blend\n'

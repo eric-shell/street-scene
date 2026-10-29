@@ -43,6 +43,10 @@ import bpy
 # the panel and went black at some angles. Area weighting lets the big panel faces own their
 # vertices; the sharp split keeps a fold from bleeding into the panel beside it.
 SHADE_ANGLE_DEG = 35
+# A body rebuilt whole by the donor pipeline (carDonors.py ship_donor) carries the source's own
+# normals on its reduced faces (shade_from_source) and the object property `authored_normals`:
+# it keeps them. Reshaded from its reduced geometry, the Wendt Strom's hood and bumper showed
+# every collapse sliver as a hard facet (the faces lie 12 to 40 degrees off the source's normals).
 
 # Which base node a part replaces by default, per slot.
 DEFAULT_HIDES = {
@@ -111,7 +115,7 @@ def export(objects, path, reshade=True):
     for o in objects:
         o.hide_set(False)
         o.select_set(True)
-        if reshade and o.type == "MESH":
+        if reshade and o.type == "MESH" and not (o.get("authored_normals") and o.data.has_custom_normals):
             shade(o)
     if sorted(o.name for o in bpy.context.selected_objects) != sorted(o.name for o in objects):
         raise SystemExit(f"exportCar: could not select {[o.name for o in objects]} for {path}")
