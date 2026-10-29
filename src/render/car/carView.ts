@@ -40,6 +40,8 @@ export interface CarPose {
 }
 
 export const WHEEL_KEYS = ['FL', 'FR', 'RL', 'RR'] as const;
+/** The stock roof's node in a car's GLB (scripts/blender/exportCar.py DEFAULT_HIDES): its Paint faces wear the roof paint, and a roof part hides it. */
+const ROOF_NODE = 'Roof';
 const DEG = Math.PI / 180;
 /** The garage readouts quote wheel diameter and width this many inches under the model's measured size, so the numbers match what real cars of that look wear; the geometry is unchanged. */
 const WHEEL_READOUT_OFFSET = 1;
@@ -523,7 +525,7 @@ export class CarView {
         if (!obj && this.placeholder) obj = buildPlaceholderPart(this.car, slot, wanted);
         if (obj) {
           obj.userData.partId = wanted;
-          this.bindMaterials(obj);
+          this.bindMaterials(obj, slot === 'roof');
         }
       }
       if (current) {
@@ -622,7 +624,7 @@ export class CarView {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !visibleInTree(mesh, this.model)) return;
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      if (mats.includes(this.materials.Paint)) out.push(mesh);
+      if (mats.includes(this.materials.Paint) || mats.includes(this.materials.RoofPaint)) out.push(mesh);
     });
     return out;
   }
@@ -984,16 +986,27 @@ export class CarView {
     }
   }
 
-  /** Assign shared runtime materials by source material name. */
-  bindMaterials(obj: THREE.Object3D): void {
+  /** Whether the car has a roof to paint apart: a stock Roof piece in the model or a roof part on it, or null while the model is still loading. */
+  hasRoof(): boolean | null {
+    if (!this.baseModel) return null;
+    return !!this.baseModel.getObjectByName(ROOF_NODE) || this.slotObjects.has('roof');
+  }
+
+  /**
+   * Assign shared runtime materials by source material name. The Paint faces of the stock Roof node and of a
+   * roof part (`roofPart`) take the roof's own paint material instead of the body's.
+   */
+  bindMaterials(obj: THREE.Object3D, roofPart = false): void {
     obj.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
+      let roof = roofPart;
+      for (let n: THREE.Object3D | null = mesh; !roof && n && n !== obj.parent; n = n.parent) roof = n.name === ROOF_NODE;
       const swap = (m: THREE.Material): THREE.Material => {
         const name = (m.userData.sourceName as string) ?? m.name;
         const resolved = resolveMaterialName(name, this.car.materialMap);
         if (!resolved) return m;
-        const shared = this.materials[resolved];
+        const shared = this.materials[roof && resolved === 'Paint' ? 'RoofPaint' : resolved];
         shared.userData.sourceName = resolved;
         return shared;
       };

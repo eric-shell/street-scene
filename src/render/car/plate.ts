@@ -141,7 +141,7 @@ const INV_M = new THREE.Matrix4();
  */
 export function seatPlate(model: THREE.Object3D, materials: CarMaterialSet, length: number, skip: THREE.Object3D): PlateSeat {
   const seat: PlateSeat = { position: new THREE.Vector3(0, PLATE.fallbackY, -length / 2), normal: new THREE.Vector3(0, 0, -1) };
-  const body = new Set<THREE.Material>([materials.Paint, materials.Trim, materials.Black, materials.Grille]);
+  const body = new Set<THREE.Material>([materials.Paint, materials.RoofPaint, materials.Trim, materials.Black, materials.Grille]);
   const targets: THREE.Mesh[] = [];
   model.traverse((o) => {
     const mesh = o as THREE.Mesh;

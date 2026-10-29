@@ -46,10 +46,11 @@ const carMaker = (displayName: string) => displayName.split(' ')[0];
 export const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan', eshell: 'eshell' };
 
 /**
- * The Paint tab's surfaces, all listed in this order: the body, the calipers, the wheels (the face, the lip and the
- * center cap) and the hardware (the lug nuts and the bolts). The one last touched frames the camera.
+ * The Paint tab's surfaces, listed in this order: the body, the roof (only on a car with a roof piece, matching the
+ * body or a contrast), the calipers, the wheels (the face, the lip and the center cap) and the hardware (the lug nuts
+ * and the bolts). The one last touched frames the camera.
  */
-export const PAINT_SURFACES = ['body', 'calipers', 'wheels', 'hardware'] as const;
+export const PAINT_SURFACES = ['body', 'roof', 'calipers', 'wheels', 'hardware'] as const;
 export type PaintSurface = (typeof PAINT_SURFACES)[number];
 
 /** The tire stretch as the Stance tab lists it (TIRE_SHAPES' order, render/car/tireShapes.ts draws them): none is the standard tire, full the stretched one. */
@@ -295,6 +296,8 @@ export function renderTabContent(host: TabHost): void {
       const face = (): Paint<AccentFinish> => (paint.match ? v.paint : paint);
       const capWears = (): Paint<AccentFinish> => (w.cap.mode === 'body' ? v.paint : w.cap.mode === 'paint' ? w.cap : face());
       const body = (): Paint<AccentFinish> => v.paint;
+      // The loaded model knows best (a stock Roof piece or a roof part); until it loads, the catalog's roof parts.
+      const roofShown = host.scene.car?.hasRoof() ?? partsFor(b.carId, 'roof').length > 0;
       const surface = (s: PaintSurface, el: HTMLElement) =>
         framing(el, host, () => {
           if (host.paintSurface === s) return false;
@@ -304,6 +307,8 @@ export function renderTabContent(host: TabHost): void {
       host.body.append(
         // The body alone takes no chrome.
         surface('body', section('Body', paintPicker(v.paint, PAINT_FINISHES, () => host.changed()))),
+        // A contrast roof is real paint or a wrap, so the body's finishes; only cars with a roof piece list it.
+        ...(roofShown ? [surface('roof', section('Roof', paintPicker(v.roof, PAINT_FINISHES, () => host.changed(), [matchBody(v.roof, v.paint)]), note('The roof panel only: the pillars keep the body paint.')))] : []),
         // One caliper paint for all four corners, whatever the axle switch says.
         surface('calipers', section('Calipers', paintPicker(v.calipers, ACCENT_FINISHES, () => host.changed(), [matchBody(v.calipers, v.paint)]), note('One paint for all four corners.'))),
         surface(

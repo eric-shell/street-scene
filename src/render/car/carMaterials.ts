@@ -15,7 +15,7 @@ import { chromeEnvironment } from './chromeEnv';
  * The shared runtime materials, plus the rear axle's own wheel material so front and rear wheel colors
  * can differ, and the brake unit's rotor and caliper (brakes.ts), which no part GLB names.
  */
-export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material; RimLipRear: THREE.Material; RimCapRear: THREE.Material; Rotor: THREE.Material; Caliper: THREE.Material; Lug: THREE.Material; LugRear: THREE.Material; Hardware: THREE.Material; HardwareRear: THREE.Material };
+export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material; RimLipRear: THREE.Material; RimCapRear: THREE.Material; Rotor: THREE.Material; Caliper: THREE.Material; RoofPaint: THREE.Material; Lug: THREE.Material; LugRear: THREE.Material; Hardware: THREE.Material; HardwareRear: THREE.Material };
 
 /** Each painted material's environment reflection strength (the boost createCarMaterials gives it); candy raises it. */
 const PAINT_ENV = { Paint: 1.9, Trim: 1.3, Rim: 1.8, RimLip: 1.8, RimCap: 1.8, Caliper: 1.2 } as const;
@@ -182,6 +182,8 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
       `#ifdef USE_MAP\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(${BRAKE.caliperLogo.ink.toFixed(2)}), texture2D(map, vMapUv).r);\n#endif`,
     );
   };
+  // The roof's Paint faces (bindRoof in carView.ts): a clone of the body paint, so a matched roof is the same look.
+  m.RoofPaint = m.Paint.clone();
   return m;
 }
 
@@ -245,6 +247,8 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
   // A matched accent wears the body's paint.
   const accent = <F extends AccentFinish>(p: AccentPaint<F>): Paint<AccentFinish> => (p.match ? v.paint : p);
   applyPaint(m.Paint as THREE.MeshPhysicalMaterial, v.paint, PAINT_ENV.Paint * envScale);
+  // The roof's own copy of the body paint: the same look while matched, its own paint otherwise.
+  applyPaint(m.RoofPaint as THREE.MeshPhysicalMaterial, v.roof.match ? v.paint : v.roof, PAINT_ENV.Paint * envScale);
   applyPaint(m.Rim as THREE.MeshPhysicalMaterial, accent(v.wheels.paint), PAINT_ENV.Rim * envScale, true);
   applyPaint(m.RimRear as THREE.MeshPhysicalMaterial, accent(v.wheels.rearPaint), PAINT_ENV.Rim * envScale, true);
   // A trim resolves per axle: its own paint, the body's, or that axle's face or cap.
@@ -307,4 +311,5 @@ export function disposeCarMaterials(m: CarMaterialSet): void {
   m.Rotor.dispose();
   (m.Caliper as THREE.MeshStandardMaterial).map?.dispose();
   m.Caliper.dispose();
+  m.RoofPaint.dispose();
 }

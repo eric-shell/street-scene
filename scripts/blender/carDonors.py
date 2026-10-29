@@ -544,6 +544,147 @@ def patch_out(o, lo, hi, mats=None, flush=True, ring=0.12):
     return len(hit)
 
 
+def close_opening(o, cut, ring=0.08, step=0.06, snap=0.004, back=None, fit_cut=True, degree=3):
+    """Close an opening in a panel with a skin of its own (a sunroof delete, a shaved fuel door): the faces
+    for which cut(face, material_name) is true go, and the one loop they leave in the panel is filled in the
+    panel's plane (delaunay_2d_cdt over the loop and a grid every `step` m inside it, kept half a step off
+    the loop), heights and normals from a polynomial fitted to the Paint in a `ring` round the loop and, with
+    `fit_cut`, to the cut faces facing out with the panel (a flush glass or lid), in the panel's own frame as
+    patch_out does. Loop vertices within `snap` of the surface move onto it and
+    every corner on them takes the surface's normal, so the fill shades on from the panel without a ring.
+    `back=(material, depth)` adds a copy of the fill `depth` m in along the normal, facing in: under a sunroof
+    the headliner's hole would otherwise show the paint's back face (Paint is double sided in the game).
+    patch_out(flush=True) presses a feature into its panel instead, and cannot close a sunroof whose glass
+    sits in a gap open to the cabin (the Wendt Strom's): the pressed gap stays a slot round the panel.
+    Returns (faces removed, faces made)."""
+    import collections
+    from mathutils.geometry import delaunay_2d_cdt
+    stash_normals(o)
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    paint = names.index('Paint')
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    R = [f for f in bm.faces if cut(f, names[f.material_index])]
+    for f in bm.faces:
+        f.tag = False
+    for f in R:
+        f.tag = True
+    adj = collections.defaultdict(list)
+    for e in bm.edges:
+        if any(f.tag for f in e.link_faces) and any(not f.tag for f in e.link_faces):
+            a, b = e.verts
+            adj[a].append(b)
+            adj[b].append(a)
+    if not adj or any(len(n) != 2 for n in adj.values()):
+        raise RuntimeError('close_opening: the cut does not leave one simple loop')
+    loop = [next(iter(adj))]
+    while True:
+        nx = [w for w in adj[loop[-1]] if len(loop) < 2 or w is not loop[-2]][0]
+        if nx is loop[0]:
+            break
+        loop.append(nx)
+    if len(loop) != len(adj):
+        raise RuntimeError(f'close_opening: {len(adj) - len(loop)} vertices in a second loop')
+    # The fit takes points sampled on the faces inside the ring, not their corners: a donor's long faces round
+    # an opening reach down to the panel's edges (the roof's ditches), taking their far corners left the fit
+    # 3.7 mm off, and the Wendt Strom's roof has no vertex at all within 8 cm of its sunroof.
+    lo = Vector([min(v.co[i] for v in loop) - ring for i in range(3)])
+    hi = Vector([max(v.co[i] for v in loop) + ring for i in range(3)])
+    inbox = lambda p: all(lo[i] <= p[i] <= hi[i] for i in range(3))
+    around = [f for f in bm.faces if not f.tag and f.material_index == paint and any(inbox(v.co) for v in f.verts)]
+    n0 = sum((f.normal * f.calc_area() for f in around), Vector()).normalized()
+    around = [f for f in around if f.normal.dot(n0) > 0.6]
+    c0 = sum((v.co for v in loop), Vector()) / len(loop)
+    ax = sorted((Vector(a) for a in ((1, 0, 0), (0, 1, 0), (0, 0, 1))), key=lambda a: abs(a.dot(n0)))
+    t1 = (ax[0] - n0 * ax[0].dot(n0)).normalized()
+    t2 = n0.cross(t1)
+    uv = lambda p: Vector(((p - c0).dot(t1), (p - c0).dot(t2)))
+    # A flush feature's own top (a sunroof's glass, a fuel door's lid) is the panel's shape where it sits: with
+    # only the ring the Wendt Strom's fill rose 5 mm above where its glass was.
+    pts = []
+    for f in around + ([f for f in R if f.normal.dot(n0) > 0.95] if fit_cut else []):
+        a = f.verts[0].co
+        for b, c in zip([v.co for v in f.verts[1:-1]], [v.co for v in f.verts[2:]]):
+            pts += [p for p in (a + (b - a) * (i / 8) + (c - a) * (j / 8) for i in range(9) for j in range(9 - i)) if inbox(p)]
+    # A polynomial of `degree` in (u, w): a quadratic missed the Wendt Strom's roof by 2 mm rms, curving down
+    # hard ahead of the sunroof over a nearly flat glass.
+    terms = [(i, j) for i in range(degree + 1) for j in range(degree + 1 - i)]
+    A = np.array([[u ** i * w ** j for i, j in terms] for u, w in (uv(p) for p in pts)])
+    h = np.array([(p - c0).dot(n0) for p in pts])
+    k = np.linalg.lstsq(A, h, rcond=None)[0]
+    surf = lambda u, w: sum(c * u ** i * w ** j for c, (i, j) in zip(k, terms))
+    du = lambda u, w: sum(c * i * u ** (i - 1) * w ** j for c, (i, j) in zip(k, terms) if i)
+    dw = lambda u, w: sum(c * j * u ** i * w ** (j - 1) for c, (i, j) in zip(k, terms) if j)
+    nrm = lambda u, w: (n0 - t1 * du(u, w) - t2 * dw(u, w)).normalized()
+    at = lambda u, w: c0 + t1 * u + t2 * w + n0 * surf(u, w)
+    rms = float(np.sqrt(np.mean((A @ k - h) ** 2)))
+    moved = 0.0
+    for v in loop:
+        u, w = uv(v.co)
+        d = surf(u, w) - (v.co - c0).dot(n0)
+        if abs(d) <= snap:
+            v.co += n0 * d
+            moved = max(moved, abs(d))
+    poly = [uv(v.co) for v in loop]
+    if sum(poly[i - 1].x * poly[i].y - poly[i].x * poly[i - 1].y for i in range(len(poly))) < 0:
+        loop.reverse()
+        poly.reverse()
+    inner = []
+    u0, u1 = min(p.x for p in poly), max(p.x for p in poly)
+    w0, w1 = min(p.y for p in poly), max(p.y for p in poly)
+    nu, nw = max(1, int((u1 - u0) / step)), max(1, int((w1 - w0) / step))
+    for i in range(nu + 1):
+        for j in range(nw + 1):
+            p = Vector((u0 + (u1 - u0) * i / nu, w0 + (w1 - w0) * j / nw))
+            if _inside_2d(p, poly) and min(_seg_dist(p, poly[m - 1], poly[m]) for m in range(len(poly))) > step / 2:
+                inner.append(p)
+    _, _, ofaces, orig_v, _, _ = delaunay_2d_cdt(poly + inner, [], [list(range(len(poly)))], 1, 1e-7)
+    verts = []
+    for ov in orig_v:
+        if not ov:
+            raise RuntimeError('close_opening: the triangulation made a vertex of its own')
+        i = ov[0]
+        verts.append(loop[i] if i < len(loop) else bm.verts.new(at(*inner[i - len(loop)])))
+    bmesh.ops.delete(bm, geom=R, context='FACES')
+    for v in loop:
+        for l in v.link_loops:
+            if sn is not None:
+                l[sn] = nrm(*uv(v.co))
+    made = []
+    for fc in ofaces:
+        vs = [verts[i] for i in fc]
+        if (vs[1].co - vs[0].co).cross(vs[2].co - vs[0].co).dot(n0) < 0:
+            vs.reverse()
+        f = bm.faces.new(vs)
+        f.material_index = paint
+        f.smooth = True
+        made.append(f)
+    if back:
+        mi, depth = names.index(back[0]), back[1]
+        under = {}
+        for f in list(made):
+            for v in f.verts:
+                if v not in under:
+                    under[v] = bm.verts.new(v.co - nrm(*uv(v.co)) * depth)
+            g = bm.faces.new([under[v] for v in reversed(f.verts)])
+            g.material_index = mi
+            g.smooth = True
+            made.append(g)
+    if sn is not None:
+        for f in made:
+            for l in f.loops:
+                n = nrm(*uv(l.vert.co))
+                l[sn] = n if f.material_index == paint else -n
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    bm.to_mesh(me)
+    bm.free()
+    restore_normals(o)
+    print(f'close_opening: {len(R)} faces out, loop of {len(loop)}, fit rms {rms * 1000:.2f} mm, loop snapped up to {moved * 1000:.1f} mm, {len(made)} faces in')
+    return len(R), len(made)
+
+
 def press_recesses(o, boxes, grow=0.02):
     """Press the panel flush where a removed badge sat. `boxes` are the (min, max) bounds of the
     deleted islands. A badge on a hood's leading edge or a bumper's top lip leaves a notch in the

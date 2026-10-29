@@ -241,6 +241,7 @@ const SHORT: Record<string, string> = {
   sideSkirts: 'ss',
   spoiler: 'sp',
   hood: 'hd',
+  // Also the roof's paint (visual.roof): the two never share an object, so one key reads both.
   roof: 'rf',
   body: 'bd',
 };

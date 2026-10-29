@@ -178,6 +178,22 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_roof_sunroofDelete",
+      "displayName": "Sunroof Delete",
+      "carId": "wendtStrom",
+      "slot": "roof",
+      "file": "parts/wendtStrom_roof_sunroofDelete.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 514,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",

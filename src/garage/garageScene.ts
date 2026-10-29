@@ -100,6 +100,7 @@ const FRAMES: Record<TabFrame, { shot: string | CameraPreset; spin: boolean }> =
   wheels: { shot: 'Wheel', spin: false },
   'paint:body': { shot: 'Three quarter', spin: true },
   'paint:wheels': { shot: 'Wheel', spin: false },
+  'paint:roof': { shot: { name: 'Roof', pos: [3.6, 3.1, 3.6], target: [0, 0.9, 0] }, spin: true },
   'paint:calipers': { shot: 'Wheel', spin: false },
   'paint:hardware': { shot: 'Wheel', spin: false },
   vinyl: { shot: 'Three quarter', spin: false },
