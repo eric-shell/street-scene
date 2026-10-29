@@ -973,18 +973,22 @@ def punch_holes(o, holes, r, depth=0.015, sides=16, wall='Black', back='Black', 
     return added
 
 
-def sheet_lip(src, target, center=(0, -1.55), angles=(0, 20, 40, 52, 62, 70), band=(0.165, 0.235), thick=0.013,
-              proud=0.04, end_proud=0.025, tuck=0.04, chamfer=0.006, material='Black'):
+def sheet_lip(src, target, center=(0, -1.55), angles=(0, 20, 40, 52, 62, 70, 76, 82), band=(0.165, 0.235), thick=0.013,
+              proud=0.04, end_proud=0.025, taper_from=70, tuck=0.04, butt=0.004, chamfer=0.006, full=True, material='Black'):
     """A flat splitter cut from sheet stock (half inch HDPE) under a front bumper: top and bottom flat
     all the way round at the height of the bumper's underside at the nose, its outline the bumper's
     bottom edge offset `proud` m and taken in straight runs between `angles` (degrees about `center`,
     one half, mirrored), with a 45 degree `chamfer` on the top front edge. Each run is its own sweep,
-    so its faces are flat and the joints crisp like a cut sheet, not smooth like `bumper_lip`. It
-    stops before the arches at the last angle where the bumper's underside is still above the sheet.
-    The Wendt Strom's Track bumper. Carries authored normals. Returns the sections."""
+    so its faces are flat and the joints crisp like a cut sheet, not smooth like `bumper_lip`. Past
+    `taper_from` degrees the proud edge narrows to `end_proud` at the last angle. A bumper's bottom
+    dips toward the arches, below a sheet at the nose's height: with `full` (the user wanted it along
+    the whole bottom) the sheet runs on to the arches and, where the underside is below it, butts
+    against the face (`butt` m in, not `tuck` under); without, it stops at the last angle where the
+    underside is still above it. The Wendt Strom's Track bumper. Carries authored normals. Returns the
+    sections."""
     E = lower_edge(src, center, list(angles), *band)
     top = E[0].z - 0.002
-    keep = [i for i, e in enumerate(E) if e.z >= top + 0.001 or i == 0]
+    keep = [i for i, e in enumerate(E) if full or e.z >= top + 0.001 or i == 0]
     E = [E[i] for i in keep]
     A = [angles[i] for i in keep]
     E = [Vector((-e.x, e.y, e.z)) for e in reversed(E[1:])] + E
@@ -998,13 +1002,16 @@ def sheet_lip(src, target, center=(0, -1.55), angles=(0, 20, 40, 52, 62, 70), ba
         if n.dot(e.to_2d() - Vector(center)) < 0:
             n = -n
         n3 = Vector((n.x, n.y, 0))
-        ext = end_proud if abs(a) == max(abs(x) for x in A) else proud
+        last = max(abs(x) for x in A)
+        k = 0.0 if abs(a) <= taper_from or last <= taper_from else (abs(a) - taper_from) / (last - taper_from)
+        ext = proud + (end_proud - proud) * k
+        tk = tuck if e.z >= top + 0.001 else butt
         base = Vector((e.x, e.y, 0))
-        secs.append([tuple(base - n3 * tuck + Vector((0, 0, top))),
+        secs.append([tuple(base - n3 * tk + Vector((0, 0, top))),
                      tuple(base + n3 * (ext - chamfer) + Vector((0, 0, top))),
                      tuple(base + n3 * ext + Vector((0, 0, top - chamfer))),
                      tuple(base + n3 * ext + Vector((0, 0, bot))),
-                     tuple(base - n3 * tuck + Vector((0, 0, bot)))])
+                     tuple(base - n3 * tk + Vector((0, 0, bot)))])
     carry = stash_normals(target)
     for i in range(len(secs) - 1):
         sweep(target, [secs[i], secs[i + 1]], material)
