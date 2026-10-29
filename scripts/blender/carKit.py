@@ -734,10 +734,13 @@ def round_lamp(o, center, normal, r_lens, r_bezel, proud=0.02, lens='HeadLight',
 def lower_edge(o, center, angles, z0, z1, step=0.005):
     """A bumper's bottom edge round the nose, for lips and splitters that follow it from arch to arch:
     for each angle (degrees about `center` in plan, 0 toward -y, + toward +x) the outermost point the
-    rays find between z0 and z1, and the underside's height just inside it (a ray up from 3 cm in).
-    Returns [(Vector x, y, z_under)] in angle order; an angle with no hit is skipped. Plan rays from
-    behind the bumper, not an x sweep: the edge turns back along the sides to the arches, where a
-    sweep along x samples it edge on (tunerKits' `outline` + `slab` stops at the corners)."""
+    rays find between z0 and z1, the underside's height just inside it (a ray up from 3 cm in), then
+    the face's own bottom edge: a plan ray 4 mm above the underside. Returns [(Vector x, y, z_under)]
+    in angle order; an angle with no hit is skipped. The last step matters: a bumper's lower face
+    curves back under the car, and the outermost point sits 3 to 4 cm up that curve; a lip pinned to
+    it stood out under the face with a 3 to 8 cm gap over its front edge (the Wendt Strom's Cupra R).
+    Plan rays from behind the bumper, not an x sweep: the edge turns back along the sides to the
+    arches, where a sweep along x samples it edge on (tunerKits' `outline` + `slab` stops at the corners)."""
     from mathutils.bvhtree import BVHTree
     t = BVHTree.FromObject(o, bpy.context.evaluated_depsgraph_get())
     c = Vector((center[0], center[1], 0))
@@ -755,7 +758,10 @@ def lower_edge(o, center, angles, z0, z1, step=0.005):
             continue
         inside = best - d * 0.03
         up = t.ray_cast(Vector((inside.x, inside.y, z0 - 0.2)), Vector((0, 0, 1)), 0.5)
-        out.append(Vector((best.x, best.y, up[0].z if up[0] else z0)))
+        zu = up[0].z if up[0] else z0
+        bottom = t.ray_cast(c + d * 3 + Vector((0, 0, zu + 0.004)), -d, 3)
+        edge = bottom[0] if bottom[0] and (bottom[0] - c).to_2d().length <= (best - c).to_2d().length else best
+        out.append(Vector((edge.x, edge.y, zu)))
     return out
 
 
