@@ -494,6 +494,11 @@ export class CarView {
     await this.applyVisual(visual, token);
   }
 
+  /** The loaded build's pops & bangs multiple (1 stock): what the exhaust effects and the engine voice scale their backfires by. */
+  get popRate(): number {
+    return this.visual.popsBangs ?? 1;
+  }
+
   /** Apply a visual build. Part swaps load asynchronously; everything else is instant. */
   async applyVisual(v: VisualBuild, token = ++this.loadToken): Promise<void> {
     this.visual = v;

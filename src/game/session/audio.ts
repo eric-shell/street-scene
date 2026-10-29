@@ -142,6 +142,7 @@ export class SessionAudio {
     this.engines.forEach((voice, i) => {
       const p = poses[i];
       const rc = this.race.cars[i];
+      voice.popRate = this.views[i]?.popRate ?? 1;
       const dx = p.x - camPos.x;
       const dz = p.z - camPos.z;
       const d = Math.hypot(dx, dz);

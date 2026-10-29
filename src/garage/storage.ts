@@ -215,6 +215,7 @@ const SHORT: Record<string, string> = {
   color2: 'c2',
   brightness: 'br',
   speed: 'sp2',
+  popsBangs: 'pb',
   // The Tune tab's setup sliders.
   suspension: 's',
   gearing: 'gr',

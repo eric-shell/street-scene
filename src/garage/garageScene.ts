@@ -559,6 +559,7 @@ export class GarageScene {
       return;
     }
     const voice = this.ensureVoice();
+    if (voice && this.car) voice.popRate = this.car.popRate;
     // Quiet at rest (a burble in the showroom, a low hum on the Street view's cruise), swelling with the revs.
     const level = revVoice(street ? 'street' : 'garage', this.rev.rpm, this.rev.rest, this.rev.redline, this.rev.throttle);
     voice?.update({

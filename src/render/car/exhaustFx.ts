@@ -417,10 +417,12 @@ export class ExhaustFx {
       }
       const rc = race.cars[i];
       const frac = p.rpm / rc.tuning.engine.redline;
+      // The build's pops & bangs multiple: thins (or, past 1, fattens) the shift flames and crackle, by the tick's hash so a replay shows the same.
+      const rate = this.views[i].popRate;
       this.heatTick(i, c, c.rpm / rc.tuning.engine.redline);
       if (c.throttle >= O.throttle) this.pedalTick[i] = race.tick;
       // Upshift under power near the redline.
-      if (c.gear > p.gear && p.gear >= 1 && p.throttle >= U.throttle && frac >= U.rpmFrac && time - this.lastShift[i] >= U.cooldown) {
+      if (c.gear > p.gear && p.gear >= 1 && p.throttle >= U.throttle && frac >= U.rpmFrac && time - this.lastShift[i] >= U.cooldown && hash01(race.tick * 131 + i * 7919, 5) < rate) {
         this.lastShift[i] = time;
         this.push(time, i, SHIFT, p.nitro ? 1 : clamp01((frac - U.rpmFrac) / (1 - U.rpmFrac)), -1);
       }
@@ -432,10 +434,10 @@ export class ExhaustFx {
           this.lastFlutter[i] = time;
           for (let k = 0; k < F.count; k++) this.push(time + k * F.gap, i, PUFF, F.count > 1 ? k / (F.count - 1) : 0, -1);
         }
-        if (frac >= O.rpmFrac && time - this.lastOverrun[i] >= O.cooldown) {
+        if (rate > 0 && frac >= O.rpmFrac && time - this.lastOverrun[i] >= O.cooldown) {
           this.lastOverrun[i] = time;
           const seed = race.tick * 131 + i * 7919;
-          const n = Math.round(lerp(O.pops, hash01(seed, 1)));
+          const n = Math.round(lerp(O.pops, hash01(seed, 1)) * rate);
           for (let k = 0; k < n; k++) {
             const at = time + (O.duration * (k + hash01(seed, 100 + k) * 0.8)) / n;
             this.push(at, i, POP, hash01(seed, 200 + k), Math.floor(hash01(seed, 300 + k) * MAX_TIPS));

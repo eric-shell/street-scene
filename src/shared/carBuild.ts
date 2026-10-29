@@ -159,6 +159,12 @@ export interface VisualBuild {
     /** Glow spread around the car, 0.6..1.6 */
     size: number;
   };
+  /**
+   * Pops and bangs: how often the exhaust backfires on a lift, a shift or the limiter, as a multiple of the stock
+   * rate (0 none, 1 stock, 2 double), 0..2. Flame and sound agree (render/car/exhaustFx.ts, audio/engineAudio.ts).
+   * Cosmetic, so it lives here and never reaches the sim. A missing value reads 1.
+   */
+  popsBangs: number;
 }
 
 export interface CarBuild {
@@ -180,6 +186,7 @@ export function defaultVisual(): VisualBuild {
     stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
     underglow: { enabled: false, color: '#00e5ff', color2: '#ff3df2', pattern: 'steady', brightness: 1, speed: 1, size: 1 },
+    popsBangs: 1,
   };
 }
 
@@ -309,6 +316,7 @@ export function validateVisual(v: unknown): VisualBuild {
       speed: num(glow.speed, 0.25, 3, 1),
       size: num(glow.size, 0.6, 1.6, 1),
     },
+    popsBangs: num(o.popsBangs, 0, 2, d.popsBangs),
   };
 }
 

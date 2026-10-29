@@ -293,6 +293,8 @@ export class EngineVoice {
   readonly program: EngineProgram;
   /** Called when the overrun pops: which tailpipe (0 left, 1 right; -1 every tip of a single exhaust), size (1 bang, 0 crackle) and seconds until it fires. The owner draws the flame. */
   onPop: ((pipe: number, size: number, delay: number) => void) | null = null;
+  /** The build's pops & bangs multiple (1 stock, 0 none, 2 double): scales how likely each overrun event is to fire. */
+  popRate = 1;
   private ctx: AudioContext;
   private out: GainNode;
   private pan: StereoPannerNode;
@@ -751,7 +753,8 @@ export class EngineVoice {
    */
   private overrun(load: number, r: number, shifting: boolean, limiter: boolean, cut: boolean, dt: number): void {
     const P = this.program;
-    if (P.pops <= 0) return;
+    if (P.pops <= 0 || this.popRate <= 0) return;
+    const k = this.popRate;
     const free = Math.min(1.5, P.pops);
     const drive = (load * Math.max(0, r - 0.2)) / 0.8;
     this.heat += (drive - this.heat) * (1 - Math.exp(-dt / (drive > this.heat ? OVERRUN.heatUp : OVERRUN.coolDown)));
@@ -765,7 +768,7 @@ export class EngineVoice {
     this.wasCut = cut;
     if (cutStart) {
       this.heat = Math.min(1, this.heat + 0.1);
-      if (Math.random() < Math.min(1, OVERRUN.cutChance * free)) {
+      if (Math.random() < Math.min(1, OVERRUN.cutChance * free * k)) {
         this.bang();
         // Now and then a second shot right behind it.
         if (Math.random() < 0.25) this.pop(0.04 + 0.03 * Math.random(), 0.5 + 0.5 * Math.random(), within(OVERRUN.crackle));
@@ -776,10 +779,10 @@ export class EngineVoice {
     if (load > 0.3 && !limiter) this.fuel *= Math.exp(-dt / OVERRUN.onThrottle);
     let chance = 0;
     if (limiter) {
-      chance = OVERRUN.limiterRate * (0.4 + 0.6 * free) * dt;
+      chance = OVERRUN.limiterRate * (0.4 + 0.6 * free) * k * dt;
       this.heat = Math.min(1, this.heat + dt / 2);
-    } else if (upshift) chance = OVERRUN.shiftChance * free * (0.3 + 0.7 * this.heat);
-    else if (this.fuel > 0.1) chance = P.pops * OVERRUN.rate * this.fuel * this.heat * dt;
+    } else if (upshift) chance = OVERRUN.shiftChance * free * (0.3 + 0.7 * this.heat) * k;
+    else if (this.fuel > 0.1) chance = P.pops * OVERRUN.rate * this.fuel * this.heat * k * dt;
     if (Math.random() >= chance) return;
     this.fuel *= limiter ? 0.9 : 0.45;
     if (Math.random() < (limiter ? 0.3 : OVERRUN.bangShare)) this.bang();

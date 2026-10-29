@@ -529,6 +529,17 @@ function renderPerformance(host: TabHost): void {
         : []),
     ),
   );
+  // Pops & bangs: cosmetic (visual build), so it never moves the stats; it scales the backfire's flames and sound.
+  host.body.append(
+    section(
+      'Pops & bangs',
+      slider('Pops', b.visual.popsBangs, 0, 2, 0.25, (x) => (x <= 0 ? 'Off' : x === 1 ? '100% · stock' : `${Math.round(x * 100)}%`), (x) => {
+        b.visual.popsBangs = x;
+        host.changed();
+      }),
+      h('div', { class: 'muted garage-note' }, 'How often the exhaust pops and flames on a lift, a shift or the limiter. Sight and sound together; no effect on performance.'),
+    ),
+  );
   // The setup: four sliders, each a trade (sim/build.ts applyBuild), position 3 the stock car.
   host.body.append(
     section(
