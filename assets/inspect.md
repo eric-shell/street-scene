@@ -14,7 +14,7 @@ Authored cars: brandtKombi, hinodeHorizon, kazamaRotor, ridgewayFiend, tachibana
 | ridgewayFiend | 270.0 KB |
 | tachibanaRunabout | 141.7 KB |
 | tachibanaZenith | 261.9 KB |
-| wendtStrom | 261.8 KB |
+| wendtStrom | 261.3 KB |
 
 ## Material vocabulary
 
@@ -116,7 +116,7 @@ Source: `assets/source/eshell/tachibanaZenith/tachibanaZenith.blend` (authored i
 
 Source: `assets/source/eshell/wendtStrom/wendtStrom.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/wendtStrom.glb`: 261.8 KB, 20557 tris, nodes `Body`.
+- Base car `public/cars/wendtStrom.glb`: 261.3 KB, 20552 tris, nodes `Body`.
 - Parts: .
 - WARNING: wheel radius 0.309 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.309 m, width 0.24 m, wheelbase 2.518 m, track 1.492 m.

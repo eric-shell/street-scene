@@ -50,6 +50,10 @@ REDUCER = 'meshopt'   # _collapse: 'meshopt' (meshopt.py) or 'blender' (the Deci
 # The RX-7's raised pop-up lamps (shell and bucket), clear of the hood round them.
 POPUP = lambda c: 0.47 < abs(c.x) < 0.76 and -1.86 < c.y < -1.48 and c.z > 0.6
 
+# The Golf's tail lamp faces under their covers (both sides), its housing's walls with them (they
+# wrap round its outer corner and bottom lip, and show through the cover): what its bands repaint.
+TAIL = lambda c, n, m: m in ('TailLight', 'Light', 'Chrome', 'Black') and c.y > 1.6 and 0.49 < abs(c.x) < 0.785 and 0.685 < c.z < 0.905
+
 DONORS = {
     'brandtKombi': {
         'name': '1992 Audi S2 Avant',
@@ -105,10 +109,15 @@ DONORS = {
                     (lambda c, n, m: m in ('TailLight', 'Black') and math.hypot(abs(c.x) - 0.522, c.z - 0.674) < 0.03 and -1.93 < c.y < -1.9, 'Reflector'),
                     # The third brake light: the red strip across the top of the rear glass.
                     (lambda c, n, m: m == 'TailLight' and c.z > 1.2, 'BrakeLight'),
-                    # The reverse lamp's texture is white stripes on smoke, and the fog block's has
-                    # specks: each block one colour, the reverse lamp bright, the fog block dark.
-                    (lambda c, n, m: m in LAMP_MATS + ('Chrome', 'Black') and m != 'Lens' and c.y > 1.6 and 0.806 < c.z < 0.85 and 0.672 < abs(c.x) < 0.72, 'Chrome'),
-                    (lambda c, n, m: m in ('Chrome', 'TailLight', 'Light') and c.y > 1.6 and 0.706 < c.z < 0.75 and abs(c.x) < 0.588, 'Black')],
+                    # The tail lamps' bands by position, once the cuts have made them straight: the
+                    # texture's streaks and stripes left them patchy (dark specks in the red, the
+                    # reverse lamp's white spilling past its block). Every face of the lamp is red,
+                    # but the smoked band (0.806 to 0.850) dark with the reverse lamp
+                    # bright at its outer end, and the fog block on the lower inner corner dark.
+                    (lambda c, n, m: TAIL(c, n, m), 'TailLight'),
+                    (lambda c, n, m: TAIL(c, n, m) and 0.806 < c.z < 0.85, 'Black'),
+                    (lambda c, n, m: TAIL(c, n, m) and 0.806 < c.z < 0.85 and 0.672 < abs(c.x) < 0.72, 'Chrome'),
+                    (lambda c, n, m: TAIL(c, n, m) and c.z < 0.75 and abs(c.x) < 0.588, 'Black')],
         # The paint disc behind the grille badge, and the roof antenna's stub. The disc's box stops
         # short of the bumper's top lip (z 0.57 to 0.585) and the hood's leading edge (from 0.685):
         # at 0.57 to 0.70 it cut both, and the shipped file had them filled back in by hand.
