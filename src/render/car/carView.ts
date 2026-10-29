@@ -7,8 +7,8 @@ import * as THREE from 'three';
 import { BODY_PART_SLOTS, PartSlot } from '../../shared/parts';
 import { STANCE_LIMITS, TireShape, VisualBuild, defaultVisual } from '../../shared/carBuild';
 import { CarAssetLibrary, ManifestCar, manifestCar, partById, partsFor } from './carAssets';
-import { CarMaterialSet, LAMP_GLOW, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBannerFrom, setBrake } from './carMaterials';
-import { bannerFrom, type WindshieldMaterial, type WindshieldSpan } from './windshield';
+import { CarMaterialSet, LAMP_GLOW, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBannerDepth, setBrake } from './carMaterials';
+import { bannerDepth, type WindshieldMaterial, type WindshieldSpan } from './windshield';
 import { makeRadialGlow } from '../textures/textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../../shared/features';
@@ -509,7 +509,7 @@ export class CarView {
     this.visual = v;
     applyVisualToMaterials(this.materials, v);
     const span = this.baseModel?.userData.windshield as WindshieldSpan | undefined;
-    if (span) setBannerFrom(this.materials, bannerFrom(span, v.banner.height));
+    setBannerDepth(this.materials, span && v.banner.enabled ? bannerDepth(span, v.banner.height) : -1);
     this.applyStance();
     this.applyUnderglow(0);
 

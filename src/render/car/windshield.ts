@@ -1,12 +1,14 @@
 /**
  * The windshield, split from a car's glass once per loaded model (CarAssetLibrary.carModel), so the build's tint
- * dresses only the side and rear windows (the windshield stays clear) and the banner, a band of film or vinyl
- * across its top, can be drawn over it. No car model names its windshield: it is the glass in the front half
+ * dresses only the side and rear windows (the windshield stays clear) and the banner, a band of the tint's film or
+ * of paint across its top, can take its place there. No car model names its windshield: it is the glass in the front half
  * that leans forward and up (its inside back and down) with little sideways lean (WINDSHIELD), in the one glass mesh
  * with the most of it (a sunroof in a mesh of its own has a few such faces on its bevels), which picks it on every
  * shipped car and leaves the side glass, the backlight and a sunroof. The windshield and the banner are two
  * meshes under the glass mesh, sharing its attributes with an index of their own, so they ride its node and hide
- * with it; CarView.bindMaterials gives them their runtime materials (carMaterial on the placeholders).
+ * with it; CarView.bindMaterials gives them their runtime materials (carMaterial on the placeholders). The band is
+ * as deep all the way across: each vertex carries its drop below the top edge (topEdge), and the banner draws where
+ * that is under the build's depth while the windshield draws only where it is not, so the two never overlap.
  */
 import * as THREE from 'three';
 import type { BannerHeight } from '../../shared/carBuild';
@@ -19,13 +21,15 @@ const WINDSHIELD = {
   rise: 0.15,
   /** Most sideways lean: past it a face is side glass (a curved windshield's corners stay under it). */
   side: 0.7,
+  /**
+   * Steepest slope (rise over run, seen from the front) the top edge has: the upper outline turns down the pillars
+   * past it, and the band holds level from there to the glass's sides instead of following them down.
+   */
+  topSlope: 1,
 } as const;
 
-/**
- * The banner: each height's share of the windshield's height down from its top edge, and the least darkness
- * (0..1, the tint's scale) of the tint film a linked banner is, so a light tint still shows a band.
- */
-export const BANNER = { height: { short: 0.14, medium: 0.22, tall: 0.32 } satisfies Record<BannerHeight, number>, film: 0.85 } as const;
+/** The banner: each height's depth below the windshield's top edge, as a share of the windshield's height. */
+export const BANNER = { height: { short: 0.14, medium: 0.22, tall: 0.32 } satisfies Record<BannerHeight, number> } as const;
 
 /** The runtime materials the split's placeholders stand for (CarMaterialSet keys, in userData.carMaterial). */
 export type WindshieldMaterial = 'Windshield' | 'Banner';
@@ -36,16 +40,50 @@ export interface WindshieldSpan {
   top: number;
 }
 
-/** The car height (m) the banner starts at for a build's banner height: below it the banner is clipped away. */
-export function bannerFrom(span: WindshieldSpan, height: BannerHeight): number {
-  return span.top - BANNER.height[height] * (span.top - span.bottom);
+/** How far below the top edge (m) the banner reaches for a build's banner height. */
+export function bannerDepth(span: WindshieldSpan, height: BannerHeight): number {
+  return BANNER.height[height] * (span.top - span.bottom);
+}
+
+/**
+ * The windshield's top edge seen from the front, as its height (m) at a car x: the upper outline of its points
+ * (x, y), kept to the shallow run around its peak (WINDSHIELD.topSlope) and held level past its ends.
+ */
+export function topEdge(points: readonly (readonly [number, number])[]): (x: number) => number {
+  const sorted = [...points].sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  // The upper hull, left to right (monotone chain): a point that makes a left turn or none drops out.
+  const hull: (readonly [number, number])[] = [];
+  for (const p of sorted) {
+    while (hull.length >= 2) {
+      const [o, a] = [hull[hull.length - 2], hull[hull.length - 1]];
+      if ((a[0] - o[0]) * (p[1] - o[1]) - (a[1] - o[1]) * (p[0] - o[0]) < 0) break;
+      hull.pop();
+    }
+    hull.push(p);
+  }
+  const shallow = (i: number) => Math.abs(hull[i + 1][1] - hull[i][1]) <= WINDSHIELD.topSlope * (hull[i + 1][0] - hull[i][0]);
+  let peak = 0;
+  for (let i = 1; i < hull.length; i++) if (hull[i][1] > hull[peak][1]) peak = i;
+  let l = peak;
+  let r = peak;
+  while (l > 0 && shallow(l - 1)) l--;
+  while (r < hull.length - 1 && shallow(r)) r++;
+  return (x) => {
+    if (x <= hull[l][0]) return hull[l][1];
+    for (let i = l; i < r; i++) {
+      const [a, b] = [hull[i], hull[i + 1]];
+      if (x <= b[0]) return a[1] + ((b[1] - a[1]) * (x - a[0])) / (b[0] - a[0] || 1);
+    }
+    return hull[r][1];
+  };
 }
 
 /**
  * Split the windshield out of the glass under `root` (a freshly loaded car scene, before any clone): its glass mesh
  * keeps the rest, the windshield and its banner become its children, and `root.userData.windshield` holds their
- * span (WindshieldSpan), or stays unset on a car where no glass passes. Each windshield vertex also carries its car
- * height (`carY`), which the banner's clip reads. `isGlass` says which source materials are glass.
+ * span (WindshieldSpan), or stays unset on a car where no glass passes. Each windshield vertex also carries its drop
+ * below the top edge (m, `bannerDrop`), which the banner's and the windshield's clips read. `isGlass` says which
+ * source materials are glass.
  */
 export function splitWindshield(root: THREE.Object3D, isGlass: (m: THREE.Material) => boolean): void {
   root.updateMatrixWorld(true);
@@ -64,7 +102,7 @@ export function splitWindshield(root: THREE.Object3D, isGlass: (m: THREE.Materia
   const c = new THREE.Vector3();
   const n = new THREE.Vector3();
   // Each glass mesh's faces that pass, and their area (m²): the windshield is the mesh with the most.
-  let best: { mesh: THREE.Mesh; carY: Float32Array; shield: number[]; rest: number[]; area: number } | null = null;
+  let best: { mesh: THREE.Mesh; car: THREE.Vector3[]; shield: number[]; rest: number[]; area: number } | null = null;
   for (const mesh of meshes) {
     const geo = mesh.geometry;
     const pos = geo.getAttribute('position');
@@ -73,12 +111,7 @@ export function splitWindshield(root: THREE.Object3D, isGlass: (m: THREE.Materia
     const at = (i: number) => (index ? index.getX(i) : i);
     const toCar = new THREE.Matrix4().multiplyMatrices(toRoot, mesh.matrixWorld);
     // Car space positions, once per vertex.
-    const carY = new Float32Array(pos.count);
-    const car = Array.from({ length: pos.count }, (_, k) => {
-      const v = new THREE.Vector3().fromBufferAttribute(pos, k).applyMatrix4(toCar);
-      carY[k] = v.y;
-      return v;
-    });
+    const car = Array.from({ length: pos.count }, (_, k) => new THREE.Vector3().fromBufferAttribute(pos, k).applyMatrix4(toCar));
     const shield: number[] = [];
     const rest: number[] = [];
     let area = 0;
@@ -98,16 +131,20 @@ export function splitWindshield(root: THREE.Object3D, isGlass: (m: THREE.Materia
       (hit ? shield : rest).push(i, j, k);
       if (hit) area += twice / 2;
     }
-    if (shield.length && area > (best?.area ?? 0)) best = { mesh, carY, shield, rest, area };
+    if (shield.length && area > (best?.area ?? 0)) best = { mesh, car, shield, rest, area };
   }
   if (best) {
-    const { mesh, carY, shield, rest } = best;
+    const { mesh, car, shield, rest } = best;
     const geo = mesh.geometry;
     const pos = geo.getAttribute('position');
+    const ids = [...new Set(shield)];
+    const edge = topEdge(ids.map((k) => [car[k].x, car[k].y] as const));
+    const drop = new Float32Array(pos.count);
     let bottom = Infinity;
     let top = -Infinity;
-    for (let t = 0; t < shield.length; t++) {
-      const y = carY[shield[t]];
+    for (const k of ids) {
+      const { x, y } = car[k];
+      drop[k] = Math.max(0, edge(x) - y);
       if (y < bottom) bottom = y;
       if (y > top) top = y;
     }
@@ -121,7 +158,7 @@ export function splitWindshield(root: THREE.Object3D, isGlass: (m: THREE.Materia
       return g;
     };
     const shieldGeo = sub(shield);
-    shieldGeo.setAttribute('carY', new THREE.BufferAttribute(carY, 1));
+    shieldGeo.setAttribute('bannerDrop', new THREE.BufferAttribute(drop, 1));
     mesh.geometry = sub(rest);
     for (const [name, key] of [['Windshield', 'Windshield'], ['WindshieldBanner', 'Banner']] as const) {
       const placeholder = new THREE.MeshBasicMaterial({ name });

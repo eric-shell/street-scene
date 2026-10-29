@@ -365,7 +365,8 @@ export function renderTabContent(host: TabHost): void {
       break;
     case 'tint': {
       // The glass in the lit room, catching the shop's lights: the side and rear windows' tint (the windshield stays
-      // clear), then the banner across the windshield's top, whose controls show while it is on.
+      // clear), then the banner across the windshield's top, whose controls show while it is on. The banner is the
+      // tint until Color is on; then it takes a color from the palette, or the body's paint while Match body is lit.
       const banner = v.banner;
       host.body.append(
         section(
@@ -381,9 +382,8 @@ export function renderTabContent(host: TabHost): void {
           }),
           note('The side and rear windows; the windshield stays clear.'),
         ),
-        sectionWith(
+        section(
           'Windshield banner',
-          [bannerLink(host)],
           field(
             'Banner',
             onOffSwitch(banner.enabled, (on) => {
@@ -403,9 +403,44 @@ export function renderTabContent(host: TabHost): void {
                   ),
                   'banner-height',
                 ),
-                banner.link
-                  ? revealable(note('Linked to the tint: a darker band of its film.'), 'banner-film')
-                  : revealable(paintPicker(banner.paint, PAINT_FINISHES, () => host.changed(), [matchBody(banner.paint, v.paint)]), 'banner-paint'),
+                revealable(
+                  field(
+                    'Color',
+                    onOffSwitch(banner.colored, (on) => {
+                      banner.colored = on;
+                      void host.changed(true);
+                    }, 'Color the banner'),
+                  ),
+                  'banner-color',
+                ),
+                ...(banner.colored
+                  ? [
+                      revealable(
+                        h(
+                          'div',
+                          { class: 'row' },
+                          toggle(Paintbrush, 'Match body', banner.match, banner.match ? 'Banner wears the body paint' : 'Banner wears its own color', () => {
+                            banner.match = !banner.match;
+                            // Unmatched, it starts from the body's color, so nothing jumps.
+                            if (!banner.match) banner.color = v.paint.color;
+                            void host.changed(true);
+                          }),
+                        ),
+                        'banner-match',
+                      ),
+                      ...(banner.match
+                        ? []
+                        : [
+                            revealable(
+                              colorPicker(banner.color, (c) => {
+                                banner.color = c;
+                                host.changed();
+                              }),
+                              'banner-colors',
+                            ),
+                          ]),
+                    ]
+                  : [revealable(note('Matches the window tint.'), 'banner-tint')]),
               ]
             : []),
         ),
@@ -529,15 +564,6 @@ function linkToggle(host: TabHost): HTMLElement {
       host.renderTab();
     },
   );
-}
-
-/** The banner's link, at the right of its title: linked, a darker band of the tint's film; unlinked, a paint of its own or the body's. */
-function bannerLink(host: TabHost): HTMLElement {
-  const b = host.build.visual.banner;
-  return toggle(b.link ? Link2 : Link2Off, 'Link', b.link, b.link ? 'Banner linked to the tint' : 'Banner painted', () => {
-    b.link = !b.link;
-    void host.changed(true);
-  });
 }
 
 /**
