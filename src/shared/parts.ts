@@ -8,7 +8,7 @@ export const PART_SLOTS = ['body', 'frontBumper', 'rearBumper', 'sideSkirts', 's
 export type PartSlot = (typeof PART_SLOTS)[number];
 
 /** Slots shown as body part menus in the garage (body and wheels have their own menus). */
-export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'rearBumper', 'sideSkirts', 'spoiler', 'hood', 'roof'];
+export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'sideSkirts', 'rearBumper', 'spoiler', 'hood', 'roof'];
 
 /** Slots where "none" is a valid choice (nothing rendered, base meshes still visible unless hidden). */
 export const OPTIONAL_SLOTS: PartSlot[] = ['spoiler'];
