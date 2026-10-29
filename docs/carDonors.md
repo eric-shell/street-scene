@@ -72,6 +72,8 @@ The pipeline then does the rest:
 - those are reduced first at `LAMP_ERROR`, welded back and held while the shell collapses (Run, step 3);
 - nothing under a cover is taken for a badge.
 
+**Lamps always mirror side to side.** The +x half of the lamps (cut exactly at x = 0) is reduced and copied across, welded at the seam, and the -x shell's open edge snaps onto it (within 12 mm: donors are often a few mm off mirror). So a recipe's lamp rules need only be right on one side, and the two sides match to the vertex (recipe `mirrorLamps: False` to opt out). Reduced whole, the collapse cut each side its own way: the Golf's headlamp bowls and the Kombi's fog lamps came out unalike.
+
 Two traps seen on the RX-7:
 - **Layers a few mm apart fold through each other** at the lamps' error (13 mm): the pop-up bucket's ceiling came through the lid in black patches. Recolour the hidden layer to the colour of the one over it, and keep anything seen from the front (the bezel's lip) as it was: `c.y` past the lens is a good split.
 - **A fussy lamp is better replaced than kept**: four red blocks in a black pocket became one `strips` entry, a thin `BrakeLight` strip on a mirrored curve measured off the pocket's top edge (rays from behind at a few x, 6 mm under the edge, 1 cm tall).
@@ -104,6 +106,8 @@ A recipe adds only what that donor needs:
 | `liftLiners` | `True`: raise wheel well liners on or through the tire clear of it after the reduction (`lift_liners`; the Albrecht Kombi's rear) |
 | `pieces` | `True`: splice the car's kept hand-made pieces (`save_pieces`, `<cid>.pieces.glb`) into the reduced shell, for work no rule can express (the Golf's grille and lower intake) |
 | `discs` | `(center, radius, material)`: a flat round lens added after the reduction, for a round lamp the collapse leaves polygonal (cull the donor's own); a round part is rebuilt, never collapsed (the RX-7's bumper lamps) |
+| `lowCull` | predicates `(center, normal, material)` for faces of the reduced shell to delete after the pieces are spliced in: slivers the collapse makes beside a cut (the Golf's lip under its grille) |
+| `mirrorLamps` | `False` to keep a donor's lamps as they are; by default the +x lamps are reduced and mirrored across, so the two sides match to the vertex |
 | `strips` | `(points, height, material)`: a thin lamp strip along a curve, mirrored across the middle, added after the reduction (the RX-7's third brake light in place of the donor's four blocks) |
 | `backPanels` | boxes `(x0, x1, y, z0, z1)`: a flat black quad facing the nose behind an opening the pipeline's own grille quads miss (a lower intake with a crossbar in it), added after the reduction |
 
@@ -152,6 +156,15 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 - **Cabin:** the donor's own, or none in the source: then `interior(cid, m)` transplants a garage car's (`docs/carDesign.md`, Interior); never a block. `npm run audit` must show `cabin inside the skin` ok.
 - **Budget:** 16,000 triangles for the shell plus up to 2,500 of cabin; drift p95 under 1 mm. Drift only measures the kept vertices, so also read **lost** (the skin's vertices to the reduced surface): a high lost max is a part collapsed away, such as a mirror or a lip.
 - **Winding:** look with backface culling on (`shading.show_backface_culling` on the viewport). The game draws most car materials double sided but not `Rim` or `Tire`, and a car wound inside out shades dark; Blender's default viewport hides both faults.
+
+### Lessons from the first four cars (2026-10-29)
+
+- **Look in the game, not only in Blender.** Blender's viewport smooths and lights differently: a game garage shot (`node .claude/skills/dev/shot.mjs '/?garage&build=<code>' out.png --size 2800x1600`, a build code from `encodeShareCode(defaultBuild(cid))`, cropped with `sips`) showed the facets Blender hid. Use a matcap (`metal_carpaint`) in Blender for the reflections.
+- **Keep the source's shading.** The reduced faces carry the source's normals (`shade_from_source`); reshaded from the reduced geometry at export, every sliver reads as a hard facet. `ship_donor` marks the body `authored_normals` and `exportCar.py` keeps them (the GLB about doubles).
+- **Give the parts that show their own error.** The lamps, a tight lip (the Golf's hood edge over the grille, recipe `lamps`), a bumper's lamp openings: whatever reads as broken at the shell's 1 % goes in with the lamps at their finer error. Raise `lampBudget` / `carBudget` per car rather than starve the shell.
+- **A hand-made piece goes stale.** Cut from an earlier reduced car, it brings that reduction's facets with it (the Golf's lower intake). Re-check every piece after a pipeline change and drop it when the reduction now does the job; keep it tight (`save_pieces(..., whole=False)`: cut every shell face it hides).
+- **Don't fix the same thing twice.** A `bridges` loft and a piece over the same bars welded the bumper's lip up into a wedge; with the piece there, the bridge went. A `lowCull` deletes what the collapse makes beside a cut, after the pieces.
+- **Fit the donor, or drop it.** A coarse donor (the R33, 30,000 triangles, unfinished headlamps) cannot be rescued by the pipeline; the car was hidden (`selectable: false`) until a better donor.
 
 ### Hand edits go in the recipe
 

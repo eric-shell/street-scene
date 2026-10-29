@@ -150,13 +150,15 @@ DONORS = {
         # The paint disc behind the grille badge, and the roof antenna's stub. The disc's box stops
         # short of the bumper's top lip (z 0.57 to 0.585) and the hood's leading edge (from 0.685):
         # at 0.57 to 0.70 it cut both, and the shipped file had them filled back in by hand.
+        # The badge's mount, a tab of the bumper's top lip rising into the gap under the grille's
+        # bottom bar, and the bar stubs the badge cull leaves beside it (|x| under 0.09, z 0.586 to
+        # 0.64): the reduction made them a wedge; cut (the grille piece's bars run across).
         'cull': [lambda c, n, m: m == 'Paint' and abs(c.x) < 0.075 and c.y < -1.98 and 0.59 < c.z < 0.68,
+                 lambda c, n, m: m == 'Paint' and abs(c.x) < 0.09 and -2.09 < c.y < -2.02 and 0.6 < c.z < 0.64,
+                 lambda c, n, m: m == 'Paint' and abs(c.x) < 0.045 and -2.09 < c.y < -2.07 and 0.586 < c.z < 0.6,
                  lambda c, n, m: m == 'Black' and abs(c.x) < 0.04 and 1.27 < c.y < 1.41 and c.z > 1.38],
-        # The cull above also cuts the two grille bars where they pass the badge (|x| < 0.075), so
-        # they end at x = 0.06 and a gap shows between them. This box (in front of the black panel
-        # behind the grille, at the bars' height) joins the two ends of each bar, as in the shipped
-        # file.
-        'bridges': [((-0.058, -2.07, 0.60), (0.058, -2.03, 0.67))],
+        # The grille piece replaces the bars, so the bars the badge cull cuts are no longer bridged:
+        # the bridge's loft welded the bumper's lip up into it, a wedge under the bottom bar.
         # The grille (two body colour bars from headlamp to headlamp over a black panel), rebuilt by
         # hand on 2026-10-27 because the reduction leaves a tangle of slivers in it, is kept as a
         # piece (wendtStrom.pieces.glb, save_pieces, box x 0.376, z 0.585 to 0.705, cutting every
@@ -164,6 +166,15 @@ DONORS = {
         # with the lamps and the shading kept the reduction now leaves it clean, and the old
         # piece carried that reduction's facets onto the bumper, so it went (2026-10-29).
         'pieces': True,
+        # The headlamps' twin bowls kept round and alike side to side: a tighter error and the
+        # budget for it (they were 4,000 at the cap, cut unevenly), the car's total raised with it.
+        'lampBudget': 9000,
+        'lampError': 0.0012,
+        'carBudget': 25000,
+        # After the splice: the bumper lip's faces fanned up to the cut bar stubs under the grille
+        # piece's bottom bar (the black back panel shows there, as along the rest of the gap).
+        'lowCull': [lambda c, n, m: m in ('Paint', 'Black') and abs(c.x) < 0.1 and -2.1 < c.y < -2.0 and 0.588 < c.z < 0.607,
+                    lambda c, n, m: m == 'Black' and abs(c.x) < 0.03 and -2.08 < c.y < -2.06 and 0.6 < c.z < 0.615 and n.z > 0.3],
         # The hood's leading edge, a tight lip over the grille and lamps, is reduced with the lamps
         # at their finer error: in the shell's collapse it folded into teeth.
         'lamps': [lambda c, n, m: m == 'Paint' and abs(c.x) < 0.8 and c.y < -1.8 and 0.66 < c.z < 0.8],
@@ -1545,6 +1556,63 @@ def tuck_cabin(cabin, shell, inset=0.005, reach=0.05):
     return moved
 
 
+def _half_x(o):
+    """Keep the +x half of `o`, cut exactly at x = 0 so its mirror meets it there."""
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
+    bmesh.ops.bisect_plane(bm, geom=geom, plane_co=(0, 0, 0), plane_no=(1, 0, 0), clear_inner=True, dist=1e-6)
+    bm.to_mesh(o.data)
+    bm.free()
+    o.data.update()
+
+
+def _mirror_x(o):
+    """Add the mirror of `o` across x = 0, welded at the seam: the faces reversed so they face out,
+    the authored normals (`src_normal`) mirrored with them."""
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    faces = bm.faces[:]
+    dup = bmesh.ops.duplicate(bm, geom=faces)
+    new_faces = [g for g in dup['geom'] if isinstance(g, bmesh.types.BMFace)]
+    new_verts = [g for g in dup['geom'] if isinstance(g, bmesh.types.BMVert)]
+    for v in new_verts:
+        v.co.x = -v.co.x
+    if sn is not None:
+        for f in new_faces:
+            for loop in f.loops:
+                n = loop[sn]
+                loop[sn] = (-n[0], n[1], n[2])
+    bmesh.ops.reverse_faces(bm, faces=new_faces)
+    bmesh.ops.remove_doubles(bm, verts=[v for v in bm.verts if abs(v.co.x) < 1e-5], dist=1e-5)
+    bm.to_mesh(o.data)
+    bm.free()
+    o.data.update()
+
+
+def _snap_lamp_seams(bm, nshell, snap=0.012):
+    """Weld the mirrored lamps' open edges to the shell's: on the -x side the shell's hole is the
+    donor's own outline, a few mm off the mirror. Each shell vertex on an open edge moves onto the
+    nearest open lamp vertex within `snap` m, then the two weld."""
+    from mathutils.kdtree import KDTree
+    bm.verts.ensure_lookup_table()
+    open_v = lambda v: v.is_valid and any(e.is_boundary for e in v.link_edges)
+    lamp_rim = [v for v in bm.verts[nshell:] if open_v(v)] if nshell < len(bm.verts) else []
+    shell_rim = [v for v in bm.verts[:nshell] if open_v(v)]
+    if not lamp_rim or not shell_rim:
+        return
+    tree = KDTree(len(lamp_rim))
+    for k, v in enumerate(lamp_rim):
+        tree.insert(v.co, k)
+    tree.balance()
+    for v in shell_rim:
+        co, _, d = tree.find(v.co)
+        if 1e-5 < d < snap:
+            v.co = co
+    bmesh.ops.remove_doubles(bm, verts=lamp_rim + shell_rim, dist=1e-5)
+
+
 def _delete_indices(o, pred):
     """Delete the faces for which pred(polygon) is true (delete_faces by index or anything else of the face)."""
     me = o.data
@@ -1644,13 +1712,25 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     delete_faces(cabin, lambda c, n, m: m != 'Interior')
     _delete_indices(lamp, lambda p: p.index not in lit)
     lamp_tris = tris(lamp)
+    # The lamps mirror side to side (recipe `mirrorLamps`, on unless False): the +x half is
+    # reduced and copied across, so the two sides are alike to the vertex. Reduced whole, the
+    # collapse cut each side its own way (the Golf's headlamp bowls, the Kombi's fog lamps), and
+    # donors are often a few mm off mirror.
+    mirrored = DONORS[cid].get('mirrorLamps', True)
     if lamp.data.polygons:
-        _collapse(lamp, lamps, finish=False, error=lamp_error, flags=('LockBorder',))
+        if mirrored:
+            _half_x(lamp)
+        _collapse(lamp, lamps // 2 if mirrored else lamps, finish=False, error=lamp_error, flags=('LockBorder',))
+        if mirrored:
+            _mirror_x(lamp)
         shell = len(low.data.polygons)
         bm = bmesh.new()
         bm.from_mesh(low.data)
+        nshell = len(bm.verts)
         bm.from_mesh(lamp.data)
         bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+        if mirrored:
+            _snap_lamp_seams(bm, nshell)
         bm.to_mesh(low.data)
         bm.free()
         held = low.data.attributes.new('lamp', 'BOOLEAN', 'FACE')
@@ -1680,6 +1760,10 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     # collapse, the shell round them folded into slivers.
     if DONORS[cid].get('pieces'):
         splice_pieces(cid, low)
+    # Recipe `lowCull`: faces of the reduced shell to delete, for slivers the collapse makes
+    # where a cut in the source left an edge (the Golf's lip fanned up to its cut grille bars).
+    for pred in DONORS[cid].get('lowCull', ()):
+        delete_faces(low, pred)
     tucked = tuck_behind_glass(low)
     if tucked:
         print(f'{cid}: {tucked} trim vertices and faces pushed back behind the glass')
