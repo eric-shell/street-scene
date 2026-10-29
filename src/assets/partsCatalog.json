@@ -255,6 +255,35 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_rearBumper_trackBase",
+      "displayName": "Track Base",
+      "carId": "wendtStrom",
+      "slot": "rearBumper",
+      "file": "parts/wendtStrom_rearBumper_trackBase.glb",
+      "hides": [
+        "Bumper_Rear",
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.065,
+          0.257,
+          -1.98
+        ],
+        [
+          -0.065,
+          0.257,
+          -1.98
+        ]
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 2078,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",
