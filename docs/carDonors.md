@@ -164,6 +164,8 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 - **Give the parts that show their own error.** The lamps, a tight lip (the Golf's hood edge over the grille, recipe `lamps`), a bumper's lamp openings: whatever reads as broken at the shell's 1 % goes in with the lamps at their finer error. Raise `lampBudget` / `carBudget` per car rather than starve the shell.
 - **A hand-made piece goes stale.** Cut from an earlier reduced car, it brings that reduction's facets with it (the Golf's lower intake). Re-check every piece after a pipeline change and drop it when the reduction now does the job; keep it tight (`save_pieces(..., whole=False)`: cut every shell face it hides).
 - **Don't fix the same thing twice.** A `bridges` loft and a piece over the same bars welded the bumper's lip up into a wedge; with the piece there, the bridge went. A `lowCull` deletes what the collapse makes beside a cut, after the pieces.
+- **Paint is never grille.** `grille_surface` blackens what it finds surrounded by grille; a body colour strut between two openings is surrounded too, and the Golf's lower intake dividers came out black-spiked. Paint is now left alone, for every car.
+- **Back a see-through opening.** A `backPanels` quad, wider and taller than the opening, behind a grille whose own back panel lets light through from an angle (the Golf's upper grille).
 - **Fit the donor, or drop it.** A coarse donor (the R33, 30,000 triangles, unfinished headlamps) cannot be rescued by the pipeline; the car was hidden (`selectable: false`) until a better donor.
 
 ### Hand edits go in the recipe

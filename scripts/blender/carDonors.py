@@ -168,16 +168,22 @@ DONORS = {
         'pieces': True,
         # The headlamps' twin bowls kept round and alike side to side: a tighter error and the
         # budget for it (they were 4,000 at the cap, cut unevenly), the car's total raised with it.
-        'lampBudget': 9000,
+        'lampBudget': 12000,
         'lampError': 0.0012,
-        'carBudget': 25000,
+        'carBudget': 28000,
         # After the splice: the bumper lip's faces fanned up to the cut bar stubs under the grille
         # piece's bottom bar (the black back panel shows there, as along the rest of the gap).
         'lowCull': [lambda c, n, m: m in ('Paint', 'Black') and abs(c.x) < 0.1 and -2.1 < c.y < -2.0 and 0.588 < c.z < 0.607,
                     lambda c, n, m: m == 'Black' and abs(c.x) < 0.03 and -2.08 < c.y < -2.06 and 0.6 < c.z < 0.615 and n.z > 0.3],
         # The hood's leading edge, a tight lip over the grille and lamps, is reduced with the lamps
         # at their finer error: in the shell's collapse it folded into teeth.
-        'lamps': [lambda c, n, m: m == 'Paint' and abs(c.x) < 0.8 and c.y < -1.8 and 0.66 < c.z < 0.8],
+        'lamps': [lambda c, n, m: m == 'Paint' and abs(c.x) < 0.8 and c.y < -1.8 and 0.66 < c.z < 0.8,
+                  # The three lower intakes (rims and pockets) likewise, so they come out clean
+                  # and mirror side to side: in the shell's collapse their rims went jagged.
+                  lambda c, n, m: m in ('Paint', 'Black') and abs(c.x) < 0.8 and c.y < -1.85 and 0.17 < c.z < 0.46],
+        # A black panel behind the grille, wider and taller than its opening, so nothing shows
+        # through past the piece's own back panel from an angle.
+        'backPanels': [(-0.42, 0.42, -1.95, 0.55, 0.72)],
     },
     'kazamaRotor': {
         'name': '1999 Mazda RX-7 (FD3S)',
@@ -1348,7 +1354,9 @@ def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV, material='Black', f
     g = {k for k, (fi, _) in near.items() if fi in hit_faces}
     for _ in range(2):
         for (zi, xi), (fi, loc) in near.items():
-            if fi in hit_faces or mats[fi] in ('Glass', *LAMP_MATS) or not in_zone(loc):
+            # Not paint: a body colour strut between two openings is surrounded by grille too (the
+            # Golf's lower intake dividers came out black-spiked), and a logo is never paint.
+            if fi in hit_faces or mats[fi] in ('Glass', 'Paint', *LAMP_MATS) or not in_zone(loc):
                 continue
             side = lambda dz, dx: any((zi + dz * d, xi + dx * d) in g for d in range(1, 5))
             # Grille on both sides and above or below: a logo can fill a slim grille's whole height.
@@ -1373,7 +1381,7 @@ def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV, material='Black', f
     for p in me.polygons:
         c = p.center
         k = (round(c.z / step), round(c.x / step))
-        if p.index not in hit_faces and k in depth and mats[p.index] not in ('Glass', *LAMP_MATS) \
+        if p.index not in hit_faces and k in depth and mats[p.index] not in ('Glass', 'Paint', *LAMP_MATS) \
                 and depth[k] - 0.08 < c.y < depth[k] + 0.01 and max((verts[i] - c).length for i in p.vertices) < 0.08:
             hit_faces.add(p.index)
     # Only faces wholly inside the grille zone: a big Black triangle reaching under the car stays Black.
