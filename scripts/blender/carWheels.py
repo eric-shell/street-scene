@@ -82,6 +82,7 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
 # `pick` (axis, lo, hi): keep only the faces whose centre lies between lo and hi on that axis of the import's frame (a scene holding several wheels).
 # `cap` the turned hub cap's radius (share of the lip) where the round test stops short of an opening a dropped logo cap covered.
 # `cap_fill` True closes a cap ring's open center, so the whole center wears the cap's paint (sora).
+# `cap_disc` (share of the lip): the turned cap takes in the face's front-facing faces inside this radius too, so the cap is the hub's whole round disc out to where the spokes begin, with no face-paint ring round it (homura).
 # `turn` (share of the lip): on a multi-piece wheel, turn the face's surfaces of revolution joined to faces outside it, as on a one-piece (a round flange the spokes stand on, which a collapse crumples: mio).
 # `lugs` 0 when no lug circle shows (a cap or a solid face hides it), or (count, r over the lip) for the circle to take where the innermost is a decoration.
 _J = {'author': 'jonver87', 'license': 'CC Attribution'}
@@ -140,7 +141,8 @@ WHEELS = {
     'hisui': {'name': 'Vossen CG203', 'uid': '38b5f76123a0461cb82b8616b734ac5f', 'maker': 'Vossen', **_J},
     'tora': {'name': 'HRE P200', 'uid': '7221bc7c423e401f83712d56e435a813', 'maker': 'HRE', **_J},
     'tsuchi': {'name': 'Fifteen52 Rally Sport', 'uid': '1ed9ad4cbe5644ae831fe95bae84a0fc', 'maker': 'Fifteen52', **_J},
-    'homura': {'name': 'SSR Koenig', 'uid': '391ab57dc25a4aa69771fbb9114f3d40', 'maker': 'SSR', **_J},
+    'homura': {'name': 'SSR Koenig', 'uid': '391ab57dc25a4aa69771fbb9114f3d40', 'maker': 'SSR', **_J,
+              'cap_disc': 0.29},   # the donor's round hub ran to 0.29 of the lip but its cap stopped at 0.277, leaving a ring of face paint round it (2026-10-28)
     'hane': {'name': 'BBS E52', 'uid': '8168cc3dce114b19b617c17fea0ab364', 'maker': 'BBS', **_J,
              'normals': 'geometry',   # its mesh's authored normals lean sideways: the face shaded dark
              'face': -1},   # the normal vote showed the hub's back, with its five stud holes
@@ -918,12 +920,48 @@ def _seat_x(o, centers, size):
     return sorted(xs)[len(xs) // 2] if xs else None
 
 
+def _recess(o, centers, x, size, tree=None):
+    """Where the nuts seat when the lugs sit down in recesses (tomoe's 44 mm tubes, 2026-10-28): the
+    seat `_seat_x` finds is the face round the recess, so the house nuts stood on top of it. The floor
+    is the upper quartile of 16 rays down -X on a ring 0.6 seat radii from each lug's center (0.8 where
+    the stud hole fills that one; the hole itself lets the rays through), the median over the lugs. A
+    floor more than 2 mm below the face seat `x` means a recess: the nut seats on the floor, and its
+    radius is cut to the recess wall, the first 1 mm radius where the surface rises 3 mm above the
+    floor (less half a mm), never under 6 mm, so the nut fits down in it. Returns (x, size) or None
+    for a lug on a flat face (a dish under 2 mm is the nut's own washer). The floor is at most 50 mm
+    under the face: past that the rays found the barrel behind a through hole."""
+    me = o.data
+    if tree is None:
+        names = [m.name.split('.')[0] for m in me.materials]
+        tree = BVHTree.FromPolygons([v.co for v in me.vertices], [p.vertices[:] for p in me.polygons if names[p.material_index] != 'Tire'])
+
+    def ring(r):
+        per = []
+        for cy, cz in centers:
+            hits = sorted(h.x for h in (tree.ray_cast(Vector((0.3, cy + r * math.cos(2 * math.pi * k / 16), cz + r * math.sin(2 * math.pi * k / 16))), Vector((-1, 0, 0)))[0] for k in range(16)) if h is not None)
+            if hits:
+                per.append(hits[(3 * len(hits)) // 4])
+        return sorted(per)[len(per) // 2] if len(per) * 2 > len(centers) else None
+    floor = ring(0.6 * size)
+    if floor is None:
+        floor = ring(0.8 * size)
+    if floor is None or x - floor < 0.002 or x - floor > 0.05:
+        return None
+    wall = size
+    for k in range(int(0.6 * size / 0.001), int(1.5 * size / 0.001)):
+        h = ring(k * 0.001)
+        if h is not None and h > floor + 0.003:
+            wall = k * 0.001
+            break
+    return floor, max(min(size, wall - 0.0005), 0.006)
+
+
 def fit_lugs(o, want=None):
     """Measure the wheel's lug circle and make way for the house nuts: the donor's nuts (Chrome, or face
     standing proud of the hub within a lug's radius) go, and the object's `lugs` property (JSON, the
     catalog's `WheelLugs`) records the circle in the GLB's own frame (glTF: y up is Blender z, z is
     -Blender y): count, radius r (m), the first nut's angle phase (rad, atan2(z, y)), the seat's x (m,
-    the surface round the lugs, `_seat_x`) and the seat radius size (m).
+    the surface round the lugs, `_seat_x`, or the floor of a recess they sit in, `_recess`) and the seat radius size (m).
 
     The lugs are holes, pockets or nuts in a depth image of the hub (`_lug_blobs`) on a circle of 4 to 6
     (`_lug_circles`); the innermost circle wins, since decorative windows and spoke gaps sit further
@@ -977,6 +1015,7 @@ def fit_lugs(o, want=None):
     remap_materials(o)
     by, bz = c['r'] * L * math.cos(phase), c['r'] * L * math.sin(phase)
     x = _seat_x(o, [(m['y'] * L, m['z'] * L) for m in members], size) or x
+    x, size = _recess(o, [(m['y'] * L, m['z'] * L) for m in members], x, size) or (x, size)
     o['lugs'] = json.dumps({'count': n, 'r': round(c['r'] * L, 5), 'phase': round(math.atan2(-by, bz), 5), 'x': round(x, 5),
                             'size': round(size, 5)})
     return n, round(c['r'], 3), members[0]['kind'], len(gone)
@@ -1400,7 +1439,9 @@ def wheel(name, root):
         if out.attributes.get(a):
             out.attributes.remove(out.attributes[a])
     remap_materials(o)
-    cap_pts = clean_cap(o, fill=R0.get('cap_fill', False))
+    disc = R0.get('cap_disc')
+    cap_i = [m.name for m in o.data.materials].index('RimCap') if 'RimCap' in [m.name for m in o.data.materials] else -1
+    cap_pts = clean_cap(o, (lambda f, L: f.material_index == cap_i or all(_rad(v.co) < disc * L for v in f.verts) and f.normal.x > 0.5 and f.calc_center_median().x > 0.03) if disc else None, fill=R0.get('cap_fill', False))
     hub_r = 0 if cap_pts else hub_cap(o, R0.get('cap'))
     lugs = fit_lugs(o, R0.get('lugs'))
     o['lip'] = lip

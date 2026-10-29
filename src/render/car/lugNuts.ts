@@ -10,20 +10,20 @@
 import * as THREE from 'three';
 import type { WheelLugs } from '../../shared/parts';
 
-/** The nut's proportions at the reference scale (19 mm across flats). */
+/** The nut's proportions at the reference scale (16 mm across flats, a 17 mm-class nut at game scale). */
 export const LUG = {
   /** Hex across flats at the reference scale, m. */
-  flats: 0.019,
+  flats: 0.016,
   /** Hex across flats as a multiple of the seat radius, before the clamp. */
   flatsPerSeat: 1.5,
   /** Smallest and largest hex across flats, m. */
-  flatsMin: 0.014,
-  flatsMax: 0.022,
-  /** Stack heights at the reference scale, m: washer, hex, chamfer, dome (together about 20 mm). */
-  washer: 0.003,
-  body: 0.011,
-  chamfer: 0.002,
-  dome: 0.004,
+  flatsMin: 0.012,
+  flatsMax: 0.018,
+  /** Stack heights at the reference scale, m: washer, hex, chamfer, dome (together about 17 mm). */
+  washer: 0.0025,
+  body: 0.009,
+  chamfer: 0.0017,
+  dome: 0.0034,
   /** The washer's top radius as a multiple of the hex corner radius (at most the seat radius). */
   washerTop: 1.06,
   /** The chamfer's top radius as a multiple of the hex apothem. */
@@ -59,7 +59,7 @@ function nutData(size: number): NutData {
   };
   const at = (x: number, r: number, a: number): number[] => [x, r * Math.cos(a), r * Math.sin(a)];
 
-  // Across flats: about 1.5 x the seat, clamped, and never wider across the corners than the washer.
+  // Across flats: about 1.5 x the seat, clamped, and never wider across the corners than the seat (the washer base is the catalog size; its top never exceeds it).
   const flats = Math.min(Math.max(LUG.flatsPerSeat * size, LUG.flatsMin), LUG.flatsMax, size * Math.sqrt(3));
   const s = flats / LUG.flats;
   const apothem = flats / 2;
