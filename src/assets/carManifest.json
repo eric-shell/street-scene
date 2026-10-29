@@ -341,7 +341,7 @@
         "rear": 10
       },
       "defaultPaint": "#3b2d5e",
-      "selectable": true,
+      "selectable": false,
       "engine": {
         "layout": "I6",
         "aspiration": "turbo",
