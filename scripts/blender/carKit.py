@@ -632,6 +632,61 @@ def delete_faces(o, pred):
     return len(doomed)
 
 
+def groove_z(o, origin, direction, z0, z1, step=0.002, span=3):
+    """The height of a shut line crossing a vertical scan: rays along `direction` from (origin.x, origin.y, z)
+    for z in z0..z1, and the z whose hit lies deepest against the mean of its neighbours `span` steps
+    either side. Returns (z, depth m) or None. A donor body's bumper seam is a modelled groove 3 to 40 mm
+    deep (the Wendt Strom: 36 mm under the grille, 12 under the lamps, 4 along the sides); cutting the stock
+    bumper there keeps the panel line the car already has instead of inventing one at a round number."""
+    from mathutils.bvhtree import BVHTree
+    t = BVHTree.FromObject(o, bpy.context.evaluated_depsgraph_get())
+    d = Vector(direction).normalized()
+    zs = [z0 + i * step for i in range(int((z1 - z0) / step) + 1)]
+    ds = [(lambda h: h[3] if h[0] else None)(t.ray_cast(Vector((origin[0], origin[1], z)), d, 5)) for z in zs]
+    best = None
+    for i in range(span, len(zs) - span):
+        if None in ds[i - span:i + span + 1]:
+            continue
+        bump = ds[i] - 0.5 * (ds[i - span] + ds[i + span])
+        if best is None or bump > best[1]:
+            best = (zs[i], bump)
+    return best
+
+
+def split_off(src, name, pred, cname=None):
+    """Move the faces for which pred(center, material_name, normal) is true out of src into a new object
+    `name` (in src's collection, or `cname`). Unlike split_parts this carries custom normals through the
+    bmesh round trip (bmesh drops them): a donor body's authored shading (`authored_normals`) survives on
+    both halves, so a stock bumper and the body it came off shade alike at the seam. `cut` the seam first
+    so the faces part along a clean edge. Returns the new object."""
+    me = src.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    carry = bool(src.get('authored_normals')) and me.has_custom_normals
+    if carry:
+        sn = me.attributes.get('src_normal') or me.attributes.new('src_normal', 'FLOAT_VECTOR', 'CORNER')
+        sn.data.foreach_set('vector', [x for c in me.corner_normals for x in c.vector])
+    keep = {p.index for p in me.polygons if pred(p.center, names[p.material_index], p.normal)}
+    part = src.copy()
+    part.data = me.copy()
+    part.name = name
+    part.data.name = name
+    (coll(cname) if cname else src.users_collection[0]).objects.link(part)
+    for o, gone in ((part, lambda i: i not in keep), (src, lambda i: i in keep)):
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if gone(f.index)], context='FACES')
+        bm.to_mesh(o.data)
+        bm.free()
+        if carry:
+            s = o.data.attributes.get('src_normal')
+            o.data.normals_split_custom_set([Vector(v.vector).normalized() for v in s.data])
+            o.data.attributes.remove(s)
+            o['authored_normals'] = o.data.has_custom_normals
+        o.data.update()
+    return part
+
+
 def box(o, c0, c1, name):
     """An axis aligned box between two corners (mirrors, handles, interior blocks); corners in any order."""
     (x0, y0, z0), (x1, y1, z1) = c0, c1
