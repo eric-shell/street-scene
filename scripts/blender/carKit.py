@@ -1005,7 +1005,7 @@ SHEET_ANGLES = (0, 8, 16, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 52.5, 54, 55.5
 
 def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 0.235), thick=0.013,
               proud=0.03, end_proud=0.012, taper_from=70, tuck=0.04, butt=0.004, chamfer=0.006, full=True,
-              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, dam_face=True, dam_band=0.1, dam_side_from=40, to_well=True, straight_from=None,
+              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, dam_face=True, dam_band=0.1, dam_side_from=40, dam_nose_lower=0.0, to_well=True, straight_from=None,
               material='Black'):
     """A flat splitter cut from sheet stock (half inch HDPE) under a front bumper: top and bottom flat
     all the way round at the height of the bumper's underside at the nose, its outline through `angles`
@@ -1182,7 +1182,10 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
                     zu = ZT[i] + 0.001
                 else:
                     edge = front - n3 * (ext[i] - OL0[i] - 0.001)
-                    zu = ZT0[i] + 0.001
+                    # `dam_nose_lower`: the top under the grilles brought down, faded out over the last
+                    # 10 degrees before the corner rules so the line runs on into them (the user's ask).
+                    fade = _sstep((dam_side_from - abs(A[i])) / 10.0)
+                    zu = ZT0[i] + 0.001 - dam_nose_lower * fade
             else:
                 edge = front - n3 * ext[i]
                 zu = ZU[i] + 0.003
