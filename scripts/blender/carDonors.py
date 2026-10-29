@@ -185,9 +185,11 @@ DONORS = {
         # side to side (the shell's collapse cut each its own way).
         'details': [lambda c, n, m: 0.74 < abs(c.x) < 0.88 and 0.14 < c.y < 0.44 and 0.72 < c.z < 0.84,
                     lambda c, n, m: 0.69 < abs(c.x) < 1.02 and -0.76 < c.y < -0.5 and 0.85 < c.z < 1.06],
-        # A black panel behind the grille, wider and taller than its opening, so nothing shows
-        # through past the piece's own back panel from an angle.
-        'backPanels': [(-0.42, 0.42, -1.95, 0.55, 0.72)],
+        # A black panel behind the grille, taller than its opening, so nothing shows through past
+        # the piece's own back panel from an angle. Its ends stop at |x| 0.38, inside the headlamp
+        # housings' inboard walls: at 0.42 it cut through the inner reflector bowls (as deep as
+        # y -1.957 from x 0.395) and hid their inboard edge as a black crescent behind the lens.
+        'backPanels': [(-0.38, 0.38, -1.95, 0.55, 0.72)],
     },
     'kazamaRotor': {
         'name': '1999 Mazda RX-7 (FD3S)',
