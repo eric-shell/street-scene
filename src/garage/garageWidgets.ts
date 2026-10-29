@@ -147,7 +147,7 @@ export function matchBody<F extends AccentFinish>(a: AccentPaint<F>, body: Paint
  * A paint's controls (body, trim, wheels and their trims, calipers): its color over its finish (`finishes`: the
  * ones this surface takes; the body has no chrome), edited in place, then onChange. `matches` (Match body, Match
  * wheel...) sit in a row above: while one is on, the surface wears that paint and the picker shows it instead of
- * its controls. Chrome starts from plain chrome's color (a color pick then tints it).
+ * its controls. Chrome is one look with no color (CHROME_COLOR), so the color picker hides while it is chosen.
  */
 export function paintPicker<F extends AccentFinish>(paint: Paint<F>, finishes: readonly F[], onChange: () => void, matches: PaintMatch[] = []): HTMLElement {
   const root = h('div', { class: 'garage-paint' });
@@ -174,19 +174,24 @@ export function paintPicker<F extends AccentFinish>(paint: Paint<F>, finishes: r
       ...(worn
         ? [h('div', { class: 'muted garage-note' }, h('span', { class: 'garage-dot', style: `background:${worn.paint.color}` }), `${worn.name} · ${capital(worn.paint.finish)}`)]
         : [
-            colorPicker(paint.color, (c) => {
-              paint.color = c;
-              onChange();
-            }),
+            ...(paint.finish === 'chrome'
+              ? []
+              : [
+                  colorPicker(paint.color, (c) => {
+                    paint.color = c;
+                    onChange();
+                  }),
+                ]),
             segmented(
               finishes.map((f) => ({ value: f, label: capital(f) })),
               paint.finish,
               (f) => {
-                const toChrome = f === 'chrome' && paint.finish !== 'chrome';
+                // Into or out of chrome the picker comes or goes; leaving chrome starts from its silver.
+                const swap = (f === 'chrome') !== (paint.finish === 'chrome');
                 paint.finish = f;
-                if (toChrome) paint.color = CHROME_COLOR;
+                if (f === 'chrome') paint.color = CHROME_COLOR;
                 onChange();
-                if (toChrome) draw();
+                if (swap) draw();
               },
             ),
           ]),

@@ -9,6 +9,7 @@ import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
 import { CHROME_COLOR, type AccentPaint, type Paint, type PaintFinish, type VisualBuild, type AccentFinish, type WheelTrim } from '../../shared/carBuild';
 import { BRAKE, caliperLogoTexture, rotorTexture } from './brakes';
 import { TIRE_BUMP, acquireTireTexture, releaseTireTexture, tireShader } from './tireTread';
+import { chromeEnvironment } from './chromeEnv';
 
 /**
  * The shared runtime materials, plus the rear axle's own wheel material so front and rear wheel colors
@@ -19,10 +20,17 @@ export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: T
 /** Each painted material's environment reflection strength (the boost createCarMaterials gives it); candy raises it. */
 const PAINT_ENV = { Paint: 1.9, Trim: 1.3, Rim: 1.8, RimLip: 1.8, RimCap: 1.8, Caliper: 1.2 } as const;
 
-/** The polished look of the Chrome material (createCarMaterials), which a chrome finish wears in its own color. */
-const CHROME = { color: 0xdedede, env: 2.2, surface: { metalness: 1, roughness: 0.12, clearcoat: 0, clearcoatRoughness: 0, iridescence: 0, sheen: 0, specularIntensity: 1 } } as const;
+/**
+ * The polished look of the Chrome material (createCarMaterials), which a chrome finish wears, always in this color.
+ * `env` is its reflection strength in the car's own environment (the body's trim); `wheelEnv` a chrome wheel surface's
+ * in the chrome studio (chromeEnv.ts), whose radiance is already set for a mirror.
+ */
+const CHROME = { color: 0xdedede, env: 2.2, wheelEnv: 0.45, surface: { metalness: 1, roughness: 0.12, clearcoat: 0, clearcoatRoughness: 0, iridescence: 0, sheen: 0, specularIntensity: 1 } } as const;
 /** Plain chrome as a paint: what a stock polished lip wears. */
 const CHROME_PAINT: Paint<AccentFinish> = { color: CHROME_COLOR, finish: 'chrome' };
+
+/** Each wheel material's own environment (the car's), to go back to when it leaves chrome (a Map, not userData: a material's clone copies userData through JSON). */
+const carEnv = new WeakMap<THREE.Material, THREE.Texture | null>();
 
 /** Car space meters per UV unit on Grille faces (GRILLE_UV in scripts/blender/carDonors.py). */
 const GRILLE_UV_SPAN = 3;
@@ -146,6 +154,8 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   // The wheels' own copy of Chrome (bolt heads on the lips, donor bits), so the hardware paints apart from the body's trim.
   m.Hardware = new THREE.MeshPhysicalMaterial({ name: 'Hardware', color: CHROME.color, metalness: 1, roughness: 0.12, envMap, envMapIntensity: CHROME.env });
   m.HardwareRear = m.Hardware.clone();
+  // Every wheel surface can be chrome, which reflects its own studio (chromeEnv.ts); applyPaint swaps back to the car's for any other finish.
+  for (const k of ['Rim', 'RimRear', 'RimLip', 'RimLipRear', 'RimCap', 'RimCapRear', 'Lug', 'LugRear', 'Hardware', 'HardwareRear'] as const) carEnv.set(m[k], envMap);
   // Brakes: the drilled face darkens the holes and the bump map dents them; the rotor glows while braking.
   const rotor = rotorTexture();
   m.Rotor = new THREE.MeshStandardMaterial({ name: 'Rotor', color: 0xc4c7cc, metalness: 0.7, roughness: 0.45, map: rotor, bumpMap: rotor, bumpScale: 1.2, emissive: 0xff6a1a, emissiveIntensity: 0, envMap, envMapIntensity: 1.4 });
@@ -174,7 +184,8 @@ const FINISH: Record<PaintFinish, Partial<THREE.MeshPhysicalMaterialParameters>>
  * Wheel surfaces (Rim, RimLip, RimCap, lug nuts, hardware) override the body's finishes where those go dark. A wheel's big
  * smooth faces (a lathed lip, a dished center) mirror the near-black garage and night environment, so the body's metallic
  * (0.75 metal, clearcoat) read almost black with a teal sheen. This one keeps a metallic glint but lets albedo and the key
- * lights carry it, like a cast silver alloy. Chrome stays a mirror (CHROME); other finishes read fine and stay.
+ * lights carry it, like a cast silver alloy. Chrome stays a mirror (CHROME), of a studio of its own (chromeEnv.ts), since a
+ * mirror of that same dark environment is just as dark; other finishes read fine and stay.
  */
 const WHEEL_FINISH: Partial<Record<PaintFinish, Partial<THREE.MeshPhysicalMaterialParameters>>> = {
   metallic: { metalness: 0.15, roughness: 0.5, clearcoat: 0, clearcoatRoughness: 0.5, iridescence: 0, sheen: 0, specularIntensity: 1 },
@@ -189,9 +200,13 @@ const WHITE = new THREE.Color(1, 1, 1);
 function applyPaint(mat: THREE.MeshPhysicalMaterial, p: Paint<AccentFinish>, env: number, wheel = false): void {
   mat.color.set(p.color);
   mat.specularColor.set(0xffffff);
+  if (wheel && carEnv.has(mat)) mat.envMap = p.finish === 'chrome' ? chromeEnvironment() : (carEnv.get(mat) ?? null);
   if (p.finish === 'chrome') {
+    // One look, never tinted: the paint's color is ignored (validPaint stores CHROME_COLOR for it anyway).
+    mat.color.set(CHROME.color);
     mat.setValues(CHROME.surface);
-    mat.envMapIntensity = CHROME.env;
+    // The studio dims with the showroom's lights (envScale) like the paint's reflections.
+    mat.envMapIntensity = wheel ? (CHROME.wheelEnv * env) / PAINT_ENV.Rim : CHROME.env;
     mat.needsUpdate = true;
     return;
   }

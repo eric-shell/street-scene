@@ -72,7 +72,8 @@ export function randomBuild(name = DEFAULT_BUILD_NAME): CarBuild {
   v.wheels.rearPaint = { ...v.wheels.paint };
   v.wheels.lip = { mode: 'stock', color: '#c9ced8', finish: 'metallic' };
   v.wheels.cap = { mode: 'face', color: '#c9ced8', finish: 'metallic' };
-  v.wheels.lugNuts = pick<WheelTrim>([{ mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, { mode: 'paint', color: '#111214', finish: 'chrome' }]);
+  // Chrome takes no color, so the black nuts are gloss black.
+  v.wheels.lugNuts = pick<WheelTrim>([{ mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, { mode: 'paint', color: '#111214', finish: 'gloss' }]);
   v.calipers = Math.random() < 0.25 ? { ...v.paint, match: true } : { color: pick(SWATCHES.loud), finish: pick<PaintFinish>(['gloss', 'candy', 'metallic']), match: false };
   v.tint.darkness = between(0.45, 0.85);
   const glow = pick(SWATCHES.loud);

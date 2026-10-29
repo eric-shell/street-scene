@@ -121,8 +121,10 @@ describe('build validation', () => {
     // The first set's shapes: the mild stretch is the mild tire, the aggressive one the stretched tire, the meaty one standard.
     expect(validateBuild({ visual: { wheels: { tire: 'aggressiveStretch', rearTire: 'meaty' } } }).visual.wheels).toMatchObject({ tire: 'stretched', rearTire: 'standard' });
     expect(validateBuild({ visual: { wheels: { tire: 'mildStretch', lettering: true } } }).visual.wheels).toMatchObject({ tire: 'mild', rearTire: 'mild', lettering: true });
-    // Before chrome was a wheel finish: a 'chrome' trim mode and the lug nuts' fixed finishes become chrome paints.
-    expect(validateBuild({ visual: { wheels: { lip: { mode: 'chrome' }, lugNuts: 'gold' } } }).visual.wheels).toMatchObject({ lip: { mode: 'paint', color: '#dedede', finish: 'chrome' }, lugNuts: { mode: 'paint', color: '#d4a537', finish: 'chrome' } });
+    // Before chrome was a wheel finish: a 'chrome' trim mode and the lug nuts' fixed finishes become chrome paints, all plain chrome (chrome takes no color).
+    expect(validateBuild({ visual: { wheels: { lip: { mode: 'chrome' }, lugNuts: 'gold' } } }).visual.wheels).toMatchObject({ lip: { mode: 'paint', color: '#dedede', finish: 'chrome' }, lugNuts: { mode: 'paint', color: '#dedede', finish: 'chrome' } });
+    // A tinted chrome saved before chrome lost its color reads plain chrome.
+    expect(validateBuild({ visual: { wheels: { hardware: { mode: 'paint', color: '#2563d6', finish: 'chrome' } } } }).visual.wheels.hardware).toEqual({ mode: 'paint', color: '#dedede', finish: 'chrome' });
     expect(validateBuild({ visual: { wheels: { lugNuts: 'cap' } } }).visual.wheels.lugNuts.mode).toBe('cap');
     // The lettering is off unless a build says true.
     expect(validateBuild({ visual: { wheels: { lettering: 'yes' } } }).visual.wheels.lettering).toBe(false);

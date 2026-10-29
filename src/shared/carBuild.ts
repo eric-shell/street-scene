@@ -18,12 +18,12 @@ export type PaintFinish = (typeof PAINT_FINISHES)[number];
 
 /**
  * Every surface but the body (the trim, the wheel faces, lips, center caps and lug nuts, the calipers) also takes
- * chrome: polished metal tinted by the paint's color, so CHROME_COLOR is plain chrome and a gold or black chrome
- * is one color pick away. The body keeps to PAINT_FINISHES.
+ * chrome: one look, polished metal in CHROME_COLOR, never tinted. A chrome paint's color is always CHROME_COLOR
+ * (validPaint), and the garage offers no color pick for it. The body keeps to PAINT_FINISHES.
  */
 export const ACCENT_FINISHES = [...PAINT_FINISHES, 'chrome'] as const;
 export type AccentFinish = (typeof ACCENT_FINISHES)[number];
-/** Plain chrome's color (the Chrome material's, render/car/carMaterials.ts), the color a chrome finish starts from. */
+/** Plain chrome's color (the Chrome material's, render/car/carMaterials.ts): the only color a chrome finish has. */
 export const CHROME_COLOR = '#dedede';
 
 /** A painted surface: the body, the trim, each axle's wheels and their trims, and the calipers all take a color and a finish. */
@@ -202,10 +202,14 @@ export function defaultBuild(carId = DEFAULT_CAR_ID): CarBuild {
 
 const PART_ID = /^[A-Za-z0-9_\-.]{1,64}$/;
 
-/** A paint from storage or a share code; anything missing or invalid takes the fallback's. */
+/**
+ * A paint from storage or a share code; anything missing or invalid takes the fallback's. Chrome takes no color, so a
+ * chrome finish reads CHROME_COLOR whatever was saved (an old gold or black chrome).
+ */
 function validPaint<F extends AccentFinish>(v: unknown, fallback: Paint<F>, finishes: readonly F[]): Paint<F> {
   const o = obj(v);
-  return { color: hexColor(o.color, fallback.color), finish: oneOf(o.finish, finishes, fallback.finish) };
+  const finish = oneOf(o.finish, finishes, fallback.finish);
+  return { color: finish === 'chrome' ? CHROME_COLOR : hexColor(o.color, fallback.color), finish };
 }
 
 function validAccent<F extends AccentFinish>(v: unknown, fallback: AccentPaint<F>, finishes: readonly F[]): AccentPaint<F> {
@@ -213,13 +217,13 @@ function validAccent<F extends AccentFinish>(v: unknown, fallback: AccentPaint<F
   return { ...validPaint(o, fallback, finishes), match: typeof o.match === 'boolean' ? o.match : fallback.match };
 }
 
-/** The lug nuts' fixed finishes from before they took a paint, each as the chrome it was. */
+/** The lug nuts' fixed finishes from before they took a paint: each was a tinted chrome, and chrome takes no color now, so all read plain chrome. */
 const LEGACY_LUGS: Record<string, WheelTrim> = {
   chrome: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' },
-  black: { mode: 'paint', color: '#111214', finish: 'chrome' },
-  gold: { mode: 'paint', color: '#d4a537', finish: 'chrome' },
-  red: { mode: 'paint', color: '#c0182c', finish: 'chrome' },
-  blue: { mode: 'paint', color: '#2563d6', finish: 'chrome' },
+  black: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' },
+  gold: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' },
+  red: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' },
+  blue: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' },
   cap: { mode: 'cap', color: CHROME_COLOR, finish: 'chrome' },
 };
 
