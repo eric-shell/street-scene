@@ -985,13 +985,15 @@ def punch_holes(o, holes, r, depth=0.015, sides=16, wall='Black', back='Black', 
 
 # Stations for `sheet_lip`: coarse across the nearly straight nose, 3 degrees round the corner and 1.5
 # through its tightest part (51 to 69 degrees, where 3 degree steps turned the edge 11 degrees each).
+# The last, 83, is where the Wendt Strom's bottom edge meets the wheel well (y -1.652): ending at 82
+# left a 2.5 cm gap before the arch, which the user did not want.
 SHEET_ANGLES = (0, 8, 16, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 52.5, 54, 55.5, 57, 58.5, 60, 61.5, 63, 64.5,
-                66, 67.5, 69, 72, 75, 78, 80, 82)
+                66, 67.5, 69, 72, 75, 78, 80, 82, 83)
 
 
 def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 0.235), thick=0.013,
               proud=0.03, end_proud=0.012, taper_from=70, tuck=0.04, butt=0.004, chamfer=0.006, full=True,
-              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, material='Black'):
+              from_face=True, face_band=0.4, smooth=3, crisp=False, drop=0.0, dam=0.0, to_well=True, material='Black'):
     """A flat splitter cut from sheet stock (half inch HDPE) under a front bumper: top and bottom flat
     all the way round at the height of the bumper's underside at the nose, its outline through `angles`
     (degrees about `center`, one half, mirrored), with a 45 degree `chamfer` on the top front edge.
@@ -1051,6 +1053,12 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
     for _ in range(smooth):
         P = [P[0]] + [P[i - 1] * 0.25 + P[i] * 0.5 + P[i + 1] * 0.25 for i in range(1, len(P) - 1)] + [P[-1]]
     N = normals(P)
+    # The air dam's top follows the bumper's bottom edge, smoothed: one noisy station near the arch
+    # stood up as a spike.
+    ZU = [e.z for e in E]
+    for _ in range(smooth):
+        ZU = [ZU[0]] + [ZU[i - 1] * 0.25 + ZU[i] * 0.5 + ZU[i + 1] * 0.25 for i in range(1, len(ZU) - 1)] + [ZU[-1]]
+    ZU[0], ZU[-1] = ZU[1], ZU[-2]
     secs = []
     for i, e in enumerate(E):
         n3 = Vector((N[i].x, N[i].y, 0))
@@ -1058,7 +1066,7 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
         front = Vector((P[i].x, P[i].y, 0))
         if dam > 0:
             edge = front - n3 * ext[i]
-            zu = e.z + 0.003
+            zu = ZU[i] + 0.003
             secs.append([tuple(edge - n3 * dam + Vector((0, 0, zu))), tuple(edge + Vector((0, 0, zu))),
                          tuple(edge + Vector((0, 0, top))), tuple(front - n3 * chamfer + Vector((0, 0, top))),
                          tuple(front + Vector((0, 0, top - chamfer))), tuple(front + Vector((0, 0, bot))),
@@ -1070,6 +1078,18 @@ def sheet_lip(src, target, center=(0, -1.55), angles=SHEET_ANGLES, band=(0.165, 
                      tuple(front + Vector((0, 0, top - chamfer))),
                      tuple(front + Vector((0, 0, bot))),
                      tuple(back + Vector((0, 0, bot)))])
+    # `to_well`: the end sections run on along the sheet to the wheel well's edge (the bumper's
+    # rearmost low point), so no gap is left before the arch; cut along the side's normal they stopped
+    # 2 to 4 cm short of it.
+    if to_well:
+        well = max((v.co.y for v in src.data.vertices if abs(v.co.x) > 0.6 and v.co.z < band[0] + 0.035), default=None)
+        if well is not None:
+            for j, k in ((0, 1), (len(secs) - 1, len(secs) - 2)):
+                cj = sum((Vector(p) for p in secs[j]), Vector()) / len(secs[j])
+                ck = sum((Vector(p) for p in secs[k]), Vector()) / len(secs[k])
+                tg = (cj - ck).normalized()
+                if tg.y > 1e-3:
+                    secs[j] = [tuple(Vector(p) + tg * ((well - 0.002 - p[1]) / tg.y)) for p in secs[j]]
     carry = stash_normals(target)
     if crisp:
         for i in range(len(secs) - 1):
