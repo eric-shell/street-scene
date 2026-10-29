@@ -36,6 +36,7 @@ import { Rng, deriveSeed } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { DECAL_ATLAS_SIZE, DECAL_CELLS, DecalKind, AtlasCell } from '../textures/textures';
 import { baysByEdge } from '../../city/busBays';
+import { planParking } from '../../city/parking';
 import { bayMouth } from './busBays';
 import { downtownFactor, isBendNode, isRiverEdge } from '../../city/roadGraph';
 import { regionAt } from '../buildings/architecture';
@@ -233,6 +234,13 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
   // Bus stops: yellow curbs and a stencil in the curb lane next to each (a bus bay paints its own, render/street/busBays.ts).
   const busStops = world.props.filter((p) => p.kind === 'busStop' && p.bay === undefined);
   const bayOf = baysByEdge(world.blocks.bays ?? [], g.edges.length);
+  /** The sides of each edge that carry a kerb parking row (1 / -1 as the plan's side, the same geometric side as here): their curb is the parking lane's, so no red or loading zone and no bike strip there. */
+  const parkedSides = new Map<number, Set<number>>();
+  for (const row of planParking(world).rows) {
+    const sides = parkedSides.get(row.edge);
+    if (sides) sides.add(row.side);
+    else parkedSides.set(row.edge, new Set([row.side]));
+  }
 
   /** Whether a plain street's crosswalks at this junction are cobbled: downtown, outside any district (a river bank, a market), every road a plain street or an alley, a seeded share (a hash of the node, so every street of the junction agrees). */
   const cobbleMemo = new Map<number, boolean>();
@@ -267,6 +275,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     const at = (s: number, lat: number): Vec2 => ({ x: a.x + dx * s + nx * lat, z: a.z + dz * s + nz * lat });
     // A bay's stretch of curb (a bus bay or a path's mouth; m along a -> b, a little margin), on its side (1 = left): no gutter decals there.
     const bays = bayOf[ei].map((b) => ({ side: b.side, at: bayMouth(b, a, dx, dz) }));
+    const parked = parkedSides.get(ei);
     const inBay = (side: number, s0: number, s1: number) => bays.some((b) => b.side === side && s1 > b.at[0] - 1 && s0 < b.at[1] + 1);
     // Lanes: offset (left +), heading of the traffic in it (right hand traffic: negative offsets run a -> b).
     const lanes: { lat: number; yaw: number; outer: boolean }[] = [];
@@ -399,6 +408,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     // Bike lanes along the curb lanes of some avenues: a green strip with stencils.
     if (e.lanes === 4 && rng.chance(DECAL.bikeChance)) {
       for (const side of [1, -1]) {
+        if (parked?.has(side)) continue;
         const lat = side * (half - 0.45 - 0.12 - DECAL.bikeW / 2);
         strip(gb, 'paint', at(6, lat), at(len - 6, lat), DECAL.bikeW, BIKE_GREEN, DECAL.lift - 0.006);
         const yaw = side > 0 ? yawBA : yawAB;
@@ -428,7 +438,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
         const p = at(t, side * (half - 1.3));
         quad(gb, 'busStop', p.x, p.z, laneYaw, 1.1, 3.2, WHITE);
       }
-      if (bays.some((b) => b.side === side)) continue;
+      if (bays.some((b) => b.side === side) || parked?.has(side)) continue;
       if (stops.length === 0 && clen > 40 && rng.chance(DECAL.redZoneChance * D)) {
         const zl = rng.range(DECAL.redZoneLen[0], DECAL.redZoneLen[1]);
         const s0 = rng.range(8, clen - 8 - zl);

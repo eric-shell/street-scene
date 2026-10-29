@@ -1,7 +1,7 @@
 /**
  * What the workshop is doing at a given moment, as a pure function of the showroom's clock: the compressor
- * motor and its pressure-release hiss, the impact gun's bursts, the ratchet's clicks, the customer's dyno pull,
- * the welder's arc and the drum fan. The garage's sound bed (audio/garageAmbience.ts) and whatever the room
+ * motor and its pressure-release hiss, the impact gun's bursts, the ratchet's clicks, the operator's foot on
+ * the customer's dyno, the welder's arc and the drum fan. The garage's sound bed (audio/garageAmbience.ts) and whatever the room
  * shows read the same function, so a pull on the dyno screen, a spark at the welder and the noise they make
  * agree without either keeping state.
  *
@@ -10,7 +10,10 @@
  * Math.random). With the jitter no longer than the period minus the longest event, a slot's event never reaches
  * the next slot, so a call only has to look at one slot, and the gap between consecutive starts is bounded:
  * period minus jitter at the least, period plus jitter at the most. The bench's two tools share one slot
- * (the gun early in it, the ratchet late), so they never overlap.
+ * (the gun early in it, the ratchet late), so they never overlap. The customer's dyno is the one event that is
+ * only a command: the schedule says when the operator's foot goes down and for how long, and the room's rev
+ * model (garage/customerDyno.ts) turns that into revs, so the wall screen, the wheels and drums, the fan and the
+ * sound bed all follow the same engine instead of a curve made up here.
  */
 
 /** One reusable result: `shopSchedule` fills it in place, so the per-frame call allocates nothing. */
@@ -29,8 +32,10 @@ export interface ShopState {
   ratchetClick: number;
   /** How far through the interval that click opens, 0..1 (0 when none): 0 is the click itself. */
   ratchetPhase: number;
-  /** The customer's pull on the dyno, 0..1 (idle to redline), matching the wall screen's run: 0 between pulls. */
-  dynoRpm: number;
+  /** The operator's pedal on the customer's car on the dyno, 0 or 1: held for `SHOP.dyno.hold` s at each pull. */
+  dynoPedal: number;
+  /** The customer's pull in progress as its slot's ordinal (a new one is a new pull), or -1 between pulls. */
+  dynoPull: number;
   /** The welder's arc, 0 or 1. */
   weld: number;
   /** The strike in progress as a unique id (session ordinal x 8 + strike), or -1; a new id is a new strike of the rod. */
@@ -41,7 +46,7 @@ export interface ShopState {
 
 /** A fresh state to pass to `shopSchedule` every frame. */
 export function createShopState(): ShopState {
-  return { compressor: 0, release: 0, gun: -1, gunAge: 0, ratchet: -1, ratchetClick: 0, ratchetPhase: 0, dynoRpm: 0, weld: 0, weldStrike: -1, fan: 1 };
+  return { compressor: 0, release: 0, gun: -1, gunAge: 0, ratchet: -1, ratchetClick: 0, ratchetPhase: 0, dynoPedal: 0, dynoPull: -1, weld: 0, weldStrike: -1, fan: 1 };
 }
 
 /**
@@ -57,8 +62,12 @@ export const SHOP = {
   gun: { period: 27.5, jitter: 12.5, minBurst: 0.3, maxBurst: 0.8, minGap: 0.25, maxGap: 0.5 },
   /** The ratchet's series in the same slot, late in it (an offset 17 to 24 s in): 6 to 12 clicks, the interval shrinking by a factor each click to a floor (s). */
   ratchet: { from: 17, jitter: 7, minClicks: 6, maxClicks: 12, first: 0.34, shrink: 0.84, floor: 0.085 },
-  /** The dyno's pull: a cycle of `period` s, rising over `rise` s, dropping back over `drop` s (the wall screen's `t % 9`, `run / 6`). */
-  dyno: { period: 9, rise: 6, drop: 1 },
+  /**
+   * The customer's pull: one every 120 to 180 s (a slot of `period`, the start `from` s into it plus up to `jitter`;
+   * the first 20 to 50 s after the garage opens), the pedal held `hold` s: long enough for the revs to reach the
+   * redline under `pullLoad` (PULL.seconds = 5.5 s) and sit on the limiter a moment before the foot lifts.
+   */
+  dyno: { period: 150, jitter: 30, from: 20, hold: 6.2 },
   /** The welder: a session every 20 to 50 s of two to four strikes of 1 to 3 s, 0.1 to 0.3 s apart. */
   weld: { period: 35, jitter: 15, minStrikes: 2, maxStrikes: 4, minArc: 1, maxArc: 3, minGap: 0.1, maxGap: 0.3 },
 } as const;
@@ -78,7 +87,7 @@ const between = (a: number, b: number, u: number) => a + (b - a) * u;
 const smooth = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 
 /** Salts, one per hashed quantity, so no two share a stream. */
-const SALT = { cStart: 11, cRun: 12, gStart: 21, gCount: 22, gBurst: 23, gGap: 24, rStart: 31, rClicks: 32, wStart: 41, wCount: 42, wArc: 43, wGap: 44 } as const;
+const SALT = { cStart: 11, cRun: 12, gStart: 21, gCount: 22, gBurst: 23, gGap: 24, rStart: 31, rClicks: 32, dStart: 51, wStart: 41, wCount: 42, wArc: 43, wGap: 44 } as const;
 
 /** The state of the shop at the showroom's clock `t` (s), written into `out` and returned. */
 export function shopSchedule(t: number, out: ShopState = createShopState()): ShopState {
@@ -133,10 +142,13 @@ export function shopSchedule(t: number, out: ShopState = createShopState()): Sho
     }
   }
 
-  // The customer's pull, the dyno screen's cycle: it climbs for `rise` s and falls back over `drop` s.
+  // The customer's pull: the operator's foot down for `hold` s at a hashed moment of each slot.
   const D = SHOP.dyno;
-  const run = ((t % D.period) + D.period) % D.period;
-  out.dynoRpm = run < D.rise ? run / D.rise : run < D.rise + D.drop ? 1 - (run - D.rise) / D.drop : 0;
+  const dn = Math.floor(t / D.period);
+  const du = t - (dn * D.period + D.from + shopHash(dn, SALT.dStart) * D.jitter);
+  const pulling = du >= 0 && du < D.hold;
+  out.dynoPedal = pulling ? 1 : 0;
+  out.dynoPull = pulling ? dn : -1;
 
   // The welder's session.
   const W = SHOP.weld;

@@ -16,9 +16,13 @@
  * tubes, a warm lamp under a car, the neon's spill on grimy block walls.
  *
  * The shop keeps its own time: the welder in the back corner arcs and throws
- * sparks, the compressor and the customer's dyno pull run, on one pure schedule
- * of the clock (garage/shopSchedule.ts) that the sound bed reads too, so what
- * is heard matches what is shown. The lights go down for the Style tab
+ * sparks and the compressor runs, on one pure schedule of the clock
+ * (garage/shopSchedule.ts) that the sound bed reads too, so what is heard
+ * matches what is shown. The customer's car on the dyno really pulls every two
+ * to three minutes: the schedule's operator pedal drives a rev model and dyno
+ * session (garage/customerDyno.ts), and its driven wheels and drums spin, the
+ * wall screen draws the pull, the fan spools and the sound bed follows the
+ * same revs. The lights go down for the Style tab
  * (setLightsDown): the battens and the room's lights to a floor, the neon, the
  * LED ring and the lamp under the lifted car left on.
  *
@@ -33,12 +37,13 @@
  * car, deck and straps hide; a deck cut for this car's driven axles replaces
  * them, with a roller set under each: one for a front or rear drive, two for
  * all wheel drive), `dynoStand` gives its pose, `spinDrums` turns the rollers,
- * `setFan` and `setRun` spool the fan and put the live pull on the wall screen.
+ * `setFan` and `setRun` spool the fan and put the live pull on the wall screen
+ * (without them the screen and the fan follow the customer's pull).
  */
 import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { CarView } from '../render/car/carView';
+import { CarView, WHEEL_KEYS } from '../render/car/carView';
 import type { CarPose } from '../render/car/carView';
 import { MANIFEST, partsFor } from '../render/car/carAssets';
 import type { CarAssetLibrary } from '../render/car/carAssets';
@@ -122,6 +127,7 @@ import type { DynoDrive, DynoFit, LiftFit, StrapFit } from './showroomProps';
 import { MAIN_SIGN, NEON, NeonSign, OPEN_SIGN } from './neonSign';
 import { Crew, liftHeight } from './showroomCrew';
 import { createShopState, shopSchedule } from './shopSchedule';
+import { CustomerDyno } from './customerDyno';
 import type { ShopState } from './shopSchedule';
 import type { CrewLift } from './showroomCrew';
 import { Disposer } from '../render/disposer';
@@ -175,15 +181,16 @@ const LIFTS: { x: number; z: number; yaw: number; h: number; wheelsOff?: boolean
 /** The lift the crew's operator raises and lowers, and how high its car's ground goes (m). */
 const MOVING_LIFT = { index: 3, high: 1.75 } as const;
 
-/** How long the wall screen waits between redraws when nothing climbs (s): with the player's car on the dyno, and while it plays the customer's pull. */
-const SCREEN_IDLE = { live: 1 / 10, fake: 1 / 15 } as const;
+/** How long the wall screen waits between redraws when no pull climbs (s): the READY blink and the peak call-out. */
+const SCREEN_IDLE = 1 / 10;
 
 /** The dyno cell in the front right quadrant, beside the way in: where the car on it stands (m) and faces (rad: into the room, its tail and exhaust toward the door, the giant fan at its nose). */
 const DYNO = { x: 8.0, z: 6.6, yaw: Math.PI, fanR: 0.75 } as const;
 
 /**
- * The drum fan's blades (rad/s): spinning free while the customer's car is on the dyno, and with the player's
- * on it, turning over at `idle` until a pull spools it to `full`, easing at `ease` (1/s).
+ * The drum fan's blades (rad/s): spinning free while the customer's car is on the dyno between pulls, rising to
+ * `full` as its revs climb; with the player's on it, turning over at `idle` until a pull spools it to `full`,
+ * easing at `ease` (1/s).
  */
 const FAN = { free: 14, idle: 3, full: 30, ease: 1.6 } as const;
 
@@ -286,14 +293,21 @@ export class Showroom {
   private readonly fanBlades: THREE.Object3D;
   private readonly dyno: ReturnType<typeof dynoScreen>;
   private dynoWait = 0;
-  /** The fan's speed now (rad/s) and the pull it follows (0..1 of the revs' range; null while the customer's car is on the dyno). */
+  /** The fan's speed now (rad/s) and the pull it follows (0..1 of the revs' range; null while the customer's car is on the dyno: it follows the customer's revs). */
   private fanRate: number = FAN.free;
   private fanLoad: number | null = null;
-  /** The live pull the wall screen draws while the player's car is strapped on (null: the customer's fake one). */
+  /** The live pull the wall screen draws while the player's car is strapped on (null: the customer's own). */
   private run: DynoRun | null = null;
   /** The customer's car and straps on the dyno, hidden while the player's car takes their place. */
   private dynoCar: CarView | null = null;
   private readonly customerDyno = new THREE.Group();
+  /** The customer's pull: the shop's pedal on a rev model and dyno session, shared by the screen, wheels, drums, fan and sound bed. */
+  private readonly customer: CustomerDyno;
+  /** The customer's drums (pivots in the customerDyno group, turned with its wheels) and the pose its car is updated with. */
+  private readonly customerDrums: THREE.Group[] = [];
+  private customerPose: CarPose | null = null;
+  /** Whether the customer's car was being posed last frame (one more frame after it settles brings the wheels to rest). */
+  private customerWasBusy = false;
   /** The deck, rollers and straps cut for the player's car, the drums in it that spin, and what built them (freed when it leaves). */
   private playerRig: THREE.Group | null = null;
   private drums: THREE.Group[] = [];
@@ -384,13 +398,25 @@ export class Showroom {
     const vdz = H - 0.1 - DYNO.z;
     const vent: [number, number, number] = [Math.cos(DYNO.yaw) * vdx - Math.sin(DYNO.yaw) * vdz, 0.06, Math.sin(DYNO.yaw) * vdx + Math.cos(DYNO.yaw) * vdz];
     this.vent = vent;
-    // The customer's dyno is a group of its own (the player's car gets one cut for it): rear drive, the drum standing still.
+    // The customer's dyno is a group of its own (the player's car gets one cut for it): cut for the car's drive, its drums pivots the pull turns.
+    this.customer = new CustomerDyno(dynoCar.id, dynoCar.displayName);
     const dk = new Kit(m);
-    const { deck, rollers } = dyno(dk, DYNO.x, DYNO.z, DYNO.yaw, dynoFitOf(dynoCar, 'rear'));
-    dk.place(DYNO.x, 0, DYNO.z, DYNO.yaw);
-    for (const r of rollers) dynoDrum(dk, r.track, deck - DYNO_DRUM.radius + 0.01, r.z);
+    const { deck, rollers } = dyno(dk, DYNO.x, DYNO.z, DYNO.yaw, dynoFitOf(dynoCar, this.customer.driven));
     dk.build(this.customerDyno, track);
+    for (const r of rollers) {
+      const pivot = new THREE.Group();
+      pivot.rotation.order = 'YXZ';
+      pivot.rotation.y = DYNO.yaw;
+      pivot.position.set(DYNO.x + r.z * Math.sin(DYNO.yaw), deck - DYNO_DRUM.radius + 0.01, DYNO.z + r.z * Math.cos(DYNO.yaw));
+      const drum = new Kit(m);
+      drum.place();
+      dynoDrum(drum, r.track);
+      drum.build(pivot, track);
+      this.customerDyno.add(pivot);
+      this.customerDrums.push(pivot);
+    }
     s.add(this.customerDyno);
+    this.customerPose = { x: DYNO.x, y: deck, z: DYNO.z, yaw: DYNO.yaw, pitch: 0, roll: 0, steer: 0, comp: [0, 0, 0, 0], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
     this.deckY = deck;
     this.dynoLength = dynoCar.dimensions.length;
     this.dynoObstacle = this.obstacle(DYNO.x, DYNO.z, DYNO.yaw, 1.45, dynoCar.dimensions.length / 2 + 0.6, 1.6);
@@ -402,7 +428,11 @@ export class Showroom {
       // Its extraction funnels are cut to the tips of the car as loaded (the body's stance applied); the manifest's stand in if it fails.
       void this.loadParkedCar(assets, dynoBuild.carId, dynoBuild.visual, { x: DYNO.x, y: deck, z: DYNO.z, yaw: DYNO.yaw }, 0).then((v) => {
         this.dynoCar = v;
-        if (v) v.root.visible = !this.occupied;
+        if (v) {
+          v.root.visible = !this.occupied;
+          // Posed every frame of a pull: keep the lamps as parked (setBrake would light the tail lamps otherwise).
+          v.setLampLevel(0);
+        }
         if (!this.disposed) this.cutVents(this.customerDyno, v ? v.tipsOnRoot() : dynoCar.exhaustTips ?? [], dynoCar.dimensions.length, track);
       });
     } else this.cutVents(this.customerDyno, dynoCar.exhaustTips ?? [], dynoCar.dimensions.length, track);
@@ -416,6 +446,7 @@ export class Showroom {
     });
     // The dyno's screen on the wall beside it, redrawn as the run goes.
     this.dyno = dynoScreen();
+    this.dyno.draw(0, this.customer.run);
     const screen = track(new THREE.MeshBasicMaterial({ map: track(this.dyno.texture), color: new THREE.Color(1.25, 1.25, 1.25) }));
     wallTv(k, H, 2.6, 6.75, -Math.PI / 2, screen);
     k.build(s, track);
@@ -779,13 +810,13 @@ export class Showroom {
     for (const d of this.drums) d.rotation.x = angle;
   }
 
-  /** Hand the wall screen a live pull to draw (null: back to the customer's fake one). The object is read at each redraw, so the caller may keep updating it. */
+  /** Hand the wall screen a live pull to draw (null: back to the customer's own). The object is read at each redraw, so the caller may keep updating it. */
   setRun(run: DynoRun | null): void {
     this.run = run;
     this.dynoWait = 0;
   }
 
-  /** The drum fan's pull: 0..1 of the revs' range while the player's car is on the dyno, null for the customer's car. */
+  /** The drum fan's pull: 0..1 of the revs' range while the player's car is on the dyno, null to follow the customer's car. */
   setFan(load: number | null): void {
     this.fanLoad = load;
   }
@@ -798,6 +829,11 @@ export class Showroom {
   /** How far down the lights are this frame, 0..1 (the car's paint reflections follow it). */
   get dimmed(): number {
     return this.lightsDown;
+  }
+
+  /** The customer's revs on the dyno, 0..1 of idle to redline (the sound bed follows them). */
+  get customerRpm(): number {
+    return this.customer.x;
   }
 
   /** The room's clock (s): what the shop's schedule, the batten's flicker and the crew run on. */
@@ -821,6 +857,7 @@ export class Showroom {
     const t = this.time;
     this.ringMat.color.copy(RING).multiplyScalar(1.45 + 0.3 * Math.sin(t * 1.6));
     shopSchedule(t, this.shop);
+    this.updateCustomer(dt, t);
     // The lights going down: the real lights and the battens' tubes (and their faked pools) to the floor.
     const target = this.lightsTarget;
     if (this.lightsDown !== target) {
@@ -838,20 +875,50 @@ export class Showroom {
     for (const sign of this.signs) sign.update(t);
     this.dustTime.value = t;
     if (this.weld) this.updateWeld(dt, this.shop.weld);
-    const fanTarget = this.fanLoad === null ? FAN.free : FAN.idle + this.fanLoad * (FAN.full - FAN.idle);
+    const fanTarget = this.fanLoad === null ? FAN.free + this.customer.x * (FAN.full - FAN.free) : FAN.idle + this.fanLoad * (FAN.full - FAN.idle);
     this.fanRate += (fanTarget - this.fanRate) * damp(FAN.ease, dt);
     this.fanBlades.rotation.z -= dt * this.fanRate;
     if (this.crew && this.liftRig && this.crewLift) {
       this.crew.update(t);
       this.liftRig.position.y = liftHeight(this.crewLift, t);
     }
-    // The wall screen redraws every frame while a live pull climbs, and a few times a second otherwise (the
-    // READY blink, the peak call-out, the customer's pull); each redraw is one 384 x 216 texture upload.
+    // The wall screen redraws every frame while a pull climbs (the player's or the customer's), and a few times a
+    // second otherwise (the READY blink, the peak call-out); each redraw is one 384 x 216 texture upload.
     this.dynoWait -= dt;
     if (this.dynoWait <= 0) {
-      this.dynoWait = this.run ? (this.run.state === 'pull' ? 0 : SCREEN_IDLE.live) : SCREEN_IDLE.fake;
-      this.dyno.draw(t, this.run);
+      const run = this.run ?? this.customer.run;
+      this.dynoWait = run.state === 'pull' ? 0 : SCREEN_IDLE;
+      this.dyno.draw(t, run);
     }
+  }
+
+  /**
+   * The customer's pull: the shop's pedal through its rev model and dyno session every frame (one rev step and
+   * one session update), and, while its car is on show and the engine is working, the driven wheels and the
+   * drums under them turn and the body rocks on its springs. The car view is only re-posed while busy (and the
+   * frame after, so the wheels come to rest), which is a few seconds in every couple of minutes.
+   */
+  private updateCustomer(dt: number, t: number): void {
+    const c = this.customer;
+    c.update(dt, this.shop.dynoPedal);
+    const car = this.dynoCar;
+    const pose = this.customerPose;
+    const busy = c.busy;
+    if (!busy && !this.customerWasBusy) return;
+    this.customerWasBusy = busy;
+    if (!car || !pose || this.occupied) return;
+    for (const d of this.customerDrums) d.rotation.x = c.drumAngle;
+    for (let i = 0; i < 4; i++) {
+      const driven = c.driven === 'all' || (c.driven === 'front') === i < 2;
+      pose.spin[i] = driven ? c.spin : 0;
+    }
+    pose.pitch = c.pitch;
+    pose.roll = c.roll;
+    for (let i = 0; i < 4; i++) {
+      const w = car.car.wheels[WHEEL_KEYS[i]];
+      pose.comp[i] = -(w[0] * pose.roll - w[2] * pose.pitch);
+    }
+    car.update(pose, t);
   }
 
   /**

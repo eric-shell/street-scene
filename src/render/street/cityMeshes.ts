@@ -6,11 +6,12 @@
  * start line. Built once per world; read only.
  */
 import * as THREE from 'three';
-import { CITY } from '../../city/config';
+import { CITY, PARKING } from '../../city/config';
+import { planParking, type ParkingRow } from '../../city/parking';
 import { World } from '../../city/world';
 import { type Hump, spreadJoints } from '../../city/roadProfile';
 import { bridgesOf } from '../../city/districts/river';
-import { isBendNode, isRiverEdge } from '../../city/roadGraph';
+import { type RoadEdge, isBendNode, isRiverEdge } from '../../city/roadGraph';
 import { groundHeight } from '../../city/districts/carPark';
 import { Vec2 } from '../../sim/math';
 import { ROAD } from '../../sim/tuning';
@@ -564,6 +565,39 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       }
     }
   };
+  /**
+   * A kerb parking row's paint: the lane line along the strip's inner edge (the line the traffic lane runs
+   * beside) and a tick across the strip at every slot boundary, so each stall is a box with the kerb edge line
+   * as its outer side. Laid in the plan's own frame (node A plus s along the edge, lateral (-dz, dx) * side,
+   * parking.ts) rather than the curb-midpoint frame the lane lines use, so the stalls sit exactly where the
+   * parked cars stand. Drawn through addLine so it rides over humps; never past s0..s1.
+   */
+  const drawParkingPaint = (row: ParkingRow, e: RoadEdge) => {
+    const A = g.nodes[e.a];
+    const B = g.nodes[e.b];
+    const len = e.length || 1;
+    const dx = (B.x - A.x) / len;
+    const dz = (B.z - A.z) / len;
+    const nx = -dz * row.side;
+    const nz = dx * row.side;
+    const half = e.width / 2;
+    const inner = half - row.strip;
+    const outer = half - 0.45;
+    const along = (s: number, lat: number): Vec2 => ({ x: A.x + dx * s + nx * lat, z: A.z + dz * s + nz * lat });
+    // Lines are offset along (-dz, dx) of their own direction: a -> b, so the side flips the offset.
+    addLine(along(row.s0, 0), along(row.s1, 0), row.side * inner, 0.12, 0, 0, white);
+    const stalls = Math.round((row.s1 - row.s0) / PARKING.pitch);
+    for (let i = 0; i <= stalls; i++) {
+      const s = row.s0 + i * PARKING.pitch;
+      addLine(along(s, inner), along(s, outer), 0, 0.1, 0, 0, white);
+    }
+  };
+  const rowsOf = new Map<number, ParkingRow[]>();
+  for (const row of planParking(world).rows) {
+    const list = rowsOf.get(row.edge);
+    if (list) list.push(row);
+    else rowsOf.set(row.edge, [row]);
+  }
   g.edges.forEach((e, ei) => {
     if (isRiverEdge(e)) return;
     // No lane lines or crosswalk stripes on cobbles.
@@ -603,6 +637,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       }
       addLine(from, b2, side * (half - 0.45), 0.14, 0, 0, white);
     }
+    for (const row of rowsOf.get(ei) ?? []) drawParkingPaint(row, e);
     // crosswalk stripes near each junction end
     for (const [from, dir] of [
       [a, 1],

@@ -36,7 +36,7 @@ import { CarPose, CarView, WHEEL_KEYS } from '../render/car/carView';
 import { CarAssetLibrary } from '../render/car/carAssets';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { BlipScript, REV_LEVEL, RevModel, revVoice, type TwoStep } from './revModel';
-import { pullLoad } from './dynoRun';
+import { PULL, pullLoad } from './dynoRun';
 import type { DynoSetup } from './dynoRun';
 import { DynoSession } from './dynoSession';
 import { DYNO_DRUM } from './showroomProps';
@@ -129,10 +129,6 @@ const IDLE = { hold: 8, cut: 2.4, push: 0.045, sway: 0.25, swayHz: 0.3 } as cons
 
 /** How fast the turntable turns (rad/s). */
 const SPIN = 0.22;
-/** The dyno's wheels start rolling as the revs lift off idle and roll fully this far up the range (share of idle to redline). */
-const WHEELS_ENGAGE = 0.1;
-/** Strapped down the body hardly rocks: the share of the showroom's roll and squat a pull gives. */
-const STRAP_ROCK = 0.3;
 /** The street view's auto tour: the next angle after this long without a touch (s). */
 const TOUR = 10;
 /** A camera preset is reached over this long (s). */
@@ -529,7 +525,7 @@ export class GarageScene {
     this.rev.rest = this.restRpm(this.rev.idle, this.rev.redline);
     const throttle = Math.max(this.gasHeld, this.blipScript.step(dt));
     this.pedal = throttle;
-    this.rev.step(dt, throttle, street ? 0.45 : this.mode === 'dyno' ? STRAP_ROCK : 1);
+    this.rev.step(dt, throttle, street ? 0.45 : this.mode === 'dyno' ? PULL.strapRock : 1);
     // Garage: the engine falls silent a few seconds after the last blip.
     const busy = street || throttle > 0 || Math.abs(this.rev.rpm - this.rev.rest) > 40;
     this.quietFor = busy ? 0 : this.quietFor + dt;
@@ -631,8 +627,8 @@ export class GarageScene {
       this.camera.getWorldDirection(this.heading);
       s.listener.yaw = Math.atan2(this.heading.x, this.heading.z);
       s.flicker = this.showroom.batten;
-      // The customer's pull is heard unless the player's own car is on the dyno (that one has the real voice).
-      s.dynoRpm = this.mode === 'dyno' ? -1 : this.showroom.shop.dynoRpm;
+      // The customer's pull (its rev model, on the shop's schedule) is heard unless the player's own car is on the dyno (that one has the real voice).
+      s.dynoRpm = this.mode === 'dyno' ? -1 : this.showroom.customerRpm;
     }
     this.shopSound.update(dt, s);
   }
@@ -686,7 +682,7 @@ export class GarageScene {
         if (setup) {
           const x = (rev.rpm - rev.idle) / Math.max(1, rev.redline - rev.idle);
           // Rolling from just off idle (in gear, the wheels turn at the engine's speed over the pull gear's ratio).
-          const omega = ((rev.rpm * TAU) / 60 / setup.overall) * smoothstep(0, WHEELS_ENGAGE, x);
+          const omega = ((rev.rpm * TAU) / 60 / setup.overall) * smoothstep(0, PULL.wheelsEngage, x);
           // The wheels and the drum under them share a surface speed, so the drum turns the other way and slower by the radii's ratio.
           this.drumAngle = (this.drumAngle - ((omega * dt * setup.wheelRadius) / DYNO_DRUM.radius)) % TAU;
           this.showroom.spinDrums(this.drumAngle);

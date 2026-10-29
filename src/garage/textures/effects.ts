@@ -44,8 +44,8 @@ export interface DynoPeaks {
 export type DynoState = 'ready' | 'pull' | 'done';
 
 /**
- * A run the screen draws instead of its own fake one: the player's car on the
- * dyno (garage/dynoSession.ts keeps it up to date; the screen only reads). The
+ * A run the screen draws: the player's car on the dyno or the customer's
+ * (garage/dynoSession.ts keeps it up to date; the screen only reads). The
  * curves are shares of the build's rated peaks over the rpm axis (0 = idle,
  * 1 = redline) as this pull measured them, so a hot or unlucky pull sits a
  * little under 1 and the plot shows it. They are drawn up to `progress`, the
@@ -118,14 +118,14 @@ const thousands = (n: number): string => Math.round(n).toLocaleString('en-US');
  * Power and torque draw live as the revs sweep, with big readouts ticking up,
  * a peak-hold marker, the previous pull ghosted behind, a rev bar, the intake
  * temperature with a heat soak warning, and at the end a PEAK call-out; between
- * pulls it idles on a scan line and a blinking READY. With no run of its own
- * (nobody on the dyno) it fakes one from time t (s): a pull, the figures held,
- * then the next. `draw` repaints one canvas texture (384 x 216, the layout
+ * pulls it idles on a scan line and a blinking READY. The run is always a real
+ * one (the player's, or the customer's pull on the shop's schedule), and `t` (s)
+ * only times the blink. `draw` repaints one canvas texture (384 x 216, the layout
  * stays 256 x 144); the showroom calls it every frame during a live pull and
  * a few times a second otherwise, so the upload is small and only paid when
  * something moves. The static layer (grid, frames) is drawn once and blitted.
  */
-export function dynoScreen(): { texture: THREE.CanvasTexture; draw: (t: number, run?: DynoRun | null) => void } {
+export function dynoScreen(): { texture: THREE.CanvasTexture; draw: (t: number, run: DynoRun) => void } {
   const { w: W, h: H, scale: S } = SCREEN;
   const { x0, x1, top, base } = PLOT;
   const [c, g] = canvas(W * S, H * S);
@@ -239,63 +239,10 @@ export function dynoScreen(): { texture: THREE.CanvasTexture; draw: (t: number, 
     g.globalAlpha = 1;
   };
 
-  // The customer's pull when nobody is on the dyno: shaped curves climbing on the room's clock.
-  const fakePower = (x: number) => Math.min(1, x * 1.25) * (1 - (0.25 * Math.max(0, x - 0.8)) / 0.2) * (0.9 + 0.1 * x);
-  const fakeTorque = (x: number) => 0.55 + 0.35 * Math.sin(Math.min(1, x) * Math.PI * 0.8) - 0.12 * x;
-  const fakeGhostP = (x: number) => fakePower(x) * 0.985;
-  const fakeGhostT = (x: number) => fakeTorque(x) * 0.99;
-  const fake: DynoRun = {
-    state: 'ready',
-    progress: 0,
-    power: fakePower,
-    torque: fakeTorque,
-    ghostPower: null,
-    ghostTorque: null,
-    ghostProgress: 1,
-    rated: { hp: 412, lbft: 398, hpRpm: 6200, lbftRpm: 4300 },
-    peaks: { hp: 408, lbft: 396, hpRpm: 6200, lbftRpm: 4300 },
-    rpm: 1500,
-    rpmIdle: 1000,
-    rpmRedline: 7500,
-    runNo: 3,
-    doneFor: 0,
-    heat: 0.16,
-    iatF: 90,
-  };
-  const FAKE_CYCLE = 11;
-  const stepFake = (t: number): DynoRun => {
-    const cycle = t % FAKE_CYCLE;
-    const n = Math.floor(t / FAKE_CYCLE);
-    const p = Math.max(0, Math.min(1, (cycle - 0.8) / 5.2));
-    fake.progress = p;
-    fake.state = p <= 0 ? 'ready' : p >= 1 ? 'done' : 'pull';
-    fake.doneFor = p >= 1 ? cycle - 6 : 0;
-    const span = fake.rpmRedline - fake.rpmIdle;
-    fake.rpm = fake.rpmIdle + span * (p >= 1 ? Math.max(0, 1 - fake.doneFor / 3.5) : p) + 500;
-    // The peak hold follows the pull's best so far, as a live run's does.
-    let bp = 0;
-    let bt = 0;
-    for (let i = 0; i <= STEPS && i / STEPS <= p; i++) {
-      const x = i / STEPS;
-      if (fakePower(x) > fakePower(bp)) bp = x;
-      if (fakeTorque(x) > fakeTorque(bt)) bt = x;
-    }
-    fake.peaks.hp = fakePower(bp) * fake.rated.hp;
-    fake.peaks.hpRpm = fake.rpmIdle + bp * span;
-    fake.peaks.lbft = fakeTorque(bt) * fake.rated.lbft;
-    fake.peaks.lbftRpm = fake.rpmIdle + bt * span;
-    fake.runNo = 3 + n;
-    fake.ghostPower = n > 0 ? fakeGhostP : null;
-    fake.ghostTorque = n > 0 ? fakeGhostT : null;
-    fake.title = `DYNO CELL  ·  RUN ${fake.runNo}`;
-    return fake;
-  };
-
   const heatColor = (h: number) => (h < 0.3 ? '#a9dc76' : h < 0.6 ? '#ffd866' : '#ff6188');
   const revColor = (f: number) => (f < 0.6 ? '#a9dc76' : f < 0.85 ? '#ffd866' : '#ff6188');
 
-  const draw = (t: number, live?: DynoRun | null): void => {
-    const r = live ?? stepFake(t);
+  const draw = (t: number, r: DynoRun): void => {
     const span = Math.max(1, r.rpmRedline - r.rpmIdle);
     const p = r.progress;
     const blink = Math.floor(t * BLINK_HZ * 2) % 2 === 0;
@@ -462,7 +409,6 @@ export function dynoScreen(): { texture: THREE.CanvasTexture; draw: (t: number, 
 
     texture.needsUpdate = true;
   };
-  draw(0);
   return { texture, draw };
 }
 

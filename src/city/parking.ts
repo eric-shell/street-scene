@@ -14,7 +14,7 @@
  * (the menu's cruise and free roam's start drive the route); never a
  * shortcut, the river, a bridge, a night market's street or a street with
  * roadworks. Along the kerb a slot keeps cornerClear from a junction's curb
- * corner, clear of bus bays and path mouths, a hydrant's front, a level
+ * corner, clear of bus bays and path mouths, a hydrant's front, a bus stop's painted zone (stopClear), a level
  * crossing's gates, and its footprint off every wall and prop and on the road
  * at street level (no deck over the channel), and out of the districts that
  * own their street (PARKING.offAreas: the river's banks, a tunnel, a viaduct);
@@ -113,6 +113,7 @@ function buildPlan(w: World): ParkingPlan {
   const closedEdges = new Set<number>([...areas.filter((a) => a.kind === 'roadworks').map((a) => a.params.edge as number), ...areas.filter((a) => a.kind === 'market').flatMap((a) => a.edges)]);
   const bays = baysByEdge(w.blocks.bays ?? [], g.edges.length);
   const hydrants = w.props.filter((p) => p.kind === 'hydrant');
+  const stops = w.props.filter((p) => p.kind === 'busStop');
   const contacts: Contact[] = [];
   const near: number[] = [];
   let kindTotal = 0;
@@ -158,6 +159,12 @@ function buildPlan(w: World): ParkingPlan {
       if (w.surfaceAt(x + fx * u + fz * v, z + fz * u - fx * v) !== 'road') return false;
     }
     for (const h of hydrants) if ((h.x - x) ** 2 + (h.z - z) ** 2 < (half + P.hydrantClear) ** 2) return false;
+    // A bus stop keeps its painted zone clear: along the kerb either side of its shelter, a few metres across.
+    for (const p of stops) {
+      const ddx = p.x - x;
+      const ddz = p.z - z;
+      if (Math.abs(ddx * fx + ddz * fz) < half + P.stopClear && Math.abs(ddx * fz - ddz * fx) < P.stopReach) return false;
+    }
     w.propGrid.query(x - half - 2, z - half - 2, x + half + 2, z + half + 2, near);
     for (const id of near) {
       const p = w.props[id];

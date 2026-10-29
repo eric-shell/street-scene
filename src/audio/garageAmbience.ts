@@ -90,7 +90,7 @@ export interface GarageSoundState {
   listener: { x: number; z: number; yaw: number };
   /** The dying batten's brightness this frame, 0..1. */
   flicker: number;
-  /** The customer's pull on the dyno, 0..1 (`shopSchedule(time).dynoRpm`), or -1 when the player's own car is on the dyno and this source is silent. */
+  /** The customer's revs on the dyno, 0..1 of idle to redline, from the room's rev model that the shop's pedal (`shopSchedule(time).dynoPedal`) drives (the wall screen and wheels follow the same revs), or -1 when the player's own car is on the dyno and this source is silent. */
   dynoRpm: number;
   /** False silences the bed within about 0.3 s: the garage was left, or the Street presentation is on screen. */
   active: boolean;

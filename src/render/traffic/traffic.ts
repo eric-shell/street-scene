@@ -22,7 +22,15 @@
  *    lights flare, struck cars blink their hazards and beacons, fresh spawns
  *    fade their lamps in;
  *  - one instanced additive pool of headlight on the road ahead of each car
- *    (Medium and High).
+ *    (Medium and High);
+ *  - the wheels turn, with no extra draw call: wheelFinder.ts finds them in each
+ *    kind's merged mesh at load (a vec4 `wheel` attribute: centre and tire
+ *    radius), and the body's vertex shader rolls them by the car's travelled
+ *    distance, read from a one row float texture of one metre count per slot.
+ *    Per placed body that is a subtraction and a float; per frame one small
+ *    texture upload (a few hundred floats). The distance integrates the drawn
+ *    position, so it is frame rate independent, a shoved parked car's wheels
+ *    roll with the shove and a sideways slide does not spin them.
  * Four draw calls. Cars beyond the tier's draw distance are dropped, and only
  * the nearest `cars` of the rest are filled in, so the per frame cost is a
  * few dozen matrix composes and terrain samples. Triangles: 2.2k per
@@ -58,6 +66,7 @@ import { fadeSubPixel } from '../materialFx';
 import { FOG_HEIGHT, applyHeightFog } from '../heightFog';
 import { fogCutoff } from '../cityChunks';
 import { floatGeometry } from '../gltfGeometry';
+import { findWheels } from './wheelFinder';
 import { ROAD_Y } from '../street/cityMeshes';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 import { CAR_IMPOSTORS, CAR_SWITCH_MARGIN, CarImpostors, fadeOutBeyond, getCarSheet } from './carImpostors';
@@ -79,6 +88,9 @@ export const TRAFFIC_QUALITY: Record<Quality, { cars: number; drawDistance: numb
 
 /** Ranks past the body cap a car that already has a body keeps it, so the cap's edge does not flicker between body and card. */
 const RANK_SLACK = 6;
+
+/** A car drawn this far (m) from where it was last frame has jumped (a restart, a reset), and its wheels do not roll the gap. */
+const WHEEL_JUMP = 20;
 
 /** The camera counts as at a parking lot within this far (m) of the lot's outline's middle, beyond its reach. */
 const LOT_REACH = 60;
@@ -152,6 +164,8 @@ interface TrafficAssets {
   body: THREE.BufferGeometry[];
   decal: (THREE.BufferGeometry | null)[];
   atlas: THREE.Texture;
+  /** Per kind its tire radius (m), 0 when no wheel was found (that kind does not turn). */
+  wheelRadius: number[];
 }
 
 const base = import.meta.env.BASE_URL ?? '/';
@@ -176,6 +190,7 @@ export function loadTrafficAssets(): Promise<TrafficAssets | null> {
       g.scene.updateMatrixWorld(true);
       const body: THREE.BufferGeometry[] = [];
       const decal: (THREE.BufferGeometry | null)[] = [];
+      const wheelRadius: number[] = [];
       for (const k of TRAFFIC.kinds) {
         const node = g.scene.getObjectByName(k.name);
         if (!node) throw new Error(`traffic.glb has no ${k.name}`);
@@ -184,10 +199,14 @@ export function loadTrafficAssets(): Promise<TrafficAssets | null> {
           const m = o as THREE.Mesh;
           if (m.isMesh) parts[(m.material as THREE.Material).name] = floatGeometry(m.geometry, m.matrixWorld);
         });
-        body.push(parts.Traffic);
+        const geo = parts.Traffic;
+        const wheels = findWheels(geo.getAttribute('position').array, geo.getIndex()!.array, TRAFFIC_MODELS.kinds[k.name].halfWidth);
+        geo.setAttribute('wheel', new THREE.BufferAttribute(wheels.attr, 4));
+        wheelRadius.push(wheels.radius);
+        body.push(geo);
         decal.push(parts.TrafficDecal ?? null);
       }
-      return { body, decal, atlas: tex };
+      return { body, decal, atlas: tex, wheelRadius };
     })
     .catch((e) => {
       console.warn('traffic models unavailable', e);
@@ -236,11 +255,17 @@ const BEACON_FLASH = 3;
 /** The atlas stores paint at this sRGB grey (trafficPack.py PAINT_REF), here in linear. */
 const PAINT_REF_LINEAR = new THREE.Color().setRGB(TRAFFIC_MODELS.paintRef, 0, 0, THREE.SRGBColorSpace).r;
 
+/** Turns of a wheel after which a car's travelled distance wraps (a whole number, so the wrap never shows). */
+const WHEEL_WRAP_TURNS = 64;
+
 /**
  * Body material: the atlas alpha is the paint mask the instance colour tints, never transparency. With a `band` (the
- * impostor switch: distance and half width, m) the body dithers away beyond it, trading places with its card.
+ * impostor switch: distance and half width, m) the body dithers away beyond it, trading places with its card. With a
+ * `spin` texture (one float per batch instance: the metres the car has rolled, the traffic view's) the vertex shader
+ * also rolls every vertex that carries a `wheel` attribute (centre and tire radius, wheelFinder.ts) about its axle;
+ * the yard cars and the card baker pass none and keep their wheels still.
  */
-export function bodyMaterial(atlas: THREE.Texture, band?: { value: THREE.Vector2 }): THREE.MeshStandardMaterial {
+export function bodyMaterial(atlas: THREE.Texture, band?: { value: THREE.Vector2 }, spin?: THREE.DataTexture): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ map: atlas, metalness: 0.3, roughness: 0.5, envMapIntensity: 1.1 });
   m.onBeforeCompile = (s) => {
     s.fragmentShader = s.fragmentShader.replace(
@@ -250,8 +275,28 @@ export function bodyMaterial(atlas: THREE.Texture, band?: { value: THREE.Vector2
       #endif
       diffuseColor.a = 1.0;`,
     );
+    if (!spin) return;
+    s.uniforms.wheelSpinTexture = { value: spin };
+    // The batching chunk runs before the normal and position chunks, so the instance's distance is known to both.
+    s.vertexShader = s.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec4 wheel;\nuniform highp sampler2D wheelSpinTexture;')
+      .replace(
+        '#include <batching_vertex>',
+        `#include <batching_vertex>
+        float wheelC = 1.0;
+        float wheelS = 0.0;
+        #ifdef USE_BATCHING
+        if ( wheel.w > 0.0 ) {
+          float wheelAngle = texelFetch( wheelSpinTexture, ivec2( int( getIndirectIndex( gl_DrawID ) ), 0 ), 0 ).r / wheel.w;
+          wheelC = cos( wheelAngle );
+          wheelS = sin( wheelAngle );
+        }
+        #endif`,
+      )
+      .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal.yz = vec2( objectNormal.y * wheelC - objectNormal.z * wheelS, objectNormal.y * wheelS + objectNormal.z * wheelC );')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvec2 wheelRel = transformed.yz - wheel.yz;\ntransformed.yz = wheel.yz + vec2( wheelRel.x * wheelC - wheelRel.y * wheelS, wheelRel.x * wheelS + wheelRel.y * wheelC );');
   };
-  m.customProgramCacheKey = () => 'trafficBody';
+  m.customProgramCacheKey = () => (spin ? 'trafficBodySpin' : 'trafficBody');
   if (band) fadeOutBeyond(m, band, 'batch');
   return m;
 }
@@ -412,6 +457,19 @@ export class TrafficView {
   /** The frame's lamp flares (lampFlares.ts), fed each moving car's head and tail lamps; null without. */
   private flares: LampFlares | null = null;
   private beamN = 0;
+  /** The wheels' roll: one float per body slot (m the car has travelled forward, wrapped), read by the body's vertex shader. */
+  private readonly spinTex: THREE.DataTexture;
+  /** Per car: the metres it has rolled forward (wrapped at `wheelWrap`), and where, when and as which spawn it was last drawn. */
+  private readonly odo: Float64Array;
+  private readonly lastX: Float64Array;
+  private readonly lastZ: Float64Array;
+  private readonly lastBorn: Int32Array;
+  /** Per car: the frame stamp of the last frame it got a body (-1 never). */
+  private readonly lastSeen: Int32Array;
+  /** Frames since the first `update` with bodies; a car drawn last frame has lastSeen = frame - 1. */
+  private frame = 0;
+  /** Per kind where the roll wraps (m): an exact number of its tire's turns, 1 when it has no wheels. */
+  private wheelWrap: number[] = [];
 
   constructor(
     private readonly world: World,
@@ -422,6 +480,15 @@ export class TrafficView {
     this.slots = Math.max(1, Math.min(count, MAX_DRAWN));
     this.groundCache = new Float32Array(Math.max(1, count)).fill(NaN);
     this.hadBody = new Uint8Array(Math.max(1, count));
+    this.odo = new Float64Array(Math.max(1, count));
+    this.lastX = new Float64Array(Math.max(1, count));
+    this.lastZ = new Float64Array(Math.max(1, count));
+    this.lastBorn = new Int32Array(Math.max(1, count));
+    this.lastSeen = new Int32Array(Math.max(1, count)).fill(-1);
+    this.spinTex = new THREE.DataTexture(new Float32Array(this.slots), this.slots, 1, THREE.RedFormat, THREE.FloatType);
+    this.spinTex.minFilter = THREE.NearestFilter;
+    this.spinTex.magFilter = THREE.NearestFilter;
+    this.spinTex.needsUpdate = true;
     const tiers = Object.keys(TRAFFIC_QUALITY) as Quality[];
     this.moving = new NearestList(Math.max(...tiers.map((t) => TRAFFIC_QUALITY[t].cars + CAR_IMPOSTORS[t].movingFar)));
     this.parkedList = new NearestList(Math.max(...tiers.map((t) => TRAFFIC_QUALITY[t].parked + TRAFFIC_QUALITY[t].lotParked + CAR_IMPOSTORS[t].parkedFar)));
@@ -441,7 +508,7 @@ export class TrafficView {
     underVehicles(beamMat);
     const lampGeo = new THREE.BoxGeometry(1, 1, 1);
     const beamGeo = new THREE.PlaneGeometry(7, 17).rotateX(-Math.PI / 2);
-    this.disposables.push(lampMat, glowTex, beamMat, lampGeo, beamGeo);
+    this.disposables.push(lampMat, glowTex, beamMat, lampGeo, beamGeo, this.spinTex);
     const maxLamps = Math.max(...this.lamps.map((l) => l.length));
     this.lampMesh = new THREE.InstancedMesh(lampGeo, lampMat, this.slots * maxLamps);
     this.lampMesh.setColorAt(0, this.c.setRGB(1, 1, 1));
@@ -482,7 +549,8 @@ export class TrafficView {
       this.bodyEnd2 = (sheet.spec.distance + sheet.spec.fade / 2 + margin) ** 2;
       this.cardStart2 = (sheet.spec.distance - sheet.spec.fade / 2 - margin) ** 2;
     }
-    const bodyMat = bodyMaterial(a.atlas, band);
+    this.wheelWrap = a.wheelRadius.map((r) => (r > 0 ? Math.PI * 2 * r * WHEEL_WRAP_TURNS : 1));
+    const bodyMat = bodyMaterial(a.atlas, band, this.spinTex);
     const decalMat = new THREE.MeshStandardMaterial({ map: a.atlas, alphaTest: 0.5, metalness: 0.2, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
     if (band) fadeOutBeyond(decalMat, band, 'batch');
     this.disposables.push(bodyMat, decalMat);
@@ -573,6 +641,7 @@ export class TrafficView {
     this.slotN = 0;
     this.lampN = 0;
     this.beamN = 0;
+    this.frame++;
     set?.cards.begin();
     // With cards, a car that had a body keeps it a few ranks past the cap (hysteresis); without, the caps are exact.
     const slack = spec ? RANK_SLACK : 0;
@@ -592,6 +661,7 @@ export class TrafficView {
     }
     this.shown = this.slotN;
     set?.cards.end();
+    this.spinTex.needsUpdate = true;
     this.lampMesh.count = this.lampN;
     this.lampMesh.instanceMatrix.needsUpdate = true;
     this.lampMesh.instanceColor!.needsUpdate = true;
@@ -686,7 +756,7 @@ export class TrafficView {
         else if (lamp.role === 'tail') flares.tail(x + lamp.p[0] * fz + lamp.p[2] * fx, gy + lamp.p[1], z - lamp.p[0] * fx + lamp.p[2] * fz, -fx, 0, -fz, fade * brake * FLARE);
       }
     }
-    if (body) this.placeBody(kind, parked, struck, flags, lit, fade, blink);
+    if (body) this.placeBody(i, kind, x, z, fx, fz, born, parked, struck, flags, lit, fade, blink);
     if (near && this.beamsOn && !struck && !parked && this.beamN < this.slots) {
       this.lm.makeRotationY(yaw).setPosition(x + fx * (model.halfLength + 8.2), gh + 0.07, z + fz * (model.halfLength + 8.2));
       this.lm.toArray(this.beamMesh.instanceMatrix.array as Float32Array, this.beamN * 16);
@@ -694,11 +764,30 @@ export class TrafficView {
     }
   }
 
-  /** Fill the next body slot with the car posed in `this.m`, with its decal, paint and lamps. */
-  private placeBody(kind: number, parked: boolean, struck: boolean, flags: number, lit: boolean, fade: number, blink: boolean): void {
+  /**
+   * Fill the next body slot with car `i` posed in `this.m` (at x, z facing fx, fz; spawned at `born`), with its decal,
+   * paint, lamps and wheel roll.
+   */
+  private placeBody(i: number, kind: number, x: number, z: number, fx: number, fz: number, born: number, parked: boolean, struck: boolean, flags: number, lit: boolean, fade: number, blink: boolean): void {
     const bodies = this.bodies!;
     const decals = this.decals;
     const slot = this.slotN++;
+    // The roll is the drawn position's travel along the car's heading since the last frame it had a body; a fresh
+    // spawn, a car back from the cards or a jump (a restart) rolls nothing.
+    let d = 0;
+    if (this.lastSeen[i] === this.frame - 1 && this.lastBorn[i] === born) {
+      const mx = x - this.lastX[i];
+      const mz = z - this.lastZ[i];
+      if (mx * mx + mz * mz < WHEEL_JUMP * WHEEL_JUMP) d = mx * fx + mz * fz;
+    }
+    this.lastSeen[i] = this.frame;
+    this.lastBorn[i] = born;
+    this.lastX[i] = x;
+    this.lastZ[i] = z;
+    const wrap = this.wheelWrap[kind];
+    const roll = (this.odo[i] + d) % wrap;
+    this.odo[i] = roll;
+    (this.spinTex.image.data as Float32Array)[slot] = roll;
     bodies.setGeometryIdAt(slot, this.bodyIds[kind]);
     bodies.setMatrixAt(slot, this.m);
     bodies.setVisibleAt(slot, true);

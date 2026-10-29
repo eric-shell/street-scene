@@ -52,12 +52,14 @@ describe('shopSchedule', () => {
     for (let t = -50; t < 1200; t += 0.013) {
       shopSchedule(t, s);
       for (const v of Object.values(s)) expect(Number.isFinite(v)).toBe(true);
-      for (const v of [s.compressor, s.release, s.ratchetPhase, s.dynoRpm, s.weld, s.fan]) {
+      for (const v of [s.compressor, s.release, s.ratchetPhase, s.dynoPedal, s.weld, s.fan]) {
         expect(v).toBeGreaterThanOrEqual(0);
         expect(v).toBeLessThanOrEqual(1);
       }
       expect(s.gun).toBeGreaterThanOrEqual(-1);
       expect(s.ratchet).toBeGreaterThanOrEqual(-1);
+      expect(s.dynoPull).toBeGreaterThanOrEqual(-1);
+      expect(s.dynoPedal === 1).toBe(s.dynoPull >= 0);
       if (s.gun < 0) expect(s.gunAge).toBe(0);
     }
     expect(shopSchedule(NaN).compressor).toBe(0);
@@ -139,16 +141,24 @@ describe('shopSchedule', () => {
     }
   });
 
-  it('pulls the dyno on the wall screen\'s cycle', () => {
-    const s = createShopState();
-    for (let cycle = 0; cycle < 20; cycle++) {
-      const at = (run: number) => shopSchedule(cycle * 9 + run, s).dynoRpm;
-      expect(at(0)).toBe(0);
-      expect(at(3)).toBeCloseTo(0.5, 6);
-      expect(at(5.99)).toBeGreaterThan(0.99);
-      expect(at(6.5)).toBeCloseTo(0.5, 6);
-      expect(at(7.5)).toBe(0);
+  it('pulls the customer\'s dyno every 120 to 180 s, the pedal held for the stated time', () => {
+    const { starts, lengths } = runs((s) => s.dynoPedal > 0);
+    expect(starts.length).toBeGreaterThan(18);
+    expect(starts[0]).toBeGreaterThanOrEqual(20 - TOL);
+    expect(starts[0]).toBeLessThan(60);
+    for (const g of gaps(starts)) {
+      expect(g).toBeGreaterThanOrEqual(120 - TOL);
+      expect(g).toBeLessThanOrEqual(180 + TOL);
     }
+    for (const l of lengths) expect(Math.abs(l - SHOP.dyno.hold)).toBeLessThan(TOL);
+    // Each pull is one ordinal, and a new pull is a new id.
+    const s = createShopState();
+    const ids = new Set<number>();
+    for (let t = 0; t < HOUR; t += DT) {
+      shopSchedule(t, s);
+      if (s.dynoPull >= 0) ids.add(s.dynoPull);
+    }
+    expect(ids.size).toBe(starts.length);
   });
 
   it('welds in sessions every 20 to 50 s, arcs of 1 to 3 s', () => {

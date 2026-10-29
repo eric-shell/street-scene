@@ -1625,6 +1625,10 @@ export const PARKING = {
   bayClear: 4,
   /** A hydrant's front is kept this clear (m) of a car's end. */
   hydrantClear: 2.5,
+  /** A bus stop's shelter is kept this clear (m) of a slot's centre along the kerb beyond the slot's half pitch: the painted bus zone is 7 m each way along the curb (streetDecals DECAL.busZone). */
+  stopClear: 7,
+  /** A stop counts as beside a slot when it stands within this far (m) across the street from the slot's centre (the shelter sits on the sidewalk, a few metres from the car). */
+  stopReach: 4,
   /** Kept from a level crossing's gate lines (m). */
   crossingClear: 18,
   /** Kept from the route's line (m) beyond the street's half width: off the route, its closures and their meets. */

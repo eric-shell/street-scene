@@ -28,6 +28,10 @@ export const PULL = {
   doneAt: 0.985,
   /** A new pull starts when the pedal goes down with the revs under this share of the range. */
   restartBelow: 0.12,
+  /** The dyno's wheels start rolling as the revs lift off idle and roll fully this far up the range (share of idle to redline). */
+  wheelsEngage: 0.1,
+  /** Strapped down the body hardly rocks: the share of the showroom's roll and squat a pull gives. */
+  strapRock: 0.3,
 } as const;
 
 export interface DynoSetup {
