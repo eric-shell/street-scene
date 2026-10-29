@@ -113,10 +113,12 @@ DONORS = {
         # The pop-up lamps are modelled raised, as on the car: a shell in the body colour (lid and
         # both sides) over a black bucket, the bezel round the lamp. The bucket's ceiling behind the
         # lens lies a few mm under the lid, and the lamps' collapse pushed it through in black
-        # patches: it is paint (the bezel's top lip, ahead of the lens, stays black). The pop-ups' chrome reflector is what glows, behind their clear covers; the red strip across
-        # the middle of the tail bar is a reflector, not a lamp.
+        # patches: it is paint (the bezel's top lip, ahead of the lens, stays black). The pop-ups'
+        # chrome reflector and the round bulb in front of it are what glow, behind their clear
+        # covers; the red strip across the middle of the tail bar is a reflector, not a lamp.
         'recolor': [(lambda c, n, m: m == 'Black' and POPUP(c) and c.y > -1.74 and c.z > 0.765 and abs(n.z) > 0.5, 'Paint'),
                     (lambda c, n, m: m == 'Chrome' and 0.48 < abs(c.x) < 0.7 and -1.75 < c.y < -1.69 and 0.63 < c.z < 0.79, 'HeadLight'),
+                    (lambda c, n, m: m == 'Lens' and POPUP(c) and c.y > -1.7, 'HeadLight'),
                     (lambda c, n, m: m == 'TailLight' and abs(c.x) < 0.25, 'Reflector')],
         # The pop-ups are reduced with the lamps, at their tighter error: in the shell's collapse
         # their lids and housings went to a few coarse facets.
