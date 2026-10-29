@@ -76,7 +76,10 @@
       "WebFetch(domain:developer.mozilla.org)",
       "WebFetch(domain:code.claude.com)",
       "mcp__claude-in-chrome__tabs_context_mcp",
-      "ClaudeInChromeDomain(localhost:5175)"
+      "ClaudeInChromeDomain(localhost:5175)",
+      "Bash(npm run *)",
+      "Bash(git checkout *)",
+      "Bash(python3 -)"
     ],
     "deny": [
       "Read(./public/**/*.mp3)",
