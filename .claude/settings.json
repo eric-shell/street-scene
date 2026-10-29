@@ -74,18 +74,9 @@
       "WebFetch(domain:vitest.dev)",
       "WebFetch(domain:vite.dev)",
       "WebFetch(domain:developer.mozilla.org)",
-      "WebFetch(domain:code.claude.com)"
-    ],
-    "ask": [
-      "Bash(git push *)",
-      "Bash(git reset *)",
-      "Bash(git checkout -- *)",
-      "Bash(git restore *)",
-      "Bash(git clean *)",
-      "Bash(git rebase *)",
-      "Bash(rm -rf *)",
-      "Bash(npm run assets *)",
-      "Bash(npm run music *)"
+      "WebFetch(domain:code.claude.com)",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "ClaudeInChromeDomain(localhost:5175)"
     ],
     "deny": [
       "Read(./public/**/*.mp3)",
@@ -101,6 +92,17 @@
       "Bash(git push --force *)",
       "Bash(git push -f *)",
       "Bash(npm publish *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(git reset *)",
+      "Bash(git checkout -- *)",
+      "Bash(git restore *)",
+      "Bash(git clean *)",
+      "Bash(git rebase *)",
+      "Bash(rm -rf *)",
+      "Bash(npm run assets *)",
+      "Bash(npm run music *)"
     ]
   },
   "hooks": {
@@ -135,15 +137,15 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Edit(**/*.json)",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-json.sh",
+            "if": "Edit(**/*.json)",
             "timeout": 60,
             "statusMessage": "Validating JSON data file"
           },
           {
             "type": "command",
-            "if": "Edit(**/*.scss)",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-scss.sh",
+            "if": "Edit(**/*.scss)",
             "timeout": 30,
             "statusMessage": "Compiling the stylesheet"
           }
