@@ -82,7 +82,9 @@ GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'By
 # `pick` (axis, lo, hi): keep only the faces whose centre lies between lo and hi on that axis of the import's frame (a scene holding several wheels).
 # `cap` the turned hub cap's radius (share of the lip) where the round test stops short of an opening a dropped logo cap covered. An explicit radius may be under 0.12 and must clear the vertices of the hub's fan of faces (momiji's 20.8 mm recess: 0.105).
 # `cap_fill` True closes a cap ring's open center, so the whole center wears the cap's paint (sora).
-# `cap_disc` (share of the lip): the turned cap takes in the face's front-facing faces inside this radius too, so the cap is the hub's whole round disc out to where the spokes begin, with no face-paint ring round it (homura).
+# `cap_disc` (share of the lip): the turned cap takes in the face's front-facing faces inside this radius too, so the cap is the hub's whole round disc out to where the spokes begin, with no face-paint ring round it.
+# `cap_max` (share of the lip): cap-kind pieces of the donor with a vertex beyond this radius go back to the face (`Rim`) before the cap is turned, so the cap is only the center disc where pocket walls or hub pieces were classified cap (hinoko).
+# `cap_edge` (share of the lip): the center cap's own edge, read off the donor, where the piece classified as cap is the whole hub round it (the pad, ring or bowl the cap sits in). The hub is still turned with the cap, a piece of it running round the axle included, but only inside the edge is RimCap; past it the face's Rim (hari, homura, minamo, natsu, shirabe).
 # `turn` (share of the lip): on a multi-piece wheel, turn the face's surfaces of revolution joined to faces outside it, as on a one-piece (a round flange the spokes stand on, which a collapse crumples: mio).
 # `chunks` True for a scan cut into chunks that each run from the hub to the lip: its islands are no parts (the ring ones are barrel
 # scraps, the narrow and flat ones pieces of spoke), so all but the hub's join the face and the lip is turned out of it as on a one-piece.
@@ -93,8 +95,9 @@ WHEELS = {
     'kumo': {'name': 'Work VS-TX', 'uid': '31c76095a0754cb1b08591d63973a2c2', 'maker': 'Work', **_J},
     'yari': {'name': 'Work Equip 03', 'uid': '13c021b58f2b4c42ac747feb5457750b', 'maker': 'Work', **_J},
     'tsume': {'name': 'Work Equip 40', 'uid': 'ac9b1a3ffbd8400a9b364d0596fdcc56', 'maker': 'Work', **_J,
-              'lugs': (4, 0.275, {'seat': 0.010})},   # a dual drilled hub: the four holes on the spokes (114.3), in countersinks, not the four hex collars between them (100) or the crescents inboard; the nut sits where the cone is 10 mm out
-    'hari': {'name': 'Work Emitz', 'uid': '0dd4b490ee624aeda867cd5ccfe530e6', 'maker': 'Work', **_J},
+              'lugs': (4, 0.237)},   # a dual drilled hub (4x100 and 4x114.3): the four holes at r 49 mm on the diagonals, in pockets 9 mm deep between the spokes and the cap (the 100 mm set), not the four countersunk holes on the spokes at r 57 mm (114.3) or the crescents at r 41 mm; the nut seats on the pocket's floor (x 31.6 mm)
+    'hari': {'name': 'Work Emitz', 'uid': '0dd4b490ee624aeda867cd5ccfe530e6', 'maker': 'Work', **_J,
+             'cap_edge': 0.186},   # the cap is the badge glass (r 31 mm) in its gold hex and flange (38.6 mm); the cap_001 island round it, out to 64.7 mm, is the wheel's grey bowl: RimCap ran to 62.7 mm (2026-10-28)
     'kasumi': {'name': 'Work VS-KF', 'uid': 'f762ae9a968d4971a9c4c61922310e44', 'maker': 'Work', **_J},
     'raiden': {'name': 'Work VS-XV', 'uid': 'bb47f6dd1ab6406289c59e3c0a86be38', 'maker': 'Work', **_J},
     'ryusei': {'name': 'Work VS-XX', 'uid': '6a1c8ab8df444530a2a0ac93487cf3bd', 'maker': 'Work', **_J,
@@ -146,7 +149,7 @@ WHEELS = {
     'tora': {'name': 'HRE P200', 'uid': '7221bc7c423e401f83712d56e435a813', 'maker': 'HRE', **_J},
     'tsuchi': {'name': 'Fifteen52 Rally Sport', 'uid': '1ed9ad4cbe5644ae831fe95bae84a0fc', 'maker': 'Fifteen52', **_J},
     'homura': {'name': 'SSR Koenig', 'uid': '391ab57dc25a4aa69771fbb9114f3d40', 'maker': 'SSR', **_J,
-              'cap_disc': 0.29},   # the donor's round hub ran to 0.29 of the lip but its cap stopped at 0.277, leaving a ring of face paint round it (2026-10-28)
+              'cap_edge': 0.179},   # the cap is the KS plate (r 26.5 mm, 5 mm down) in its bezel of ten screws, ringed by a groove at 37 mm; the hub pad round it (one island with it, to 59 mm) is the wheel's. `cap_disc: 0.29` had painted the whole pad and more (2026-10-28)
     'hane': {'name': 'BBS E52', 'uid': '8168cc3dce114b19b617c17fea0ab364', 'maker': 'BBS', **_J,
              'normals': 'geometry',   # its mesh's authored normals lean sideways: the face shaded dark
              'face': -1},   # the normal vote showed the hub's back, with its five stud holes
@@ -192,7 +195,8 @@ WHEELS = {
               'lip': 'chrome'},   # a Work 3-piece line, though the model carries no lip bolts
     'nagi': {'name': 'Vossen VPS 310T', 'uid': '2128c0d05b98416c9de4f3eccf2605aa', 'maker': 'Vossen', **_J},
     'natsu': {'name': 'Rotiform HVN', 'uid': 'c89560b091cf49e9b2cc4f0f38074d40', 'maker': 'Rotiform', **_J,
-             'face': -1},   # face 1 showed the plate's plain back and the hub's mounting face (2026-10-28)
+             'face': -1,   # face 1 showed the plate's plain back and the hub's mounting face (2026-10-28)
+             'cap_edge': 0.186},   # the cap is the black hex and its flange (cap_black, 38.6 mm); the red ring round it (its own island, 35.8 to 60.9 mm, the face's material) is the hub: RimCap ran to 59 mm (2026-10-28)
     'nokaze': {'name': 'Rotiform SEA', 'uid': '6dd27000a1cf433490be246b67868022', 'maker': 'Rotiform', **_J},
     'ogi': {'name': 'Rotiform RSC', 'uid': '3be8e6543dc34551b71666f4c0d262a5', 'maker': 'Rotiform', **_J,
            'face': -1},   # the normal vote put the plate 0.73 of the way down the barrel
@@ -235,7 +239,8 @@ WHEELS = {
                 'lugs': (5, 0.205)},   # the five counterbored pockets (r 42 mm), not the ring of small decorative holes inboard (innermost won); the nut sits at the bottom of the bore
     'hanabi': {'name': 'SSR Starshark', 'uid': '58970916a3be46a48d61de853149a22a', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution'},
     'minamo': {'name': 'MAE CROWN JEWEL', 'uid': '2c77da7f41df431aa1db7b7c2afa92ca', 'maker': 'MAE', 'author': 'dermaks', 'license': 'CC Attribution',
-              'face': 1},   # the normal vote put the spokes 0.76 down the barrel; the same template as the MAE above reads 0.39 turned
+              'face': 1,   # the normal vote put the spokes 0.76 down the barrel; the same template as the MAE above reads 0.39 turned
+              'cap_edge': 0.181},   # the cap is the silver logo disc and its cone (mae_silver, 37.5 mm, an engraved line); the flush pad round it in the body's material, welded into the same island to 61 mm, is the hub: RimCap ran to 60.5 mm (2026-10-28)
     'nadeshiko': {'name': 'SSR Collection Mk1', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
                  'pick': ('y', -1, -0.1085)},   # one scene of three wheels in a row along the axle (mk1, mk2, mk3 on one lip): the Mk1 spokes
     'tsukushi': {'name': 'SSR Collection Mk2', 'uid': '8d2a195f7da443faa3de85b5a4708772', 'maker': 'SSR', 'author': 'dermaks', 'license': 'CC Attribution',
@@ -249,7 +254,8 @@ WHEELS = {
                  'drop': r'Tire|Rough_metal',   # its own tire, and the valve stem
                  'lugs': (5, 0.229, {'x': 0.022})},   # five 13 mm radius holes in counterbores that rise to the spokes' roots 56 mm out: the rays round a lug read the wall, so the nut seats on the ledge (x 22 mm) round the hole; the donor's nuts, standing in them, were cap islands that made the cap a 57 mm disc (see clean_cap)
     'tatsumaki': {'name': 'Rotiform DAB', 'uid': '48ff08bbf17b43b4abbc2ee9113be954', 'maker': 'Rotiform', 'author': 'blakebella', 'license': 'CC Attribution',
-                 'drop': r'^tire$'},   # its own tire (the rotor goes as junk)
+                 'drop': r'^tire$',   # its own tire (the rotor goes as junk)
+                 'lugs': (5, 0.2426, {'x': 0.0436})},   # the donor's five tall nuts (r 50.3 mm, each 22 mm across with its collar, standing in holes through the bowl's floor); the rays round a lug read the bowl's rim (60.5 mm), so the seat is set outright: the floor, 43.6 mm. The old circle (r 56 mm, x 43.8) was the oversize cap disc, which covered those holes (see clean_cap)
     'kogane': {'name': 'BBS LM Gold Wheels', 'uid': '3aac505aa9484d088204fabef6a8a4c2', 'maker': 'BBS', 'author': 'zxargon', 'license': 'CC Attribution'},
     'namida': {'name': 'S13 Teardrops Rims', 'uid': 'f8fe25efca84448994f449ef9d894d54', 'maker': 'Fifteen52', 'author': 'Once_a_goat_death', 'license': 'CC Attribution'},
     'akane': {'name': 'SSR Hasemi Prot-S', 'uid': '581e5099da7a4620b11c3fc424c507de', 'maker': 'SSR', 'author': 'techtackofficial', 'license': 'CC Attribution',
@@ -269,14 +275,17 @@ WHEELS = {
                                   # the house cap, 32 mm), and the lug circle read r 55.7 mm on that disc, not the nuts' 51 mm in their pockets (x 41 mm)
     'fuuga': {'name': 'RAYS G025', 'uid': '8b14891bb44b43729d07f1e4e2744488', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
             'drop': r'^material\.001$',   # the spoke sticker
-            'lugs': 0,   # the center cap covers the lug circle
+            'lugs': (5, 0.215, {'seat': 0.0115}),
             'chunks': True},   # a scan in chunks, as the 57CR
     'hinoko': {'name': 'RAYS HOMURA 2x7', 'uid': 'f2da4e9b0d04418aa1b53022d692ea6b', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
              'cap_disc': 0.12,   # the turned cap sat 3 to 20 mm behind the donor's own flat hub disc (r 24 mm, a second Rim layer in front of it); take the disc in so the cap is the one surface, short of the lug circle (r 36 mm) on the cone
+             'lugs': (5, 0.2190, {'at': -71.9, 'rad': 0.05}),   # the five nuts in their counterbores (r 45.4 mm, the first at -71.9 deg), placed from the recipe: the same angles as before but not r 36 mm, where the lugs stood on the cap's pocket pieces; the small holes between them are on the same circle and the depth image takes those
+             'cap_max': 0.125,   # and nothing else of the hub is cap: the pocket walls round the five lugs and the small holes between them were cap-kind pieces out to r 57 mm, so the cap color showed behind the nuts
              'chunks': True},   # a scan in chunks, as the 57CR
     # 2026-10-28, two more (CC BY 4.0)
     'shirabe': {'name': 'Konig Countergram 5x120 Wheel / FREE MODEL', 'uid': 'c3bffbcaafbe4f5388f14feed6b38cca', 'maker': 'Konig', 'author': 'shevchenkovisuals', 'license': 'CC Attribution',
                 'drop': r'Tire|Text|Lug Nuts',   # its own tire, the lettering and the donor's nuts (nodes named for them)
+                'cap_edge': 0.133,   # the black dome (Rim_Black, 27.5 mm); the bare chrome hub round it, one island with it to 61.7 mm, is the wheel's: RimCap ran to 61.7 mm, under the nuts (2026-10-28)
                 'lugs': (5, 0.2217, {'at': 0})},   # the dropped nuts stood on a bare chrome hub round the black cap: no hole or pocket for the depth image to read, so the circle is the nuts' own (r 45.9 mm, the first straight up)
     'asahi': {'name': 'Enkie Rpf1', 'uid': '43182083d4134e918a81f115905d5483', 'maker': 'Enkei', 'author': 'astrubal', 'license': 'CC Attribution',
               'face': -1, 'chunks': True,   # the lip flange is in the face's island and the barrel a separate one: as chunks the lip is turned out of both
@@ -737,12 +746,27 @@ def _cap_profile(faces, L, planes=24, stations=48, fill=False):
     return _thin(pts, 12, 2e-4)
 
 
-def clean_cap(o, pick=None, seg=CAP_SEG, fill=False):
+def _covers_axle(faces):
+    """True when one of the faces' triangles (a fan for a bigger polygon) contains the axle, seen down X."""
+    from mathutils.geometry import intersect_point_tri_2d
+    org = Vector((0, 0))
+    for f in faces:
+        vs = [Vector((v.co.y, v.co.z)) for v in f.verts]
+        for k in range(1, len(vs) - 1):
+            if intersect_point_tri_2d(org, vs[0], vs[k], vs[k + 1]):
+                return True
+    return False
+
+
+def clean_cap(o, pick=None, seg=CAP_SEG, fill=False, edge=None):
     """Turn the wheel's center cap from its own profile: the faces `pick(face, L)` chooses (by
     default those already `RimCap`) go and a lathe of their median profile takes their place, in
     `RimCap`, so the cap keeps its shape and loses the donor maker's logo. The rest of the mesh
     keeps its custom normals. Faces that start outside 0.15 of the lip are lug nuts and go back to Chrome.
     `fill` closes a cap ring's open center (the recipe's `cap_fill`: the whole center takes the cap's paint).
+    `edge` (m, the recipe's `cap_edge`) is the cap's own radius where the piece classified as cap is the
+    whole hub round it: the lathe still turns all of it, a pick's pieces that run round the axle (a hub
+    ring or bowl, not a nut) included, but only inside `edge` is `RimCap`; outside is the face's `Rim`.
     Returns the profile's point count, 0 when there was no cap."""
     L = TIRE_R * BEAD
     me = o.data
@@ -786,6 +810,12 @@ def clean_cap(o, pick=None, seg=CAP_SEG, fill=False):
             for c in comps:
                 if c in inner:
                     continue
+                # With the cap's own edge given, a piece that runs round the axle is the hub ring or bowl
+                # the cap sits in (natsu's ring, hari's bowl): turned with the cap and painted Rim past the
+                # edge. Taken for a nut it went, and left a hole round the cap.
+                if edge and len({int((math.atan2(v.co.z, v.co.y) + math.pi) / (2 * math.pi) * 36) % 36 for g in c for v in g.verts}) >= 34:
+                    inner.append(c)
+                    continue
                 xs = [v.co.x for g in c for v in g.verts]
                 if max(xs) - min(xs) > 0.006:
                     nuts += c
@@ -796,13 +826,34 @@ def clean_cap(o, pick=None, seg=CAP_SEG, fill=False):
             faces = [f for c in inner for f in c]
     # A cap reaches in to the bore; a ring of lug nuts round the hub (inside 0.35 of the lip, so
     # classified as cap) starts outside 0.15.
-    lugs = bool(faces) and min(_rad(v.co) for f in faces for v in f.verts) > 0.15 * L
+    # A flat disc triangulated without a center vertex (himawari's 60 triangles, radius 0.15 of the
+    # lip on the dot) has no vertex inside 0.15 either, but one of its triangles holds the axle: that is a cap.
+    lugs = bool(faces) and min(_rad(v.co) for f in faces for v in f.verts) > 0.15 * L and not _covers_axle(faces)
     prof = _cap_profile(faces, L, fill=fill) if faces and not lugs else None
+    if prof and edge:
+        # The turned hub ends in a 3 mm flange at its skirt's foot, tucked under the face round it: a hub
+        # plate that sits with clearance in the spokes' ring (minamo's 1.4 mm) left a slot whose floor
+        # only steep views see, so the hidden face cull took it and the slot showed through the wheel.
+        prof.append(Vector((prof[-1].x, prof[-1].y + 0.003)))
+        # A ring of the profile on the cap's edge, so the paint stops on it: where the profile first
+        # crosses `edge` going out (a step at `edge` keeps its wall in the cap).
+        for k in range(len(prof) - 1):
+            a, b = prof[k], prof[k + 1]
+            if a.y < edge < b.y - 1e-5:
+                prof.insert(k + 1, a.lerp(b, (edge - a.y) / (b.y - a.y)))
+                break
     if prof:
         bmesh.ops.delete(bm, geom=faces, context='FACES')
         made = _lathe(bm, prof, cap_i, seg, ordered=True)
         # The lathe's first ring sits on the axle: one vertex, its quads triangles.
         bmesh.ops.remove_doubles(bm, verts=list({v for f in made for v in f.verts if _rad(v.co) < 1e-5}), dist=1e-5)
+        if edge and max(q.y for q in prof) > edge + 1e-5:
+            if 'Rim' not in [m.name for m in me.materials]:
+                me.materials.append(shared_mat('Rim'))
+            rim_i = [m.name for m in me.materials].index('Rim')
+            for f in made:
+                if f.is_valid and max(_rad(v.co) for v in f.verts) > edge + 1e-5:
+                    f.material_index = rim_i
     elif faces:
         # Lug nuts: hardware, which stays Chrome.
         if 'Chrome' not in [m.name for m in me.materials]:
@@ -1331,6 +1382,43 @@ def _drop_loose(bm, most=60, contact=0.003):
     return len(gone)
 
 
+def _drop_shards_and_stems(bm, lip_mat, shard=0.0025, shard_most=12, stem_most=600, stem_size=0.05, stem_r=0.145, stem_x=0.003, apart=10.0, ring=0.004):
+    """Two kinds of donor leftover that `_drop_loose` keeps because they touch something (2026-10-28).
+    Shards: an island of `shard_most` faces or fewer whose every vertex lies within `shard` of the turned
+    lip (`lip_mat`), a lip rivet or lettering the collapse cut into single triangles; it z-fights the
+    lathe's surface (the Advan A3A's 200 glitching triangles round its perimeter). Stems: a compact island
+    (`stem_size` across at most, `stem_most` faces at most) outside `stem_r` from the axle and at least
+    `stem_x` (3 mm) deep along it, with no island of its own radius (`ring`) at another angle (`apart` degrees),
+    so it is no ring of rivets or lugs: the donor's valve stem, which no wheel has in the game. A stem is
+    often several islands (stem, nut, cap) at one angle, and they all go. House parts (own normals) stay.
+    Returns the faces deleted."""
+    own = bm.faces.layers.int.get('own_normals')
+    bm.faces.ensure_lookup_table()
+    lip = [f for f in bm.faces if f.material_index == lip_mat]
+    tree = None
+    if lip:
+        vs = {v: i for i, v in enumerate({v for f in lip for v in f.verts})}
+        tree = BVHTree.FromPolygons([v.co[:] for v in vs], [[vs[v] for v in f.verts] for f in lip])
+    donor = [g for g in _islands(bm) if not (own is not None and any(f[own] for f in g)) and g[0].material_index != lip_mat]
+    info = []
+    for g in donor:
+        vs = {v for f in g for v in f.verts}
+        lo = Vector((min(v.co.x for v in vs), min(v.co.y for v in vs), min(v.co.z for v in vs)))
+        hi = Vector((max(v.co.x for v in vs), max(v.co.y for v in vs), max(v.co.z for v in vs)))
+        c = sum((v.co for v in vs), Vector()) / len(vs)
+        info.append((g, vs, (hi - lo).length, hi.x - lo.x, sum(_rad(v.co) for v in vs) / len(vs), math.degrees(math.atan2(c.z, c.y))))
+    gone = []
+    for g, vs, size, dx, r, ang in info:
+        if tree and len(g) <= shard_most and all((tree.find_nearest(v.co)[3] or 1e9) < shard for v in vs):
+            gone += g
+        elif 12 <= len(g) <= stem_most and size <= stem_size and r >= stem_r and dx >= stem_x and not any(
+                o is not g and abs(r2 - r) < ring and abs((a2 - ang + 180) % 360 - 180) > apart and s2 < 0.06
+                for o, _, s2, _, r2, a2 in info):
+            gone += g
+    bmesh.ops.delete(bm, geom=gone, context='FACES')
+    return len(gone)
+
+
 def _reduce(o, budget):
     """Collapse to about `budget` triangles: meshoptimizer's (keeps the authored shading and the
     material seams) as far as it goes without tearing loose pieces, Decimate for the rest. No
@@ -1559,6 +1647,7 @@ def wheel(name, root):
     while n:   # a sliver may only have touched another loose one
         n = _drop_loose(obm)
         loose += n
+    _drop_shards_and_stems(obm, IDX['RimLip'])
     out = bpy.data.meshes.new(oname)
     for m in mats:
         out.materials.append(m)
@@ -1573,7 +1662,15 @@ def wheel(name, root):
     remap_materials(o)
     disc = R0.get('cap_disc')
     cap_i = [m.name for m in o.data.materials].index('RimCap') if 'RimCap' in [m.name for m in o.data.materials] else -1
-    cap_pts = clean_cap(o, (lambda f, L: f.material_index == cap_i or all(_rad(v.co) < disc * L for v in f.verts) and f.normal.x > 0.5 and f.calc_center_median().x > 0.03) if disc else None, fill=R0.get('cap_fill', False))
+    cmax = R0.get('cap_max')
+    if cmax and cap_i >= 0:   # the cap is only the donor's center cap: its other cap-kind pieces (pocket walls, hub pieces beyond this radius) are hub, Rim
+        me = o.data
+        rim_i = [m.name for m in me.materials].index('Rim')
+        for p in me.polygons:
+            if p.material_index == cap_i and max(_rad(me.vertices[i].co) for i in p.vertices) > cmax * TIRE_R * BEAD:
+                p.material_index = rim_i
+    cap_pts = clean_cap(o, (lambda f, L: f.material_index == cap_i or all(_rad(v.co) < disc * L for v in f.verts) and f.normal.x > 0.5 and f.calc_center_median().x > 0.03) if disc else None, fill=R0.get('cap_fill', False),
+                        edge=R0['cap_edge'] * TIRE_R * BEAD if R0.get('cap_edge') else None)
     hub_r = 0 if cap_pts else hub_cap(o, R0.get('cap'))
     lugs = fit_lugs(o, R0.get('lugs'))
     o['lip'] = lip
