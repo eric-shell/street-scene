@@ -590,6 +590,13 @@
       "group": "Genbu",
       "construction": "single",
       "lip": "rim",
+      "lugs": {
+        "count": 5,
+        "r": 0.04607,
+        "phase": -1.88166,
+        "x": 0.04768,
+        "size": 0.01
+      },
       "carId": "universal",
       "slot": "wheels",
       "file": "parts/wheel_hibiki.glb",
@@ -600,7 +607,7 @@
         "RimLip",
         "Tire"
       ],
-      "tris": 9285,
+      "tris": 9284,
       "generated": true
     },
     {

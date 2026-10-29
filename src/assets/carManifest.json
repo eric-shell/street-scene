@@ -44,7 +44,10 @@
       },
       "materialMap": {},
       "defaultWheel": "wheel_yari",
-      "targetOffset": { "front": 30, "rear": 10 },
+      "targetOffset": {
+        "front": 30,
+        "rear": 10
+      },
       "defaultPaint": "#1f6bff",
       "selectable": true,
       "engine": {
@@ -113,7 +116,10 @@
       },
       "materialMap": {},
       "defaultWheel": "wheel_ryusei",
-      "targetOffset": { "front": 30, "rear": 10 },
+      "targetOffset": {
+        "front": 30,
+        "rear": 10
+      },
       "defaultPaint": "#ff6a00",
       "selectable": true,
       "engine": {
@@ -183,7 +189,10 @@
       },
       "materialMap": {},
       "defaultWheel": "wheel_kumo",
-      "targetOffset": { "front": 30, "rear": 10 },
+      "targetOffset": {
+        "front": 30,
+        "rear": 10
+      },
       "defaultPaint": "#7d8186",
       "selectable": true,
       "engine": {
@@ -253,7 +262,10 @@
       },
       "materialMap": {},
       "defaultWheel": "wheel_tora",
-      "targetOffset": { "front": 30, "rear": 10 },
+      "targetOffset": {
+        "front": 30,
+        "rear": 10
+      },
       "defaultPaint": "#b3121b",
       "selectable": true,
       "engine": {
@@ -324,7 +336,10 @@
       },
       "materialMap": {},
       "defaultWheel": "wheel_kiseki",
-      "targetOffset": { "front": 30, "rear": 10 },
+      "targetOffset": {
+        "front": 30,
+        "rear": 10
+      },
       "defaultPaint": "#3b2d5e",
       "selectable": true,
       "engine": {
@@ -397,7 +412,10 @@
       },
       "materialMap": {},
       "defaultWheel": "wheel_hien",
-      "targetOffset": { "front": 30, "rear": 10 },
+      "targetOffset": {
+        "front": 30,
+        "rear": 10
+      },
       "defaultPaint": "#e8e4dc",
       "selectable": true,
       "engine": {
@@ -464,7 +482,10 @@
       },
       "materialMap": {},
       "defaultWheel": "wheel_hari",
-      "targetOffset": { "front": 30, "rear": 10 },
+      "targetOffset": {
+        "front": 30,
+        "rear": 10
+      },
       "defaultPaint": "#17606b",
       "selectable": true,
       "engine": {

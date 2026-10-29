@@ -263,7 +263,9 @@ WHEELS = {
                  'drop': r'^Material$'},   # its own tire, on a material of that name
     'hibiki': {'name': 'RAYS GramLights 57DR', 'construction': 'single', 'uid': '71a90d6c2d0a444d9d2ca7e3cf715c76', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
              'drop': r'Sticker',   # the spoke stickers
-             'keep': r'^DISK\.'},   # its spokes sit under a node named DISK
+             'keep': r'^DISK\.'},   # its spokes sit under a node named DISK. Rebuilt 2026-10-28 under the current clean_cap: like its sibling
+                                    # kaminari the donor has no cap, an open bore in a dual drilled hub with five separate nuts, and the old build had
+                                    # turned the hub into a 100 mm cap disc over the nut pockets (no lugs found); now the house cap (32 mm) and 5 lugs at r 46 mm
     'kaminari': {'name': 'Rays Gramlights 57CR', 'construction': 'single', 'uid': '47063c38bdaa46ebaf2d2af2079c7118', 'maker': 'Rays', 'author': 'ilvskf', 'license': 'CC Attribution',
                'drop': r'^(7\.001|material)$',   # the spoke stickers
                'chunks': True},   # a scan in chunks: the ring islands were barrel scraps (the face stood 18 cm proud of them), and
