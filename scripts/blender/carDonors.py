@@ -14,6 +14,8 @@ and the differences in construction found (docs/carDesign.md, "Donor models").
     reduce_donor('brandtKombi', BUDGET)           # decimated copy -> donor:brandtKombi.Low
     donor_report(list(DONORS))                   # one table: size, scale check, triangles, materials, stations
     compare_donors(list(DONORS), OUT)            # side / front / rear sheets, same framing for every car
+    edit_diff('brandtKombi', 'myEdits')          # a hand-edited copy of .Low against it: what to put in the recipe
+    ship_donor('brandtKombi', WORK)              # .Low into brandtKombi.Body, a working copy for saveCar.py
 
 A recipe classifies by regex: `materials` maps the import's material names to a shared
 material, None (drop those faces) or 'Lamp' (HeadLight ahead of the axles' midpoint, TailLight
@@ -1439,6 +1441,133 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
           f'drift mean {sum(d) / len(d) * 1000:.1f} mm, p95 {d[int(len(d) * 0.95)] * 1000:.1f} mm; '
           f'lost p95 {lost[int(len(lost) * 0.95)] * 1000:.1f} mm, max {lost[-1] * 1000:.0f} mm')
     return low
+
+
+def _clusters(points, reach=0.05):
+    """Points (Vector, label) grouped by proximity: [(count, lo, hi, {label: count})], largest first."""
+    groups = []
+    for c, m in points:
+        for g in groups:
+            if any((c - q).length < reach for q, _ in g[:300]):
+                g.append((c, m))
+                break
+        else:
+            groups.append([(c, m)])
+    out = []
+    for g in groups:
+        vs = [q for q, _ in g]
+        labels = {}
+        for _, m in g:
+            labels[m] = labels.get(m, 0) + 1
+        out.append((len(g), Vector([min(v[i] for v in vs) for i in range(3)]), Vector([max(v[i] for v in vs) for i in range(3)]), labels))
+    return sorted(out, key=lambda r: -r[0])
+
+
+def edit_diff(cid, edited, which='Low', tol=1e-5):
+    """What a hand edit did, so it can go into the recipe: a reimport rebuilds the car from the
+    donor and drops any edit made to the mesh. `edited` is a copy of `donor:<cid>.<which>` someone
+    worked on (its materials may be study copies, `anything_Paint`: the name after the last `_`
+    counts). Prints the faces removed, added and recoloured and the vertices moved, in clusters,
+    and for each removed cluster the islands of `.Full` it reaches: an island wholly inside is an
+    `islands` rule, a piece of a larger one a `cull` box (the RX-7's wiper blades were islands,
+    the windshield seal's folded edge a cull)."""
+    from mathutils import kdtree
+    a = bpy.data.objects[f'donor:{cid}.{which}'].data
+    b = bpy.data.objects[edited].data
+    base = lambda m: m.name.split('.')[0].split('_')[-1] if m else ''
+    an, bn = [base(m) for m in a.materials], [base(m) for m in b.materials]
+
+    def tree(polys):
+        t = kdtree.KDTree(len(polys))
+        for p in polys:
+            t.insert(p.center, p.index)
+        t.balance()
+        return t
+    ta, tb = tree(a.polygons), tree(b.polygons)
+    gone, recolored = [], []
+    for p in a.polygons:
+        _, i, d = tb.find(p.center)
+        if d > tol:
+            gone.append((p.center.copy(), an[p.material_index]))
+        elif bn[b.polygons[i].material_index] != an[p.material_index]:
+            recolored.append((p.center.copy(), f'{an[p.material_index]}->{bn[b.polygons[i].material_index]}'))
+    added = [(p.center.copy(), bn[p.material_index]) for p in b.polygons if ta.find(p.center)[2] > tol]
+    tv = kdtree.KDTree(len(a.vertices))
+    for v in a.vertices:
+        tv.insert(v.co, v.index)
+    tv.balance()
+    moved = [(v.co.copy(), 'vertex') for v in b.vertices if tv.find(v.co)[2] > tol]
+    print(f'{cid}: {len(gone)} faces removed, {len(added)} added, {len(recolored)} recoloured, {len(moved)} vertices moved')
+    full = bpy.data.objects[f'donor:{cid}.Full'].data
+    fn = [m.name.split('.')[0] for m in full.materials]
+    bm = bmesh.new()
+    bm.from_mesh(full)
+    bm.faces.ensure_lookup_table()
+    for title, pts in (('removed', gone), ('added', added), ('recoloured', recolored), ('moved', moved)):
+        for n, lo, hi, labels in _clusters(pts):
+            print(f'  {title} {n}: {fmt(lo)}..{fmt(hi)} {labels}')
+            if title != 'removed':
+                continue
+            box_lo, box_hi = lo - Vector((0.02,) * 3), hi + Vector((0.02,) * 3)
+            inside = lambda q, l=box_lo, h=box_hi: all(l[i] <= q[i] <= h[i] for i in range(3))
+            seen, found = set(), []
+            for f in bm.faces:
+                if f.index in seen or not inside(f.calc_center_median()):
+                    continue
+                stack, comp = [f], []
+                seen.add(f.index)
+                while stack:
+                    g = stack.pop()
+                    comp.append(g)
+                    for e in g.edges:
+                        for h in e.link_faces:
+                            if h.index not in seen:
+                                seen.add(h.index)
+                                stack.append(h)
+                share = sum(inside(g.calc_center_median()) for g in comp) / len(comp)
+                found.append((share, comp))
+            # The pieces mostly in the box: whole ones are `islands` rules, the rest `cull` boxes.
+            for share, comp in sorted(found, key=lambda r: -r[0])[:3]:
+                if share < 0.2:
+                    break
+                pts_ = [v.co for g in comp for v in g.verts]
+                ilo = Vector([min(q[i] for q in pts_) for i in range(3)])
+                ihi = Vector([max(q[i] for q in pts_) for i in range(3)])
+                mats = sorted({fn[g.material_index] for g in comp})
+                how = 'islands rule' if share > 0.99 else f'cull box ({share:.0%} of it in the edit)'
+                print(f'    Full island {len(comp)} faces {fmt(ilo)}..{fmt(ihi)} {mats}: {how}')
+    bm.free()
+
+
+def ship_donor(cid, work):
+    """`donor:<cid>.Low` into `<cid>.Body` and a working copy of the session at `work` for
+    saveCar.py (docs/carDonors.md, Ship). The car's collections come from its authored .blend
+    when the session does not hold them; the Rig empties and parts stay as they are, so this is for
+    a reimport of a car whose wheelbase and track did not change. Prints the commands that finish
+    it; nothing in the session's own file is touched (the copy is saved with copy=True)."""
+    low = bpy.data.objects[f'donor:{cid}.Low']
+    path = os.path.join(REPO, f'assets/source/eshell/{cid}/{cid}.blend')
+    if f'{cid}:Car' not in bpy.data.collections:
+        with bpy.data.libraries.load(path, link=False) as (src, dst):
+            dst.collections = [c for c in src.collections if c.startswith(f'{cid}:')]
+        for c in dst.collections:
+            bpy.context.scene.collection.children.link(c)
+    body = bpy.data.objects[f'{cid}.Body']
+    old = body.data
+    me = low.data.copy()
+    for n in ('src_normal', 'own_normals'):
+        if me.attributes.get(n):
+            me.attributes.remove(me.attributes[n])
+    body.data = me
+    bpy.data.meshes.remove(old)
+    me.name = f'{cid}.Body'
+    for k in ('wheelbase', 'tireRadius', 'track'):
+        body[k] = low[k]
+    remap_materials(body)
+    bpy.ops.wm.save_as_mainfile(filepath=work, copy=True)
+    print(f'{cid}: {len(me.polygons)} faces in {cid}.Body; then:\n'
+          f'  /Applications/Blender.app/Contents/MacOS/Blender --background {work} --python scripts/blender/saveCar.py -- {cid} assets/source/eshell/{cid}/{cid}.blend\n'
+          f'  npm run assets && npm run audit -- {cid}')
 
 
 def _donor_car(cid, which):

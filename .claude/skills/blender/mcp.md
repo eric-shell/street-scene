@@ -48,7 +48,7 @@ To roll back, revert `.claude/skills/blender/mcp.json` and run `mcp.sh install`.
 ## Daily use
 
 - Both add-ons auto start their servers with Blender. If one is closed, `mcp.sh status` names the fix.
-- The Sketchfab switch is a scene property (`bpy.context.scene.blendermcp_use_sketchfab`), off in every new file even though the key persists. Turn it on in the viewport N panel → MCP for Blender, or with that one line through `blender`; File → Defaults → Save Startup File with it on keeps it on for new files. Licensing rules for what may be imported are in memory (third-party model licensing).
+- The Sketchfab switch is a scene property (`bpy.context.scene.blendermcp_use_sketchfab`), off in every new file even though the key persists, and in every scene made with `bpy.data.scenes.new` (work in a scene of your own to leave the user's alone, then copy every `blendermcp_*` property but `blendermcp_server_running` over from their scene, or `import_asset` reports Sketchfab switched off). Turn it on in the viewport N panel → MCP for Blender, or with that one line through `blender`; File → Defaults → Save Startup File with it on keeps it on for new files. Licensing rules for what may be imported are in memory (third-party model licensing).
 - Editing `.claude/skills/blender/mcp.json` takes effect after `mcp.sh register` and a new Claude Code session.
 
 ## Traps (each cost time when this was set up, 2026-10-22)

@@ -46,7 +46,34 @@ Most of the classification is automatic. `AUTO` in `carDonors.py` maps material 
 - `Interior` for the cabin (interior, seat, dash, steering, headliner, carpet, cloth, leather, gauges): it ships, reduced hard, because the game's glass is 70 % opaque and a car without a cabin reads hollow;
 - `Glass`, lamps, `Paint`, `Chrome` and `Black` by their usual words; indicator, blinker, marker, amber and orange to `Light`, before glass, so `orangeglass` is not a window.
 
-Only the main lamps glow in the game. A donor whose lamps are modelled in layers (a clear cover over reflectors and bulbs, round lenses in a tail bar) maps them finer than `'Lamp'`: the covers to `Lens` (unlit, see-through, so the reflectors and bulbs behind read as the lamp's detail), indicators and markers to `Light` (amber) or `Reflector` (red), and only the main lamps' own lenses, or the reflector behind a clear cover (`recolor`), to `HeadLight` and `TailLight`. A main lamp modelled as a bare cover over chrome stays `'Lamp'`, or it would not glow at all.
+### Lamps
+
+Only the big lamps glow in the game; everything else is an unlit lens. A donor whose lamps are modelled in layers (a clear cover over reflectors and bulbs, round lenses in a tail bar) is mapped finer than `'Lamp'`, and its detail then shows through the cover:
+
+| Role | Material | Glows |
+|---|---|---|
+| A headlamp's element: its reflector bowl, its bulb, a projector lens | `HeadLight` | always |
+| A tail lamp's own lens (the round lenses, not the bar over them) | `TailLight` | always, brighter braking |
+| The third brake light | `BrakeLight` | only braking |
+| A clear cover over a lamp, a reverse or fog lamp, an unlit bulb | `Lens` | no; see-through |
+| Indicators, side markers, repeaters | `Light` | no; amber |
+| Red reflectors and markers, a red strip that is not a brake light | `Reflector` | no; red |
+| Housings, bezels, buckets | `Black` (or `Paint` where the car is body colour) | no |
+
+1. List the import's lamp pieces: each lamp material's islands with face count and bounds (a few lines of `bmesh` over `donor:<cid>.Full`). Lamps come in a few dozen islands: the cover (thousands of faces), the reflectors (`Chrome`, a hundred or so), the bulbs (small closed islands just behind a lens), the amber and red lenses.
+2. Look at the lamps in the shared colours (`tint_materials()`, which tints `Lens` cyan), from the front and rear at 0.5 to 0.8 m: a temporary empty at the lamp makes a good `look` target with `distance`.
+3. Decide with a photo of the real car which pieces glow and where the black goes; the photo, not the donor's material names, says which (the RX-7's pop-ups are body colour on the top and sides with a black bezel; its third brake light is one thin strip). Ask the user for a photo when it is not obvious.
+4. Map by material first (`materials`), then by geometry (`recolor`): a bulb sits a few mm behind its lens, so a depth band picks it (`-1.893 < c.y < -1.865` on the RX-7's bumper lamps, where the lens ends at -1.895: print the faces' y along the lamp's axis to find the gap). A reflector behind a clear cover is `Chrome` turned `HeadLight` by box.
+5. A main lamp needs something that glows: a lamp modelled as a bare cover over chrome stays `'Lamp'` (the cover glows) or gets its chrome recoloured.
+
+The pipeline then does the rest:
+- `lamp_faces` takes every lamp material and what sits under a `Lens` cover (rays outward along and across the car), and the recipe's `lamps` predicates for a housing outside its cover (the RX-7's raised pop-ups);
+- those are reduced first at `LAMP_ERROR`, welded back and held while the shell collapses (Run, step 3);
+- nothing under a cover is taken for a badge.
+
+Two traps seen on the RX-7:
+- **Layers a few mm apart fold through each other** at the lamps' error (13 mm): the pop-up bucket's ceiling came through the lid in black patches. Recolour the hidden layer to the colour of the one over it, and keep anything seen from the front (the bezel's lip) as it was: `c.y` past the lens is a good split.
+- **A fussy lamp is better replaced than kept**: four red blocks in a black pocket became one `strips` entry, a thin `BrakeLight` strip on a mirrored curve measured off the pocket's top edge (rays from behind at a few x, 6 mm under the edge, 1 cm tall).
 
 Names are matched without Blender's `.001` suffix, so several donors can sit in one session.
 
@@ -116,9 +143,18 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 - **Budget:** 16,000 triangles for the shell plus up to 2,500 of cabin; drift p95 under 1 mm. Drift only measures the kept vertices, so also read **lost** (the skin's vertices to the reduced surface): a high lost max is a part collapsed away, such as a mirror or a lip.
 - **Winding:** look with backface culling on (`shading.show_backface_culling` on the viewport). The game draws most car materials double sided but not `Rim` or `Tire`, and a car wound inside out shades dark; Blender's default viewport hides both faults.
 
+### Hand edits go in the recipe
+
+A reimport rebuilds the car from the donor, so an edit made by hand to the shipped mesh is lost the next time. Every fix belongs in the recipe, where the next rebuild makes it too:
+1. Let the user edit a copy of `donor:<cid>.Low` (a study copy in its own materials is fine).
+2. `edit_diff(cid, '<edited object>')` prints the faces removed, added and recoloured, in clusters with bounds, and for each removed cluster the `.Full` islands it reaches: a whole island is an `islands` rule (`set(mats) == {...} and k < N` and its center in a box), part of a larger one a `cull` box on the face centers.
+3. Write the rules, rebuild, and check the edited spots hold nothing (count the faces left in each box) before shipping.
+
+The RX-7's hand edits all went this way: wiper blades and the antenna base (`islands`), the windshield seal's folded edge and the mirror mount's top (`cull`), the decklid lock (`patches`, with a small ring).
+
 ## 6. Ship
 
-Copy `donor:<cid>.Low` into `<cid>:Car` as `<cid>.Body`. Drop the `src_normal` and `own_normals` attributes and run `remap_materials`. Put the Rig empties at the donor's own wheelbase, track and tire radius. Then:
+`ship_donor(cid, work)` does the first step for a car already shipped (same donor, same wheelbase and track): it copies `donor:<cid>.Low` into `<cid>.Body` (loading the car's collections from its `.blend` when the session lacks them), drops the `src_normal` and `own_normals` attributes, runs `remap_materials`, saves a copy of the session at `work` without touching the session's own file, and prints the two commands that finish it. Re-shipping an unchanged build this way gives a byte-identical GLB. For a new car, copy `donor:<cid>.Low` into `<cid>:Car` as `<cid>.Body` by hand the same way and put the Rig empties at the donor's own wheelbase, track and tire radius. Then:
 1. Save a working copy and run `saveCar.py` headless.
 2. Run `npm run assets` and `npm run validate`. `exportCar.py` reshades every car mesh as it exports (`SHADE_ANGLE_DEG`): edges sharper than 35 degrees split, the rest smoothed with face-area weights. The authored normals `shade_from_source` sets do not survive later hand edits (a bmesh round trip drops them), and plain smooth normals on a 16,000 triangle shell tilted the hood's corners 30 to 40 degrees off their faces: the panel's reflection swung across it and went black at some angles. Wheels keep their own shading.
 3. Look at the car in the garage, lowered all the way: the tire must tuck under the fender with no liner showing in front of it. The game clips a tire at the body's outer skin under the fender and at the lip's underside at its edge (`render/car/wheelClip.ts`), so a liner's height no longer matters to a lowered build; a liner on or through the tire still does (`lift_liners` in `carKit.py` clears it to the house arch gap).
@@ -171,6 +207,12 @@ A sixth garage car, after a 1994 Supra MK IV Turbo: TinoD2's "Toyota Supra MK IV
 ## 12. Tachibana Runabout (2026-10-28)
 
 A seventh garage car, after a 1996 MR2 Turbo (SW20): s0h1o9b's "1996 Toyota MR2 W20" (CC BY 4.0, Blender and Photoshop textures, 25,276 faces listed; not a game asset: the lamps, the T-top, the twin engine deck intakes and the wing are geometry, and the author says it has no interior). Published 4,170 x 1,695 x 1,235 mm on a 2,400 mm wheelbase (Wikipedia, Toyota MR2; the track is measured). The import is scaled to its 4.17 m ground plane, so the pipeline's scale-from-wheelbase did all the work, and it faces -X (`turn` 0, 0, 90). Every material is `Material.0xx`, which `_base` would strip to `Material`: the recipe sets `rawNames` and was written from isolated renders (one tint per material): 016 the tire, 001 the glass, 003 black trim and seals, 004 / 005 / 007 / 017 the lamps (by position), 010 chrome (logos, which the badge passes remove; the exhaust tips; the diffuser slats, recoloured `Black` between the tips), 012 / 015 / 018 black (wing stays, tail panel, mirror glass); the wheel parts are dropped by their parents' names. The nose strips (HeadLight by position) are recoloured `Light`, the indicators; the pop-up headlamps are closed in the hood, so the fog lamps in the bumper are the headlamps. Length -1.9 % of published (the wheelbase sets the scale and the model's overhangs run short), 10,133 triangles, drift p95 0.0 mm (it is under the budget, so nothing is collapsed), lost max 7 mm. The donor has no cabin: it carries the Kazama Rotor's (`interior()`, `twoSeat`, left hand drive), 2,499 faces, all inside the skin. The front intake is closed by the recipe's `backPanels`, and the door handles are the house bars pinned to the donor's own embossed ones (`body.handleFwd`). The donor is a widebody on its own wheels (measured track 1.404 m, mirrors out to 1.88 m), kept as it is: arch gaps 0.017 / 0.029.
+
+## 13. Kazama Rotor lamps (2026-10-29)
+
+The first car through the lamp pass (Recipe, Lamps). The FD's lamps are geometry in layers: one clear cover over the whole tail bar with three round lamps a side (two red lenses, one amber) and a black pocket mid bar; pop-ups with a clear cover over a chrome reflector and a round bulb; bumper lamps with a clear lens, a bulb and an amber indicator behind a cover. Before, every lamp piece was `'Lamp'`, so the tail bar was one glowing red slab, the bumper indicators glowed white as headlamps and the bumper reflectors flashed with the brakes.
+
+Now: clear glass is `Lens`, orange `Light`, red `TailLight`; the pop-up reflectors and bulbs and the bumper lamps' inner bulbs `HeadLight`; the four red blocks mid tail bar culled for one arched `BrakeLight` strip. The pop-ups are body colour on the lid and both sides over the donor's black bucket (from a photo: the bucket's ceiling, which folded through the lid, is paint) and are reduced with the lamps. Fixes found on the way, now in the pipeline: the badge pass took the tail lamps' reflectors for badges and pressed the panel flush where they sat (nothing under a cover is a badge now); pressing the tail lettering flush dented the panel (`press: False`); the hand-cut "inboard flap" cull was the lid's own edge, saw-toothing it (dropped); raised pop-ups made `grille_surface` close the gap between them with two floating black quads (the fascia top is taken at the middle). The user's hand edits went into the recipe (Hand edits go in the recipe). 20,590 triangles: the lamps take 6,100 of them at their tighter error. Manifest and physics unchanged, so replays and bests stand.
 
 ## Donor credits
 
