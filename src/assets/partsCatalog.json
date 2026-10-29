@@ -86,6 +86,22 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_frontBumper_trackBase",
+      "displayName": "Track Base",
+      "carId": "wendtStrom",
+      "slot": "frontBumper",
+      "file": "parts/wendtStrom_frontBumper_trackBase.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 3911,
+      "generated": true
+    },
+    {
       "id": "wendtStrom_frontBumper_trackMild",
       "displayName": "Track Mild",
       "carId": "wendtStrom",
