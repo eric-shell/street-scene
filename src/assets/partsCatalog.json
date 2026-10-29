@@ -46,6 +46,22 @@
       ],
       "materialSlots": [
         "Paint",
+        "Black"
+      ],
+      "tris": 3683,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_frontBumper_cupraRFogs",
+      "displayName": "Cupra R Lip w/ Fogs",
+      "carId": "wendtStrom",
+      "slot": "frontBumper",
+      "file": "parts/wendtStrom_frontBumper_cupraRFogs.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
         "Black",
         "Chrome",
         "HeadLight"

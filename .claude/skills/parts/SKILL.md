@@ -78,7 +78,10 @@ Parts (front bumper budget 4,000):
 | wendtStrom | Stock (`Bumper_Front`) | Body | cut at the seam above | 3,237 |
 | wendtStrom | Euro | Stock | the amber corner markers pressed flush (box x 0.785 to 0.826, y −1.803 to −1.671, z 0.466 to 0.509) | 3,173 |
 | wendtStrom | Euro w/ Fogs | Euro | `round_lamp` in each outer intake (opening x 0.42 to 0.665, z 0.24 to 0.37): centre (±0.592, ray hit, 0.315), bezel r 0.038, lens r 0.027, 2 cm proud, aimed (±0.33, −0.94, −0.08), 22 segments | 3,481 |
-| wendtStrom | Cupra R Lip | Euro w/ Fogs | `bumper_lip` defaults: flat bottom z 0.148; centre plate (|x| < 0.28) 8 mm thick, 1.5 cm clear, 3.5 cm proud, on two 14 mm posts at |x| 0.114; full depth outboard of the centre grille (2.2 to 3.3 cm), 2 cm proud, 1.2 cm chamfer; runs out past 70 degrees | 3,991 |
+| wendtStrom | Cupra R Lip (`cupraR`) | Euro | `bumper_lip` defaults: flat bottom z 0.148; centre plate (|x| < 0.28) 8 mm thick, 1.5 cm clear, 3.5 cm proud, on two 14 mm posts at |x| 0.114; full depth outboard of the centre grille (2.2 to 3.3 cm), 2 cm proud, 1.2 cm chamfer; runs out past 70 degrees | 3,683 |
+| wendtStrom | Cupra R Lip w/ Fogs (`cupraRFogs`) | Euro w/ Fogs | the same lip (its faces match the plain one's exactly) | 3,991 |
+
+A variant with and without an option is two parts, the plain one first: the garage lists a car's parts in the order of its `Parts` collection (unlink and relink an object to move it to the end), and the ids pair up (`euro` / `euroFogs`, `cupraR` / `cupraRFogs`).
 
 ## 7. Keep this skill honest
 
@@ -100,6 +103,6 @@ This file is the memory of the parts process. After every part job, before the c
 - The split is not in the Wendt Strom's donor recipe: a rebuild from the donor (`ship_donor`) gives one `Body` again, and the cut and every part must be redone (the parts from the helpers' calls in section 6). Answer: a `split` entry in the recipe once two cars have been cut.
 - `SEAMS` in `tunerKits.py` should be read from the seam table (or measured by `groove_z` at build time), not typed per car.
 - Rear bumpers will likely need the `rearBumper` budget raised as the front's was; measure the first one before changing it.
-- `CAR_BYTES_BUDGET` (700 KB) predates authored normals and per-part copies of a whole bumper: the Wendt Strom with three bumpers is 1,056 KB. Decide whether the budget moves, the normals get quantized at export, or a variant part ships only its difference.
-- The Cupra R Lip is 9 triangles under the 4,000 budget: anything more on that part needs fewer lip stations or a budget change.
+- `CAR_BYTES_BUDGET` (700 KB) predates authored normals and per-part copies of a whole bumper: the Wendt Strom with four bumper parts is 1,147 KB. Decide whether the budget moves, the normals get quantized at export, or a variant part ships only its difference.
+- The Cupra R Lip w/ Fogs is 9 triangles under the 4,000 budget: anything more on that part needs fewer lip stations or a budget change.
 - The intakes' honeycomb mesh (on the user's photos) is still a flat black panel.
