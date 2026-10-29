@@ -69,10 +69,26 @@ DONORS = {
             r'^(glass|material|material_57|Material_14|outer_rim|wheel_black|chrome_rim|rotor|audilogo|exT_black_shit)$': None,
             # rubber_trim is the window and bumper seals, which AUTO would drop as tire rubber.
             r'^(rubber_trim|plastic2|misc|undercarriage|weatherstrip|black|frame|bumper_frame|grille2_alpha|matte_colors)$': 'Black',
-            r'^(lights_glass|textured_reflector(\.\d+)?|detail_glass_clear|head_light|reverse_light_lod0)$': 'Lamp',
+            # The lamps are modelled in layers: clear covers (`lights_glass`, `detail_glass_clear`)
+            # over textured reflectors, projectors and bulbs; red glass over the tail lamps.
+            r'^(lights_glass|detail_glass_clear)$': 'Lens',
+            r'^(textured_reflector(\.\d+)?|head_light|reverse_light_lod0)$': 'Lamp',
             r'^(detail_glass_red|reflector|tail_light_lod0)$': 'TailLight',
             r'^(window|black_glass)$': 'Glass',
             r'^(chrome|chrome_2|exhaust_chrome_thing)$': 'Chrome'},
+        # Front: the headlamps glow whole (reflector bowl, projector, bulbs) but for their outer
+        # corner, the indicator; in the bumper the inner lamp (the fog lamp, its round lens) glows
+        # and the outer one is an indicator. Rear: the red glass runs across the tailgate from the
+        # corner lamps; the lamps glow (corners, and the tailgate's ends out from |x| 0.31), the
+        # reverse lamp in each (|x| 0.31 to 0.38) bright (as a clear lens it read as a hole onto
+        # the dark housing), the centre panel an unlit red reflector.
+        'recolor': [(lambda c, n, m: m == 'HeadLight' and c.y < -1.85 and abs(c.x) > 0.65 and c.z > 0.55, 'Light'),
+                    (lambda c, n, m: m == 'HeadLight' and c.y < -1.85 and abs(c.x) > 0.583 and c.z < 0.5, 'Light'),
+                    (lambda c, n, m: m == 'TailLight' and c.y > 1.85 and abs(c.x) < 0.31, 'Reflector'),
+                    (lambda c, n, m: m in ('TailLight', 'Lens') and c.y > 1.85 and 0.31 < abs(c.x) < 0.38 and 0.59 < c.z < 0.77, 'Chrome')],
+        # The rear wheel well liners sit on the tire's crown (an arch gap of -0.019): lifted clear,
+        # as the shipped file was by hand on 2026-10-27.
+        'liftLiners': True,
         # What strip_wipers leaves of the wiper arms on the cowl, and the whip antenna on the roof.
         'islands': [lambda k, a, b, mats: set(mats) == {'Black'} and k < 400 and -1.12 < (a.y + b.y) / 2 < -0.86 and 0.84 < (a.z + b.z) / 2 < 0.95
                     and max(b - a) < 0.25,
@@ -1419,6 +1435,34 @@ def lamp_strip(o, points, height, material):
     me.update()
 
 
+def tuck_cabin(cabin, shell, inset=0.005, reach=0.05):
+    """Pull every cabin vertex the reduced shell does not cover back inside it, `inset` m: across
+    the car to the outermost skin at its height and station, down to the roof over it. The cabin
+    and the shell are reduced apart, and a headliner corner or a seat bolster can end up standing
+    through a door or the roof (the audit's `cabin inside the skin`; the Albrecht Kombi's
+    headliner by 29 mm at the windshield's top corner). Returns the vertices moved."""
+    me = shell.data
+    tree = BVHTree.FromPolygons([v.co.copy() for v in me.vertices], [list(p.vertices) for p in me.polygons])
+    moved = 0
+    for v in cabin.data.vertices:
+        c = v.co
+        sx = 1 if c.x >= 0 else -1
+        hit = tree.ray_cast(Vector((sx * 3, c.y, c.z)), Vector((-sx, 0, 0)))[0]
+        roof = tree.ray_cast(Vector((c.x, c.y, 3)), Vector((0, 0, -1)))[0]
+        co = c.copy()
+        # Only a vertex a few cm out: past `reach` the ray slipped through a gap (between the
+        # roof and a window) and found the far side or the floor.
+        if hit is not None and abs(hit.x) - inset < abs(co.x) < abs(hit.x) + reach:
+            co.x = sx * (abs(hit.x) - inset)
+        if roof is not None and roof.z - inset < co.z < roof.z + reach:
+            co.z = roof.z - inset
+        if co != c:
+            v.co = co
+            moved += 1
+    cabin.data.update()
+    return moved
+
+
 def _delete_indices(o, pred):
     """Delete the faces for which pred(polygon) is true (delete_faces by index or anything else of the face)."""
     me = o.data
@@ -1542,8 +1586,16 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     # collapse, the shell round them folded into slivers.
     if DONORS[cid].get('pieces'):
         splice_pieces(cid, low)
+    # Wheel well liners on or through the tire (recipe `liftLiners`) raised clear of it.
+    if DONORS[cid].get('liftLiners'):
+        hy, ht = full['wheelbase'] / 2, full['track'] / 2
+        moved = lift_liners(low, [(sx * ht, sy * hy) for sx in (-1, 1) for sy in (-1, 1)], full['tireRadius'])
+        print(f'{cid}: lifted {moved} liner vertices off the tires')
     turned = shade_from_source(low, skin)
     if cabin.data.polygons:
+        tucked = tuck_cabin(cabin, low)
+        if tucked:
+            print(f'{cid}: {tucked} cabin vertices tucked inside the skin')
         turned += shade_from_source(cabin, skin)
         _carry_custom_normals(cabin)
         _carry_custom_normals(low)
