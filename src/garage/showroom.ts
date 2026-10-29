@@ -18,7 +18,7 @@
  * The shop keeps its own time: the welder in the back corner arcs and throws
  * sparks, the compressor and the customer's dyno pull run, on one pure schedule
  * of the clock (garage/shopSchedule.ts) that the sound bed reads too, so what
- * is heard matches what is shown. The lights go down for the Neon tab
+ * is heard matches what is shown. The lights go down for the Night tab
  * (setLightsDown): the battens and the room's lights to a floor, the neon, the
  * LED ring and the lamp under the lifted car left on.
  *
@@ -188,7 +188,7 @@ const DYNO = { x: 8.0, z: 6.6, yaw: Math.PI, fanR: 0.75 } as const;
 const FAN = { free: 14, idle: 3, full: 30, ease: 1.6 } as const;
 
 /**
- * The room's lights going down (the Neon tab): what is left of the battens, the key, fill and bays lights and
+ * The room's lights going down (the Night tab): what is left of the battens, the key, fill and bays lights and
  * the sky fill at the bottom (share), and how fast they ease (1/s). The neon, the LED ring, the lamp under the
  * lifted car and the exit sign stay, so the underglow and the neon carry the room.
  */
@@ -936,7 +936,7 @@ function liftBuilds(n: number, rnd: () => number = Math.random): { carId: string
     const v = defaultVisual();
     const [color, finish] = pick(LIFT_PAINTS);
     v.paint = { color, finish };
-    v.trimColor = rnd() < 0.7 ? '#111215' : pick(['#c9a227', '#c9ced8', color]);
+    v.trim = rnd() < 0.7 ? { color: '#111215', finish: 'gloss' } : { color: pick(['#c9a227', '#c9ced8', color]), finish: pick(['chrome', 'gloss']) };
     v.tint.darkness = range(0.4, 0.85);
     for (const slot of PART_SLOTS) {
       const list = partsFor(carId, slot);

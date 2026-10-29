@@ -142,16 +142,22 @@ $step-rise: 0.58s, 0.45s, 0.32s;
       @include mixins.ellipsis;
     }
   }
-  /* The tiles of categories (_garage-tab.scss) in two rows (--tabs a row, set from the count), one scrolling
-     row on a phone. */
+  /* The tiles of categories (_garage-tab.scss) four to a row, so seven (eight with Vinyls) make two rows; a
+     short last row stretches its tiles to fill it. One scrolling row on a phone. */
   &__tabs {
-    display: grid;
-    grid-template-columns: repeat(var(--tabs, 5), minmax(0, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 5px;
+    > .garage-tab {
+      flex: 1 1 calc(25% - 4px);
+    }
     @include media.narrow {
-      grid-template-columns: repeat(var(--tab-count, 9), minmax(60px, 1fr));
+      flex-wrap: nowrap;
       overflow-x: auto;
       scrollbar-width: none;
+      > .garage-tab {
+        flex: 1 0 60px;
+      }
     }
   }
   /* The foot under both steps: the discard button leads, square, and Save fills the rest of the rail. Save is the
@@ -265,17 +271,16 @@ $step-rise: 0.58s, 0.45s, 0.32s;
 }
 
 /* Each category's hue, on its tab and, while it is open, on the body (garageUi.ts sets data-tab on the root).
-   Every category has its own: Model orange like the menu's Garage row, Stance purple, Wheels cyan, Body yellow,
-   Paint red, Tint blue, Neon pink, Tune green. Vinyls (behind FEATURES.vinyls) is the ninth and borrows Paint's red. */
+   Every category has its own: Model orange like the menu's Garage row, Stance purple, Wheels cyan, Paint red,
+   Tune green, Body yellow, Night blue. Vinyls (behind FEATURES.vinyls) is the eighth and borrows Paint's red. */
 $tab-hues: (
   'orange': (model),
   'purple': (stance),
   'cyan': (wheels),
-  'yellow': (body),
   'red': (paint, vinyl),
-  'blue': (tint),
-  'pink': (neon),
   'green': (tune),
+  'yellow': (body),
+  'blue': (night),
 );
 @each $hue, $tabs in $tab-hues {
   $attrs: ();

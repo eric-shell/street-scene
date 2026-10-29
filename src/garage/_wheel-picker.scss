@@ -1,69 +1,135 @@
-/* The Wheels tab's wheel picker (wheelPicker.ts): the makers as a wrapping row of small caps filters, each with
-   its count (the picked one lit in the tab's hue, a yellow dot on the maker of the wheel fitted), over a grid of
-   wheel tiles: a chamfered plate holding the wheel's thumbnail on a faint hue spotlight, the name and the maker
-   in small caps under it.
-   A tile edges and washes in the hue on hover like a pick in a list; the wheel fitted is lit along its foot.
-   Until its thumbnail lands a tile shows an empty ring where the wheel will be. */
+/* The Wheels tab's wheel picker (wheelPicker.ts): two wells side by side filling the tab (the section that holds it
+   grows to the body's height, _garage-section.scss --fill). Down the left the makers, a column of small caps rows
+   with their counts (the one shown lit in the tab's hue, a yellow dot on the maker of the wheel fitted); on the
+   right the wheels, two tiles to a row under a heading per maker that sticks to the top of the well as its
+   wheels scroll by. A tile is a chamfered plate holding the wheel's thumbnail on a faint hue spotlight with
+   the name under it; it edges and washes in the hue on hover like a pick in a list, and the wheel fitted is
+   lit along its foot. Until its thumbnail lands a tile shows an empty ring where the wheel will be. */
 @use '../ui/styles/abstracts/mixins';
 @use '../ui/styles/abstracts/media';
 .wheel-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 300px;
+  display: grid;
+  /* The makers' column fits the longest name (Kamaitachi) with its count. */
+  grid-template-columns: 124px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 8px;
+  @include media.narrow {
+    min-height: 240px;
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+  /* The two wells: each scrolls on its own inside its cut. */
+  &__makers,
+  &__wheels {
+    @include mixins.chamfer(8px);
+    @include mixins.scroll-y;
+    min-height: 0;
+    padding: 5px;
+    background: var(--well);
+    border: 1px solid var(--line);
+  }
   &__makers {
     display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
+    flex-direction: column;
+    gap: 3px;
   }
   &__maker {
     @include mixins.chamfer(5px);
-    display: inline-flex;
+    display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 6px;
-    padding: 4px 8px 4px 9px;
+    flex: none;
+    padding: 6px 7px 6px 8px;
     font: 700 11px var(--font);
     letter-spacing: 0.06em;
     text-transform: uppercase;
+    text-align: left;
     color: var(--soft);
-    @include mixins.plate(var(--surface), var(--radius-sm));
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 0;
     cursor: pointer;
     transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
     &:hover,
     &:focus-visible {
-      border-color: rgba(var(--hue-rgb), 0.6);
+      border-color: rgba(var(--hue-rgb), 0.5);
+      background: var(--surface-hover);
       color: var(--text);
       outline: none;
     }
     &:focus-visible {
-      box-shadow: var(--edge), var(--ring);
+      box-shadow: var(--ring);
     }
     &.is-selected {
-      border-color: rgba(var(--hue-rgb), 0.75);
-      background: rgba(var(--hue-rgb), 0.2);
+      border-color: rgba(var(--hue-rgb), 0.7);
+      background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.28), rgba(var(--hue-rgb), 0.08)), var(--surface);
+      box-shadow: inset 3px 0 0 var(--hue);
       color: var(--text);
     }
-    &.is-current::after {
+    /* The maker of the wheel fitted carries a yellow dot after its name. */
+    &.is-current .wheel-picker__maker-name::after {
       content: '';
+      display: inline-block;
       width: 5px;
       height: 5px;
+      margin-left: 5px;
       border-radius: 50%;
       background: var(--accent-2);
+      vertical-align: middle;
     }
   }
+  &__maker-name {
+    @include mixins.ellipsis;
+    min-width: 0;
+  }
   &__count {
+    flex: none;
     font-weight: 600;
+    letter-spacing: 0.02em;
     color: var(--muted);
     .is-selected > & {
       color: var(--hue);
     }
   }
+  &__wheels {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  /* A maker's heading, stuck to the top of the well over its own wheels; the well's background behind it so the
+     tiles scroll under it, not through it. */
+  &__head {
+    position: sticky;
+    top: -5px;
+    z-index: 1;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin: -5px -5px 0;
+    padding: 7px 9px 5px;
+    font: 700 11px var(--font);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--soft);
+    background: var(--well);
+    border-bottom: 1px solid var(--line);
+  }
+  &__head-name {
+    @include mixins.ellipsis;
+    color: var(--text);
+  }
   &__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
-    @include media.phone {
-      grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
-    }
   }
   &__tile {
     @include mixins.chamfer(8px);
@@ -74,7 +140,7 @@
     align-items: stretch;
     gap: 2px;
     min-width: 0;
-    padding: 4px 4px 6px;
+    padding: 4px 4px 7px;
     font: 600 13px var(--font);
     color: var(--soft);
     @include mixins.plate(var(--surface), var(--radius-sm));
@@ -140,17 +206,8 @@
       transform: scale(1.06);
     }
   }
-  &__name,
-  &__maker-name {
+  &__name {
     @include mixins.ellipsis;
     text-align: center;
-  }
-  &__maker-name {
-    margin-top: -2px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--muted);
   }
 }

@@ -63,6 +63,7 @@ export {
   Move,
   Box,
   Hammer,
+  Moon,
   Calendar,
   ListMusic,
   Minimize2,

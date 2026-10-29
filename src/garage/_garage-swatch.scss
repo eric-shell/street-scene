@@ -1,14 +1,23 @@
-/* Colors (garageTabs.ts and garageVinyls.ts: paint, wheels, neon and vinyl): rows of preset swatches beside a color well, and the dot
-   that shows a vinyl layer's color in its row (or the body's on a matched accent). */
+/* Colors (garageWidgets.ts colorPicker, the one picker every color in the garage is chosen with: paint, trim, wheels,
+   calipers, tint, underglow and vinyls): the palette's swatches, three rows of nine, beside a color well as tall as
+   they are, and the dot that shows the body's paint on a matched accent. */
 @use '../ui/styles/abstracts/mixins';
 @use '../ui/styles/abstracts/palette';
 /* A paint picker (garageWidgets.ts paintPicker) redraws inside its own box; the box leaves its rows to the section's
-   column and gap. */
+   column and gap. Its finishes (six with chrome) stay on one line, spread across the rail. */
 .garage-paint {
   display: contents;
+  > .segmented {
+    flex-wrap: nowrap;
+  }
+  > .segmented > .segmented__option {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding: 6px 6px;
+  }
 }
-/* Nine to a row whatever the rail's width (the preset lists are multiples of nine), so no row is left half full;
-   the chips shrink on a narrow rail rather than wrap. */
+/* Nine to a row whatever the rail's width (the palette's rows are nine), so no row is left half full; the chips
+   shrink on a narrow rail rather than wrap. */
 .garage-swatches {
   display: grid;
   grid-template-columns: repeat(9, minmax(0, 26px));
@@ -76,6 +85,18 @@
   &::-moz-color-swatch {
     border: 0;
     border-radius: 0;
+  }
+}
+/* The picker: the well and the swatches side by side, the well stretched to the swatches' height, so the one big
+   chip of the color in use stands beside the rows of choices. After the well's rule above: same specificity, and
+   this one must win its height. */
+.garage-color {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  > input[type='color'] {
+    height: auto;
+    flex: none;
   }
 }
 .garage-dot {

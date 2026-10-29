@@ -4,12 +4,12 @@
  * fits in a URL parameter (?build=...). Imported builds are always validated. A player with no saved garage
  * starts on a random street build (randomBuild), drawn again on every page load until they keep one.
  */
-import { AXLES, CHROME_COLOR, CarBuild, DEFAULT_BUILD_NAME, GLOW_PATTERNS, defaultBuild, validateBuild, type AxleStance, type PaintFinish, type WheelTrim } from '../shared/carBuild';
+import { AXLES, CHROME_COLOR, CarBuild, DEFAULT_BUILD_NAME, GLOW_PATTERNS, defaultBuild, validateBuild, type AccentFinish, type AxleStance, type PaintFinish, type WheelTrim } from '../shared/carBuild';
 import { loadJson, saveJson } from '../shared/store';
 import { DEFAULT_CAR_ID } from '../sim/tuning';
 import { defaultLaunchRpm } from '../sim/build';
 import { manifestCar, partsFor } from '../render/car/carAssets';
-import { PRESETS } from './garageWidgets';
+import { SWATCHES } from './garageWidgets';
 
 export const MAX_SLOTS = 6;
 const KEY = 'garage.v1';
@@ -67,19 +67,19 @@ export function randomBuild(name = DEFAULT_BUILD_NAME): CarBuild {
   v.parts.wheels = pick(partsFor(carId, 'wheels')).id;
   v.wheels.tire = v.wheels.rearTire = Math.random() < 0.7 ? 'mild' : 'stretched';
   // Finishes repeat to weight the draw toward the common ones.
-  v.paint = { color: pick(PRESETS.body), finish: pick<PaintFinish>(['gloss', 'metallic', 'metallic', 'pearl', 'candy', 'matte']) };
-  v.wheels.paint = { color: pick(PRESETS.wheels), finish: pick<PaintFinish>(['metallic', 'gloss', 'matte']), match: false };
+  v.paint = { color: pick([...SWATCHES.loud, ...SWATCHES.deep]), finish: pick<PaintFinish>(['gloss', 'metallic', 'metallic', 'pearl', 'candy', 'matte']) };
+  v.wheels.paint = { color: pick(SWATCHES.metal), finish: pick<AccentFinish>(['metallic', 'gloss', 'matte', 'chrome']), match: false };
   v.wheels.rearPaint = { ...v.wheels.paint };
   v.wheels.lip = { mode: 'stock', color: '#c9ced8', finish: 'metallic' };
   v.wheels.cap = { mode: 'face', color: '#c9ced8', finish: 'metallic' };
   v.wheels.lugNuts = pick<WheelTrim>([{ mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, { mode: 'paint', color: '#111214', finish: 'chrome' }]);
-  v.calipers = Math.random() < 0.25 ? { ...v.paint, match: true } : { color: pick(PRESETS.calipers), finish: pick<PaintFinish>(['gloss', 'candy', 'metallic']), match: false };
+  v.calipers = Math.random() < 0.25 ? { ...v.paint, match: true } : { color: pick(SWATCHES.loud), finish: pick<PaintFinish>(['gloss', 'candy', 'metallic']), match: false };
   v.tint.darkness = between(0.45, 0.85);
-  const glow = pick(PRESETS.glow);
+  const glow = pick(SWATCHES.loud);
   v.underglow = {
     enabled: true,
     color: glow,
-    color2: pick(PRESETS.glow.filter((c) => c !== glow)),
+    color2: pick(SWATCHES.loud.filter((c) => c !== glow)),
     pattern: pick(GLOW_PATTERNS),
     brightness: between(0.45, 0.8),
     speed: between(0.75, 2),
@@ -138,9 +138,9 @@ export type Presentation = 'garage' | 'dyno' | 'street';
 export interface GaragePrefs {
   /** Turntable showroom, the car strapped to the workshop's dyno, or the car cruising the street. */
   presentation: Presentation;
-  /** Front and rear stance sliders (ride height, camber, offset) move together. */
+  /** Front and rear fitment moves together (the Stance tab's link: ride height, camber, offset, wheel size and tire). */
   linkAxles: boolean;
-  /** Front and rear wear the same wheel, size, tire and paint (the Wheels tab's link). */
+  /** Front and rear wear the same wheel and wheel paint (the Wheels and Paint tabs' link). */
   linkWheels: boolean;
 }
 
@@ -170,6 +170,8 @@ const SHORT: Record<string, string> = {
   paint: 'pa',
   color: 'co',
   finish: 'fi',
+  trim: 'tr',
+  // Legacy (pre trim finish) trim color stays in the table so old codes decode.
   trimColor: 'tc',
   parts: 'pt',
   wheels: 'wh',

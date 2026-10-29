@@ -6,8 +6,9 @@
  * and delete actions, its car, spec tags and measured stats, and Customize)
  * over the garage's slots, one build to a row. Customize (step two) is the tabs of
  * live-preview categories over the open tab's groups, each tab laid out to fit
- * the column without scrolling where it can (one line sliders, wheels in a grid,
- * the Body tab one part slot at a time). Under both steps the Save button;
+ * the column without scrolling where it can (one line sliders, the wheel picker
+ * filling the tab with its own scrolling panes, the Body and Paint tabs one part
+ * slot or surface at a time). Under both steps the Save button;
  * beside the rail the 3D view framed to the free space, with the Garage /
  * Street switch and the camera at the bottom. Steps slide like the menu's and
  * Escape or the back button goes back one. Body part menus are populated
@@ -56,7 +57,7 @@ import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShare
 import { section, statLines } from './garageWidgets';
 import type { Child } from './garageWidgets';
 import { AUTHORS, renderTabContent, TABS } from './garageTabs';
-import type { Tab, TabHost, WheelView } from './garageTabs';
+import type { PaintSurface, Tab, TabHost } from './garageTabs';
 import { WheelThumbs } from './wheelThumbs';
 import { placeDecal } from './garageVinyls';
 import { FEATURES } from '../shared/features';
@@ -120,10 +121,10 @@ export class GarageScreen implements TabHost {
   private readonly steps: RailSteps;
   /** The Body tab's part slot on show: one at a time, so the tab never scrolls through all of them. */
   bodySlot: PartSlot = 'body';
-  /** The axle the Wheels tab's wheel and tire picks dress while front and rear are unlinked. */
+  /** The Paint tab's surface on show: one at a time, like the Body tab's slots. */
+  paintSurface: PaintSurface = 'body';
+  /** The axle the Wheels tab's wheel and the Paint tab's wheel paint dress while front and rear are unlinked. */
   wheelAxle: Axle = 'front';
-  /** The Wheels tab's view: the picker first, the size and paint a switch away. */
-  wheelView: WheelView = 'wheel';
   /** The maker the wheel picker shows (null: all of them). */
   wheelMaker: string | null = null;
   readonly wheelThumbs: WheelThumbs;
@@ -195,7 +196,7 @@ export class GarageScreen implements TabHost {
   ) {
     this.scene = new GarageScene(gr, assets, stage.street, stage.quality);
     this.wheelThumbs = new WheelThumbs(assets);
-    this.tabBar = h('div', { class: 'garage__tabs', role: 'tablist', 'aria-label': 'Categories', style: `--tabs:${Math.ceil(TABS.length / 2)};--tab-count:${TABS.length}` });
+    this.tabBar = h('div', { class: 'garage__tabs', role: 'tablist', 'aria-label': 'Categories' });
     this.body = h('div', { class: 'garage__body' });
     this.bodyView = scrollHint(this.body, 'garage__scroll');
     this.savedJson = JSON.stringify(this.build);
@@ -615,7 +616,7 @@ export class GarageScreen implements TabHost {
     });
     // The open tab's hue colors its picks, sliders and section hairlines (_garage.scss keys it on data-tab).
     this.root.dataset.tab = t;
-    // The room shows what the tab edits: the camera on its shot, the lights down for neon.
+    // The room shows what the tab edits: the camera on its shot, the lights down for the night look.
     this.reframe();
     this.renderTab();
     if (!switched) return;
@@ -628,9 +629,9 @@ export class GarageScreen implements TabHost {
     this.tabInTimer = window.setTimeout(() => this.body.classList.remove('is-switching'), 600);
   }
 
-  /** Frame the open tab's shot (the Body tab's by the slot on show), or the Builds step's view. */
+  /** Frame the open tab's shot (the Body tab's by the slot on show, the Paint tab's by the surface), or the Builds step's view. */
   reframe(): void {
-    this.scene.frame(this.step === 'build' ? (this.tab === 'body' ? `body:${this.bodySlot}` : this.tab) : null);
+    this.scene.frame(this.step === 'build' ? (this.tab === 'body' ? `body:${this.bodySlot}` : this.tab === 'paint' ? `paint:${this.paintSurface}` : this.tab) : null);
   }
 
   /** Apply the current build to the preview and mark it unsaved. Resolves when the preview is up to date. */

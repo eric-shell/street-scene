@@ -43,7 +43,7 @@ Parts must use the shared material names. The game swaps each one for a runtime 
 | Name | Used for | Driven by |
 |---|---|---|
 | `Paint` | Body color panels | Paint color and finish (gloss, metallic, matte, pearl, candy) |
-| `Trim` | Secondary panels, carbon look | Trim color |
+| `Trim` | Secondary panels, carbon look | Trim paint (color and finish, chrome included) |
 | `Black` | Grilles, vents, undertray | fixed |
 | `Chrome` | Exhaust tips, badges | fixed |
 | `Glass` | Windows | Window tint |

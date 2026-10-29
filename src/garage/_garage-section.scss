@@ -19,13 +19,12 @@
   > .btn {
     align-self: flex-start;
   }
-  /* A sub heading inside a group: the Wheels tab's makers, each over its own grid of wheels. */
-  &__subtitle {
-    margin-top: 4px;
-    font-size: 12px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
+  /* The group that fills the tab (the Wheels tab's picker): it grows to the body's height and its content
+     (the picker's own scrolling panes) fits inside, instead of the body scrolling past it. */
+  &--fill {
+    flex: 1 1 auto;
+    /* An explicit minimum: a flex item's automatic one is its content's height, which here would be every tile. */
+    min-height: 320px;
   }
   /* The Tune tab's stats: the build card's stat lines, the section's own hairline above them. */
   > .car-card__stats {

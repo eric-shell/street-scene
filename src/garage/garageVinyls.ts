@@ -10,7 +10,7 @@ import { btn, h, iconBtn, sheen, toast } from '../ui/kit/dom';
 import { M_PER_FT } from '../ui/kit/units';
 import { FlipHorizontal2, MousePointerClick, Trash2, icon } from '../ui/kit/icons';
 import type { TabHost } from './garageTabs';
-import { choiceList, color, section, slider, toggle } from './garageWidgets';
+import { choiceList, colorPicker, section, slider, toggle } from './garageWidgets';
 
 /** Fill the body with the shapes to add, then the layers and the selected layer's controls. */
 export function renderVinyls(host: TabHost): void {
@@ -47,10 +47,6 @@ export function renderVinyls(host: TabHost): void {
       h(
         'div',
         { class: 'row' },
-        color(d.color, (c) => {
-          d.color = c;
-          update();
-        }),
         toggle(FlipHorizontal2, 'Mirror', d.mirror, d.mirror ? 'Mirrored to the other side' : 'Mirror to the other side', () => {
           d.mirror = !d.mirror;
           update();
@@ -66,6 +62,10 @@ export function renderVinyls(host: TabHost): void {
           host.changed(true);
         }, '--small'),
       ),
+      colorPicker(d.color, (c) => {
+        d.color = c;
+        update();
+      }),
       slider('Scale', d.scale, 0.2, 3, 0.05, (x) => `${(x / M_PER_FT).toFixed(1)} ft`, (x) => {
         d.scale = x;
         update();

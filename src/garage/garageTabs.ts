@@ -1,60 +1,65 @@
 /**
- * What each Customize tab shows (Model, Stance, Wheels, Body, Paint, Tint,
- * Neon and Tune; Vinyls is garageVinyls.ts): the tab list, and one builder that
- * fills the body for the open tab from the build. The builders reach the screen
- * only through TabHost, so garageUi.ts keeps the steps, saving and dialogs and
- * this file only the controls. Edits write straight into the build and call
+ * What each Customize tab shows (Model, Stance, Wheels, Paint, Tune, Body and
+ * Night; Vinyls is garageVinyls.ts): the tab list, and one builder that fills
+ * the body for the open tab from the build. The builders reach the screen only
+ * through TabHost, so garageUi.ts keeps the steps, saving and dialogs and this
+ * file only the controls. Edits write straight into the build and call
  * `changed`, which refits the car live; Save is the screen's.
  */
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partById, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { AXLES, Axle, AxleStance, CHROME_COLOR, CarBuild, GLOW_PATTERNS, Paint, STANCE_LIMITS, TireShape, VinylShape, WHEEL_FINISHES, WheelFinish, WheelTrim, WheelTrimMode } from '../shared/carBuild';
+import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, CHROME_COLOR, CarBuild, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges } from '../shared/carSpec';
 import { h, segmented, toast } from '../ui/kit/dom';
-import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, Paintbrush, RotateCcw, Sparkles, IconNode } from '../ui/kit/icons';
+import { ArrowUpDown, Car, Disc3, Gauge, Hammer, Layers, Moon, Paintbrush, RotateCcw, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { GaragePrefs, saveGaragePrefs } from './storage';
-import { capital, choiceList, cm, color, colorPicker, field, matchBody, paintPicker, percent, PRESETS, section, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
+import { capital, choiceList, cm, colorPicker, field, matchBody, note, paintPicker, percent, rowName, section, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
 import { renderVinyls } from './garageVinyls';
 import { setupSlider } from './setupSliders';
 import { wheelPicker } from './wheelPicker';
 import type { WheelThumbs } from './wheelThumbs';
 
-export type Tab = 'model' | 'stance' | 'wheels' | 'body' | 'paint' | 'vinyl' | 'tint' | 'neon' | 'tune';
+export type Tab = 'model' | 'stance' | 'wheels' | 'paint' | 'vinyl' | 'tune' | 'body' | 'night';
 
+/** The tabs in order: the car and how it sits first, then its look, its setup, its parts, and the night look last. */
 export const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'model', label: 'Model', icon: Car },
   { id: 'stance', label: 'Stance', icon: ArrowUpDown },
   { id: 'wheels', label: 'Wheels', icon: Disc3 },
-  { id: 'body', label: 'Body', icon: Hammer },
   { id: 'paint', label: 'Paint', icon: Paintbrush },
   ...(FEATURES.vinyls ? [{ id: 'vinyl' as Tab, label: 'Vinyls', icon: Layers }] : []),
-  { id: 'tint', label: 'Tint', icon: Eye },
-  { id: 'neon', label: 'Neon', icon: Sparkles },
   { id: 'tune', label: 'Tune', icon: Gauge },
+  { id: 'body', label: 'Body', icon: Hammer },
+  { id: 'night', label: 'Night', icon: Moon },
 ];
 
 /** Model author shown under a car's name, by manifest `source`. */
 export const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan', eshell: 'eshell' };
 
-/** The Wheels tab's views: the wheel itself, its size and tire, its paint and the calipers'. */
-export type WheelView = 'wheel' | 'fit' | 'paint';
-const WHEEL_VIEWS: { value: WheelView; label: string }[] = [
-  { value: 'wheel', label: 'Wheel' },
-  { value: 'fit', label: 'Size & tire' },
-  { value: 'paint', label: 'Paint' },
-];
+/**
+ * The Paint tab's surfaces, one on show at a time (like the Body tab's slots): the body, the trim, the wheels (the
+ * face, the lip and the center cap), the hardware (the lug nuts and the bolts) and the calipers.
+ */
+export const PAINT_SURFACES = ['body', 'trim', 'wheels', 'hardware', 'calipers'] as const;
+export type PaintSurface = (typeof PAINT_SURFACES)[number];
+const SURFACE_LABELS: Record<PaintSurface, string> = { body: 'Body', trim: 'Trim', wheels: 'Wheels', hardware: 'Hardware', calipers: 'Calipers' };
 
-/** The tire stretch as the Wheels tab lists it (TIRE_SHAPES' order, render/car/tireShapes.ts draws them): none is the standard tire, full the stretched one. */
+/** The tire stretch as the Stance tab lists it (TIRE_SHAPES' order, render/car/tireShapes.ts draws them): none is the standard tire, full the stretched one. */
 const STRETCH_CHOICES: { value: TireShape; label: string }[] = [
   { value: 'standard', label: 'None' },
   { value: 'mild', label: 'Mild' },
   { value: 'stretched', label: 'Full' },
 ];
+
+const ON_OFF = [
+  { value: 'off', label: 'Off' },
+  { value: 'on', label: 'On' },
+] as const;
 
 /**
  * What the tab builders need of the garage screen (garageUi.ts implements it): the build being edited
@@ -73,10 +78,10 @@ export interface TabHost {
   readonly tab: Tab;
   /** The Body tab's part slot on show. */
   bodySlot: PartSlot;
-  /** The axle the Wheels tab's picks dress while front and rear are unlinked. */
+  /** The Paint tab's surface on show. */
+  paintSurface: PaintSurface;
+  /** The axle the Wheels tab's wheel and the Paint tab's wheel paint dress while front and rear are unlinked. */
   wheelAxle: Axle;
-  /** The Wheels tab's view on show. */
-  wheelView: WheelView;
   /** The wheel maker the Wheels tab's picker shows, or null for all of them. */
   wheelMaker: string | null;
   /** The wheel picker's thumbnails, drawn once per wheel. */
@@ -87,7 +92,7 @@ export interface TabHost {
   placing: { shape: VinylShape; index: number } | null;
   changed(rerender?: boolean): Promise<unknown>;
   renderTab(): void;
-  /** Frame the open tab's shot again (the Body tab's slot changed). */
+  /** Frame the open tab's shot again (the Body tab's slot or the Paint tab's surface changed). */
   reframe(): void;
 }
 
@@ -100,28 +105,26 @@ export function renderTabContent(host: TabHost): void {
   // slider converts both ways (the inches a factor gives depend on the car and the wheel model).
   const car = host.scene.car?.wheelsReady ? host.scene.car : null;
   const id = (x: number) => x;
-  // Per axle sliders. While front and rear are linked (the Stance tab's link, or the Wheels tab's for wheel
-  // size), moving one moves its partner too.
+  // Per axle sliders. While front and rear are linked (the Stance tab's link), moving one moves its partner too.
   const partners = new Map<string, { el: HTMLInputElement; out: HTMLElement; fmt: (x: number) => string; toUi: (x: number) => number }>();
-  const axleSlider = (axle: Axle, key: keyof AxleStance, short = false, link = host.prefs.linkAxles) => {
+  const axleSlider = (axle: Axle, key: keyof AxleStance, link = host.prefs.linkAxles) => {
     const L = STANCE_LIMITS[key];
     const spec = {
-      rideHeight: { label: 'Ride height', min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
-      camber: { label: 'Camber', min: L[0], max: L[1], step: 0.5, fmt: (x: number) => `${x}°`, toUi: id, fromUi: id },
-      offset: { label: 'Wheel offset', min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
+      rideHeight: { min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
+      camber: { min: L[0], max: L[1], step: 0.5, fmt: (x: number) => `${x}°`, toUi: id, fromUi: id },
+      offset: { min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
       wheelSize: car
         ? (() => {
             // Front and rear may wear different wheels, so each axle measures its own.
             const ax = axle === 'front' ? 0 : 1;
             const min = Math.ceil(car.wheelInches(L[0], ax) - 1e-6);
             const max = Math.floor(car.wheelInches(L[1], ax) + 1e-6);
-            return { label: 'Wheel size', min, max, step: 1, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.wheelInches(x, ax)))), fromUi: (x: number) => car.wheelSizeForInches(x, ax) };
+            return { min, max, step: 1, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.wheelInches(x, ax)))), fromUi: (x: number) => car.wheelSizeForInches(x, ax) };
           })()
-        : { label: 'Wheel size', min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
-      wheelWidth: { label: 'Wheel width', min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
+        : { min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
+      wheelWidth: { min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
     }[key];
-    const label = short ? spec.label : `${axle === 'front' ? 'Front' : 'Rear'}`;
-    const el = slider(label, spec.toUi(v.stance[axle][key]), spec.min, spec.max, spec.step, spec.fmt, (ui) => {
+    const el = slider(capital(axle), spec.toUi(v.stance[axle][key]), spec.min, spec.max, spec.step, spec.fmt, (ui) => {
       const x = spec.fromUi(ui);
       v.stance[axle][key] = x;
       if (link) {
@@ -164,7 +167,235 @@ export function renderTabContent(host: TabHost): void {
       const soon = h('div', { class: 'garage-item garage-item--soon', 'aria-disabled': 'true', title: 'More models coming soon' }, h('span', { class: 'garage-item__label' }, 'More models soon'), h('span', { class: 'garage-item__sub muted' }, 'Coming soon'));
       soon.addEventListener('click', () => toast('More cars are on the way', Car));
       list.append(soon);
-      host.body.append(section('Model', list, h('div', { class: 'muted garage-note' }, 'A new car starts from its stock body; the wheels stay.')));
+      host.body.append(section('Model', list, note('A new car starts from its stock body; the wheels stay.')));
+      break;
+    }
+    case 'stance': {
+      // Everything about how the car sits on its wheels, front and rear side by side: the body's height and
+      // the wheels' angle, track, size, width and tire. One link moves both axles together.
+      const w = v.wheels;
+      const linked = host.prefs.linkAxles;
+      // Linked, one stretch sets both tires; unlinked, each axle picks its own.
+      const stretchPick = (axle: Axle | null) =>
+        segmented(STRETCH_CHOICES, axle === 'rear' ? w.rearTire : w.tire, (t) => {
+          if (axle !== 'rear') w.tire = t;
+          if (axle !== 'front') w.rearTire = t;
+          host.changed();
+        });
+      host.body.append(
+        section('Ride height', linkToggle(host), ...AXLES.map((a) => axleSlider(a, 'rideHeight')), note('Visual only. Front and rear apart rake the car.')),
+        section('Camber', ...AXLES.map((a) => axleSlider(a, 'camber'))),
+        section('Wheel offset', ...AXLES.map((a) => axleSlider(a, 'offset'))),
+        section('Wheel size', ...AXLES.map((a) => axleSlider(a, 'wheelSize')), note('Bigger wheels, thinner sidewalls.')),
+        // Width is always set per axle, linked or not: a staggered fitment is the point of it.
+        section('Wheel width', ...AXLES.map((a) => axleSlider(a, 'wheelWidth', false)), note('Wider wheels grow inward; the face and spokes keep their shape. Never linked.')),
+        section(
+          'Tires',
+          ...(linked ? [field('Stretch', stretchPick(null))] : AXLES.map((a) => field(`${capital(a)} stretch`, stretchPick(a)))),
+          // Per build, not per axle: the brand's raised lettering on every tire's outer sidewall.
+          field(
+            'Lettering',
+            segmented(ON_OFF, w.lettering ? 'on' : 'off', (x) => {
+              w.lettering = x === 'on';
+              host.changed();
+            }),
+          ),
+          note('Raised brand lettering on the outer sidewalls.'),
+        ),
+      );
+      break;
+    }
+    case 'wheels': {
+      const w = v.wheels;
+      // Linked, a pick equips all four (the rear copies the front); unlinked, the Front / Rear switch says
+      // which pair the pick dresses.
+      const linked = host.prefs.linkWheels;
+      const rear = !linked && host.wheelAxle === 'rear';
+      const front = v.parts.wheels ?? manifestCar(b.carId).defaultWheel;
+      // The picker fills the tab (the section grows to the body's height) with its own scrolling panes.
+      const group = section(
+        linked ? 'Wheel' : `${capital(host.wheelAxle)} wheel`,
+        h('div', { class: 'row' }, ...wheelAxleTools(host), linked ? h('span', { class: 'muted garage-note' }, 'Every pick equips all four wheels.') : null),
+        wheelPicker({
+          wheels: partsFor(b.carId, 'wheels'),
+          current: rear ? (w.rearPart ?? front) : front,
+          maker: host.wheelMaker,
+          thumbs: host.wheelThumbs,
+          onMaker: (m) => {
+            host.wheelMaker = m;
+            host.renderTab();
+          },
+          onPick: (id) => {
+            if (rear) w.rearPart = id;
+            else {
+              // Linked, the rear follows the front; unlinked, it keeps the wheel it wore.
+              w.rearPart = linked ? null : (w.rearPart ?? front);
+              v.parts.wheels = id;
+            }
+            void host.changed();
+          },
+        }),
+      );
+      group.classList.add('garage-section--fill');
+      host.body.append(group);
+      break;
+    }
+    case 'paint': {
+      // One surface at a time, like the Body tab's slots: the surfaces as a segmented pick, then its paint.
+      const surface = host.paintSurface;
+      host.body.append(
+        section(
+          'Surface',
+          segmented(
+            PAINT_SURFACES.map((s) => ({ value: s, label: SURFACE_LABELS[s] })),
+            surface,
+            (s) => {
+              host.paintSurface = s;
+              host.reframe();
+              host.renderTab();
+            },
+          ),
+        ),
+      );
+      const w = v.wheels;
+      // The wheel paints and trims: the face is per axle (the Link and Front / Rear say which), the trims (lip, cap,
+      // lug nuts, hardware) are per build, both axles, each wearing its own paint or another surface's (the axle on
+      // show's face, the cap, the body, the lip as the wheel ships it).
+      const linked = host.prefs.linkWheels;
+      const rear = !linked && host.wheelAxle === 'rear';
+      const paint = rear ? w.rearPaint : w.paint;
+      const wheelId = rear ? (w.rearPart ?? v.parts.wheels ?? manifestCar(b.carId).defaultWheel) : (v.parts.wheels ?? manifestCar(b.carId).defaultWheel);
+      const face = (): Paint<AccentFinish> => (paint.match ? v.paint : paint);
+      const stockChrome = partById(wheelId)?.lip === 'chrome';
+      const capWears = (): Paint<AccentFinish> => (w.cap.mode === 'body' ? v.paint : w.cap.mode === 'paint' ? w.cap : face());
+      const body = (): Paint<AccentFinish> => v.paint;
+      switch (surface) {
+        case 'body':
+          // The body alone takes no chrome.
+          host.body.append(section('Body paint', paintPicker(v.paint, PAINT_FINISHES, () => host.changed())));
+          break;
+        case 'trim':
+          host.body.append(section('Trim', paintPicker(v.trim, ACCENT_FINISHES, () => host.changed()), note('The carbon look pieces: aprons, splitters, wings and the like.')));
+          break;
+        case 'wheels':
+          host.body.append(
+            section(
+              linked ? 'Wheel paint' : `${capital(host.wheelAxle)} wheel paint`,
+              h('div', { class: 'row' }, ...wheelAxleTools(host)),
+              paintPicker(
+                paint,
+                ACCENT_FINISHES,
+                () => {
+                  if (linked) w.rearPaint = { ...w.paint };
+                  host.changed();
+                },
+                [matchBody(paint, v.paint)],
+              ),
+            ),
+            trimSection(host, 'Lip', w.lip, [
+              trimMatch(w.lip, 'stock', 'Stock', 'Stock lip', () => (stockChrome ? { color: CHROME_COLOR, finish: 'chrome' } : face()), RotateCcw),
+              trimMatch(w.lip, 'face', 'Match wheel', 'Wheel paint', face),
+              trimMatch(w.lip, 'body', 'Match body', 'Body paint', body),
+            ]),
+            trimSection(host, 'Center cap', w.cap, [trimMatch(w.cap, 'face', 'Match wheel', 'Wheel paint', face), trimMatch(w.cap, 'body', 'Match body', 'Body paint', body)]),
+          );
+          break;
+        case 'hardware':
+          host.body.append(
+            trimSection(host, 'Lug nuts', w.lugNuts, [
+              trimMatch(w.lugNuts, 'cap', 'Match cap', 'Center cap', capWears),
+              trimMatch(w.lugNuts, 'face', 'Match wheel', 'Wheel paint', face),
+              trimMatch(w.lugNuts, 'body', 'Match body', 'Body paint', body),
+            ]),
+            // The bolt hardware shows for a wheel model that draws any.
+            ...(hasHardware(wheelId)
+              ? [
+                  trimSection(host, 'Bolts', w.hardware, [
+                    trimMatch(w.hardware, 'cap', 'Match cap', 'Center cap', capWears),
+                    trimMatch(w.hardware, 'face', 'Match wheel', 'Wheel paint', face),
+                    trimMatch(w.hardware, 'body', 'Match body', 'Body paint', body),
+                  ]),
+                ]
+              : []),
+          );
+          break;
+        case 'calipers':
+          // One caliper paint for all four corners, whatever the axle switch says.
+          host.body.append(section('Calipers', paintPicker(v.calipers, ACCENT_FINISHES, () => host.changed(), [matchBody(v.calipers, v.paint)]), note('One paint for all four corners.')));
+          break;
+      }
+      break;
+    }
+    case 'vinyl':
+      renderVinyls(host);
+      break;
+    case 'night': {
+      // The night look, shown with the room's lights down: the glass, then the underglow.
+      const g = v.underglow;
+      host.body.append(
+        section(
+          'Window tint',
+          slider('Darkness', v.tint.darkness, 0, 0.95, 0.01, percent, (x) => {
+            v.tint.darkness = x;
+            host.changed();
+          }),
+          rowName('Tint color'),
+          colorPicker(v.tint.color, (c) => {
+            v.tint.color = c;
+            host.changed();
+          }),
+        ),
+        section(
+          'Underglow',
+          field(
+            'Lights',
+            segmented(ON_OFF, g.enabled ? 'on' : 'off', (x) => {
+              g.enabled = x === 'on';
+              host.changed();
+            }),
+          ),
+          segmented(
+            GLOW_PATTERNS.map((p) => ({ value: p, label: capital(p) })),
+            g.pattern,
+            (p) => {
+              g.pattern = p;
+              g.enabled = true;
+              host.changed();
+            },
+          ),
+          note('Alternate and chase use both colors.'),
+        ),
+        section(
+          'Glow colors',
+          // A swatch re-renders so the Lights switch shows the glow it turned on; the well cannot (it would close mid drag).
+          rowName('Primary'),
+          colorPicker(g.color, (c, preset) => {
+            g.color = c;
+            g.enabled = true;
+            host.changed(preset);
+          }),
+          rowName('Secondary'),
+          colorPicker(g.color2, (c) => {
+            g.color2 = c;
+            host.changed();
+          }),
+        ),
+        section(
+          'Glow',
+          slider('Brightness', g.brightness, 0.2, 2, 0.05, percent, (x) => {
+            g.brightness = x;
+            host.changed();
+          }),
+          slider('Speed', g.speed, 0.25, 3, 0.05, (x) => `${x.toFixed(2)}x`, (x) => {
+            g.speed = x;
+            host.changed();
+          }),
+          slider('Spread', g.size, 0.6, 1.6, 0.05, percent, (x) => {
+            g.size = x;
+            host.changed();
+          }),
+        ),
+      );
       break;
     }
     case 'body': {
@@ -199,258 +430,13 @@ export function renderTabContent(host: TabHost): void {
       );
       break;
     }
-    case 'paint': {
-      host.body.append(
-        section('Body paint', paintPicker(v.paint, PRESETS.body, () => host.changed())),
-        section(
-          'Trim color',
-          color(v.trimColor, (c) => {
-            v.trimColor = c;
-            host.changed();
-          }),
-        ),
-      );
-      break;
-    }
-    case 'wheels': {
-      const w = v.wheels;
-      // One axle switch scopes the tab: linked, every pick equips all four (the rear copies the front);
-      // unlinked, the Front / Rear switch says which pair the wheel, size, tire and paint picks dress.
-      const linked = host.prefs.linkWheels;
-      const rear = !linked && host.wheelAxle === 'rear';
-      const axle: Axle = rear ? 'rear' : 'front';
-      const front = v.parts.wheels ?? manifestCar(b.carId).defaultWheel;
-      const title = (name: string) => (linked ? capital(name) : `${capital(axle)} ${name}`);
-      // The tab shows one view at a time (the wheel, its fitment, its paint), like the Body tab's slots, so the
-      // 44 wheels never push the size and paint out of reach.
-      host.body.append(
-        section(
-          'Wheels',
-          segmented(WHEEL_VIEWS, host.wheelView, (x) => {
-            host.wheelView = x;
-            host.renderTab();
-          }),
-          h(
-            'div',
-            { class: 'row' },
-            wheelLinkToggle(host),
-            linked
-              ? h('span', { class: 'muted garage-note' }, 'Every pick equips all four wheels.')
-              : segmented(
-                  AXLES.map((a) => ({ value: a, label: capital(a) })),
-                  host.wheelAxle,
-                  (a) => {
-                    host.wheelAxle = a;
-                    host.renderTab();
-                  },
-                ),
-          ),
-        ),
-      );
-      if (host.wheelView === 'wheel') {
-        host.body.append(
-          section(
-            title('wheel'),
-            wheelPicker({
-              wheels: partsFor(b.carId, 'wheels'),
-              current: rear ? (w.rearPart ?? front) : front,
-              maker: host.wheelMaker,
-              thumbs: host.wheelThumbs,
-              onMaker: (m) => {
-                host.wheelMaker = m;
-                host.renderTab();
-              },
-              onPick: (id) => {
-                if (rear) w.rearPart = id;
-                else {
-                  // Linked, the rear follows the front; unlinked, it keeps the wheel it wore.
-                  w.rearPart = linked ? null : (w.rearPart ?? front);
-                  v.parts.wheels = id;
-                }
-                // Each wheel model has its own profile: the Fit view's inch range follows the new one when it opens.
-                void host.changed();
-              },
-            }),
-          ),
-        );
-      } else if (host.wheelView === 'fit') {
-        host.body.append(
-          section(title('size'), axleSlider(axle, 'wheelSize', true, linked), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls.')),
-          // Width is always set per axle, linked or not (a staggered fitment is the point of it): linked, both sliders show.
-          section(
-            title('width'),
-            ...(linked ? [axleSlider('front', 'wheelWidth', false, false), axleSlider('rear', 'wheelWidth', false, false)] : [axleSlider(axle, 'wheelWidth', true, false)]),
-            h('div', { class: 'muted garage-note' }, 'Wider wheels grow inward; the face and spokes keep their shape.'),
-          ),
-          section(
-            title('stretch'),
-            segmented(STRETCH_CHOICES, rear ? w.rearTire : w.tire, (t) => {
-              if (rear) w.rearTire = t;
-              else {
-                w.tire = t;
-                if (linked) w.rearTire = t;
-              }
-              host.changed();
-            }),
-          ),
-          // Per build, not per axle: the brand's raised lettering on every tire's outer sidewall.
-          section(
-            'Lettering',
-            segmented(
-              [
-                { value: 'off', label: 'Off' },
-                { value: 'on', label: 'On' },
-              ],
-              w.lettering ? 'on' : 'off',
-              (x) => {
-                w.lettering = x === 'on';
-                host.changed();
-              },
-            ),
-            h('div', { class: 'muted garage-note' }, 'Raised brand lettering on the outer sidewalls.'),
-          ),
-        );
-      } else {
-        // The paint and every trim offer chrome and Match body; a trim can also wear this axle's wheel paint (and
-        // the lip as the wheel ships it, the lug nuts the center cap). The trims are per build, both axles.
-        const paint = rear ? w.rearPaint : w.paint;
-        const face = () => (paint.match ? v.paint : paint);
-        const stockChrome = partById(rear ? (w.rearPart ?? front) : front)?.lip === 'chrome';
-        const capWears = () => (w.cap.mode === 'body' ? v.paint : w.cap.mode === 'paint' ? w.cap : face());
-        host.body.append(
-          section(
-            title('paint'),
-            paintPicker(
-              paint,
-              PRESETS.wheels,
-              () => {
-                if (linked) w.rearPaint = { ...w.paint };
-                host.changed();
-              },
-              { matches: [matchBody(paint, v.paint)], finishes: WHEEL_FINISHES },
-            ),
-          ),
-          trimSection(host, 'Lip', w.lip, [
-            trimMatch(w.lip, 'stock', 'Stock', 'Stock lip', () => (stockChrome ? { color: CHROME_COLOR, finish: 'chrome' } : face()), RotateCcw),
-            trimMatch(w.lip, 'face', 'Match wheel', 'Wheel paint', face),
-            trimMatch(w.lip, 'body', 'Match body', 'Body paint', () => v.paint),
-          ]),
-          trimSection(host, 'Center cap', w.cap, [trimMatch(w.cap, 'face', 'Match wheel', 'Wheel paint', face), trimMatch(w.cap, 'body', 'Match body', 'Body paint', () => v.paint)]),
-          trimSection(host, 'Lug nuts', w.lugNuts, [
-            trimMatch(w.lugNuts, 'cap', 'Match cap', 'Center cap', capWears),
-            trimMatch(w.lugNuts, 'face', 'Match wheel', 'Wheel paint', face),
-            trimMatch(w.lugNuts, 'body', 'Match body', 'Body paint', () => v.paint),
-          ]),
-          ...(hasHardware(rear ? (w.rearPart ?? front) : front) ? [trimSection(host, 'Hardware', w.hardware, [
-            trimMatch(w.hardware, 'cap', 'Match cap', 'Center cap', capWears),
-            trimMatch(w.hardware, 'face', 'Match wheel', 'Wheel paint', face),
-            trimMatch(w.hardware, 'body', 'Match body', 'Body paint', () => v.paint),
-          ])] : []),
-          // One caliper paint for all four corners, whatever the axle switch says.
-          section('Calipers', paintPicker(v.calipers, PRESETS.calipers, () => host.changed(), { matches: [matchBody(v.calipers, v.paint)] })),
-        );
-      }
-      break;
-    }
-    case 'vinyl':
-      renderVinyls(host);
-      break;
-    case 'stance': {
-      host.body.append(
-        section('Ride height', linkToggle(host), ...AXLES.map((a) => axleSlider(a, 'rideHeight')), h('div', { class: 'muted garage-note' }, 'Visual only. Front and rear apart rake the car.')),
-        ...AXLES.map((a) => section(capital(a), ...(['camber', 'offset'] as const).map((k) => axleSlider(a, k, true)))),
-      );
-      break;
-    }
-    case 'tint': {
-      host.body.append(
-        section(
-          'Window tint',
-          slider('Darkness', v.tint.darkness, 0, 0.95, 0.01, percent, (x) => {
-            v.tint.darkness = x;
-            host.changed();
-          }),
-          field(
-            'Tint color',
-            color(v.tint.color, (c) => {
-              v.tint.color = c;
-              host.changed();
-            }),
-          ),
-        ),
-      );
-      break;
-    }
-    case 'neon': {
-      const g = v.underglow;
-      host.body.append(
-        section(
-          'Underglow',
-          field(
-            'Lights',
-            segmented(
-              [
-                { value: 'off', label: 'Off' },
-                { value: 'on', label: 'On' },
-              ],
-              g.enabled ? 'on' : 'off',
-              (x) => {
-                g.enabled = x === 'on';
-                host.changed();
-              },
-            ),
-          ),
-          segmented(
-            GLOW_PATTERNS.map((p) => ({ value: p, label: capital(p) })),
-            g.pattern,
-            (p) => {
-              g.pattern = p;
-              g.enabled = true;
-              host.changed();
-            },
-          ),
-          h('div', { class: 'muted garage-note' }, 'Alternate and chase use both colors.'),
-        ),
-        section(
-          'Colors',
-          // A swatch re-renders so the Lights switch shows the glow it turned on; the well cannot (it would close mid drag).
-          h('span', { class: 'garage-row__name' }, 'Primary'),
-          colorPicker(g.color, PRESETS.glow, (c, preset) => {
-            g.color = c;
-            g.enabled = true;
-            host.changed(preset);
-          }),
-          h('span', { class: 'garage-row__name' }, 'Secondary'),
-          colorPicker(g.color2, PRESETS.glow, (c) => {
-            g.color2 = c;
-            host.changed();
-          }),
-        ),
-        section(
-          'Glow',
-          slider('Brightness', g.brightness, 0.2, 2, 0.05, percent, (x) => {
-            g.brightness = x;
-            host.changed();
-          }),
-          slider('Speed', g.speed, 0.25, 3, 0.05, (x) => `${x.toFixed(2)}x`, (x) => {
-            g.speed = x;
-            host.changed();
-          }),
-          slider('Spread', g.size, 0.6, 1.6, 0.05, percent, (x) => {
-            g.size = x;
-            host.changed();
-          }),
-        ),
-      );
-      break;
-    }
     case 'tune':
       renderPerformance(host);
       break;
   }
 }
 
-/** "Link front and rear" convenience toggle for the per axle sliders. */
+/** The Stance tab's link: linked, front and rear sit the same (height, camber, offset, wheel size and tire); unlinked, each axle has its own. */
 function linkToggle(host: TabHost): HTMLElement {
   const linked = host.prefs.linkAxles;
   return toggle(
@@ -462,10 +448,12 @@ function linkToggle(host: TabHost): HTMLElement {
       host.prefs.linkAxles = !linked;
       saveGaragePrefs(host.prefs);
       if (host.prefs.linkAxles) {
-        // Linking starts from matching axles: the rear takes the front's settings.
+        // Linking starts from matching axles: the rear takes the front's settings and tire.
         const s = host.build.visual.stance;
+        const w = host.build.visual.wheels;
         // Wheel width stays per axle: a staggered fitment survives the link.
         s.rear = { ...s.front, wheelWidth: s.rear.wheelWidth };
+        w.rearTire = w.tire;
         host.changed();
         toast('Rear now matches front', Link2);
       }
@@ -474,10 +462,13 @@ function linkToggle(host: TabHost): HTMLElement {
   );
 }
 
-/** The Wheels tab's link: linked, front and rear wear the same wheel, size, tire and paint; unlinked, each axle picks its own. */
-function wheelLinkToggle(host: TabHost): HTMLElement {
+/**
+ * The wheels' link and, unlinked, the Front / Rear switch, for the Wheels tab's picker and the Paint tab's wheel
+ * paint: linked, front and rear wear the same wheel and paint; unlinked, the switch says which pair a pick dresses.
+ */
+function wheelAxleTools(host: TabHost): Node[] {
   const linked = host.prefs.linkWheels;
-  return toggle(
+  const link = toggle(
     linked ? Link2 : Link2Off,
     'Link',
     linked,
@@ -487,17 +478,28 @@ function wheelLinkToggle(host: TabHost): HTMLElement {
       saveGaragePrefs(host.prefs);
       const w = host.build.visual.wheels;
       if (host.prefs.linkWheels) {
-        // Linking starts from matching axles: the rear takes the front's wheel, size, tire and paint.
+        // Linking starts from matching axles: the rear takes the front's wheel and paint.
         w.rearPart = null;
-        w.rearTire = w.tire;
         w.rearPaint = { ...w.paint };
-        host.build.visual.stance.rear.wheelSize = host.build.visual.stance.front.wheelSize;
-        void host.changed().then(() => host.tab === 'wheels' && host.renderTab());
+        host.changed();
         toast('Rear wheels now match front', Link2);
       } else host.wheelAxle = 'front';
       host.renderTab();
     },
   );
+  return linked
+    ? [link]
+    : [
+        link,
+        segmented(
+          AXLES.map((a) => ({ value: a, label: capital(a) })),
+          host.wheelAxle,
+          (a) => {
+            host.wheelAxle = a;
+            host.renderTab();
+          },
+        ),
+      ];
 }
 
 /** The Tune tab: the stat lines, launch control and the four setup sliders. */
@@ -513,12 +515,12 @@ function renderPerformance(host: TabHost): void {
   const off = LAUNCH_RPM.min - LAUNCH_RPM.step;
   const t = tuningForBuild(b.carId, b.performance);
   const top = maxLaunchRpm(t);
-  const rpmSlider = (label: string, value: number, stock: number, set: (x: number) => void, note: string) => [
+  const rpmSlider = (label: string, value: number, stock: number, set: (x: number) => void, text: string) => [
     slider(label, value || off, off, top, LAUNCH_RPM.step, (x) => (x <= off ? 'Off' : x === stock ? `${x} rpm · stock` : `${x} rpm`), (x) => {
       set(x <= off ? 0 : x);
       host.changed(true);
     }),
-    h('div', { class: 'muted garage-note' }, note),
+    note(text),
   ];
   host.body.append(
     section(
@@ -537,7 +539,7 @@ function renderPerformance(host: TabHost): void {
         b.visual.popsBangs = x;
         host.changed();
       }),
-      h('div', { class: 'muted garage-note' }, 'How often the exhaust pops and flames on a lift, a shift or the limiter. Sight and sound together; no effect on performance.'),
+      note('How often the exhaust pops and flames on a lift, a shift or the limiter. Sight and sound together; no effect on performance.'),
     ),
   );
   // The setup: four sliders, each a trade (sim/build.ts applyBuild), position 3 the stock car.
@@ -555,21 +557,21 @@ function renderPerformance(host: TabHost): void {
       ),
     ),
   );
-  host.body.append(h('div', { class: 'muted garage-note' }, 'Position 3 on every slider is the stock car. Visual parts never change performance.'));
+  host.body.append(note('Position 3 on every slider is the stock car. Visual parts never change performance.'));
 }
 
-/** Whether a wheel model draws any Chrome (bolt hardware); the trims are per build, so the row shows when this axle's wheel has some. */
+/** Whether a wheel model draws any Chrome (bolt hardware); the trims are per build, so the group shows when this axle's wheel has some. */
 function hasHardware(id: string): boolean {
   return partById(id)?.materialSlots.includes('Chrome') ?? true;
 }
 
-/** A wheel trim section (lip, center cap, lug nuts; render/car/lugNuts.ts draws the nuts): the wheel paint picker over the trim, with its matches. Both axles. */
+/** A wheel trim's group (lip, center cap, lug nuts, bolts; render/car/lugNuts.ts draws the nuts): the paint picker over the trim, with its matches. Both axles. */
 function trimSection(host: TabHost, name: string, trim: WheelTrim, matches: PaintMatch[]): HTMLElement {
-  return section(name, paintPicker(trim, PRESETS.wheels, () => host.changed(), { matches, finishes: WHEEL_FINISHES }), h('div', { class: 'muted garage-note' }, 'Both axles.'));
+  return section(name, paintPicker(trim, ACCENT_FINISHES, () => host.changed(), matches), note('Both axles.'));
 }
 
 /** A trim's match: on, the trim wears `mode`'s paint; off, it takes that paint as its own, so nothing jumps. */
-function trimMatch(trim: WheelTrim, mode: WheelTrimMode, label: string, name: string, wears: () => Paint<WheelFinish>, ico?: IconNode): PaintMatch {
+function trimMatch(trim: WheelTrim, mode: WheelTrimMode, label: string, name: string, wears: () => Paint<AccentFinish>, ico?: IconNode): PaintMatch {
   return {
     label,
     ico,

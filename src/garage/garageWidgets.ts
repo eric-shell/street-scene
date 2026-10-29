@@ -1,11 +1,13 @@
 /**
- * The controls the garage's tabs and cards are made of: a titled section, color
- * wells with their preset swatches, the paint picker (finish, accent and
- * metal), the link toggle, labelled sliders, the choice list, and the stat
- * lines the build card and the Tune tab share. Plain DOM built with the kit's
- * helpers; the garage partials beside this file style them.
+ * The controls the garage's tabs and cards are made of: a titled section, the
+ * one color picker every color in the garage is chosen with (a well beside the
+ * shared palette of swatches), the paint picker (that color over a finish, and
+ * the matches a surface can wear instead: the body's paint, the wheel's, the
+ * center cap's), the link toggle, labelled sliders, the choice
+ * list, and the stat lines the build card and the Tune tab share. Plain DOM
+ * built with the kit's helpers; the garage partials beside this file style them.
  */
-import { CHROME_COLOR, CarBuild, PAINT_FINISHES, Paint, AccentPaint, WheelFinish } from '../shared/carBuild';
+import { CHROME_COLOR, CarBuild, Paint, AccentPaint, AccentFinish } from '../shared/carBuild';
 import { SETUP_SLIDERS } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
 import type { SpecBadge } from '../shared/carSpec';
@@ -58,6 +60,12 @@ export type Child = Node | false | null;
  */
 export const section = (label: string, ...children: Child[]) => h('div', { class: 'garage-section' }, h('div', { class: 'section-title' }, label), ...children);
 
+/** A name over a control too tall for a row (a color picker): the rows' name, on a line of its own. */
+export const rowName = (label: string) => h('span', { class: 'garage-row__name' }, label);
+
+/** A line of help under a group's controls. */
+export const note = (text: string) => h('div', { class: 'muted garage-note' }, text);
+
 /** A swatch: a chamfered chip of color, marked while it is the color in use. */
 function swatch(hex: string, current: string, onPick: (el: HTMLElement) => void): HTMLElement {
   const s = h('button', { type: 'button', class: `garage-swatch${hex.toLowerCase() === current.toLowerCase() ? ' is-selected' : ''}`, style: `--swatch:${hex}`, title: hex, 'aria-label': hex }, sheen());
@@ -65,46 +73,46 @@ function swatch(hex: string, current: string, onPick: (el: HTMLElement) => void)
   return s;
 }
 
-export function color(value: string, onInput: (c: string) => void): HTMLInputElement {
+/** The color well on its own (the picker's). */
+function well(value: string, onInput: (c: string) => void): HTMLInputElement {
   const el = h('input', { type: 'color', value }) as HTMLInputElement;
   el.addEventListener('input', () => onInput(el.value));
   return el;
 }
 
 /**
- * Preset swatches per colored surface: the body's loud street colors (two rows), wheel metals, caliper brights,
- * neon. The swatches sit nine to a row (_garage-swatch.scss), so every list is a multiple of nine: no row half full.
+ * The one palette every color in the garage is picked from (body, trim, wheels, calipers, tint, underglow,
+ * vinyls), nine to a row (_garage-swatch.scss): the loud street colors, the deep ones, then the neutrals and
+ * metals. One list everywhere, so a color found on one surface is a tap away on every other; the rows are named
+ * for the random builds, which draw a body from the colors and a wheel from the metals.
  */
-export const PRESETS = {
-  body: [
-    ...['#d11f3f', '#ff6a00', '#ffcc1f', '#3dff9a', '#19e6ff', '#1f6bff', '#8b3dff', '#ff3df2', '#f2f2f2'],
-    ...['#7a0f22', '#b84a12', '#c9a227', '#1f7a4d', '#0f6f80', '#14306e', '#9aa3ad', '#2a2c33', '#0b0b0d'],
-  ],
-  wheels: ['#c9ced8', '#e8eaee', '#7d838c', '#3a3d44', '#1a1b1f', '#f2f2f2', '#b08d57', '#d4af37', '#d11f3f'],
-  calipers: ['#c41e3a', '#ffcc1f', '#ff6a00', '#1f6bff', '#3dff9a', '#ff3df2', '#d4af37', '#f2f2f2', '#1a1b1f'],
-  glow: ['#00e5ff', '#ff3df2', '#7cff4f', '#ffe14d', '#ff2e5b', '#7a5cff', '#ffffff', '#ff8a00', '#ff1a1a'],
+export const SWATCHES = {
+  loud: ['#d11f3f', '#ff6a00', '#ffcc1f', '#7cff4f', '#3dff9a', '#19e6ff', '#1f6bff', '#8b3dff', '#ff3df2'],
+  deep: ['#7a0f22', '#b84a12', '#c9a227', '#4f6b1f', '#1f7a4d', '#0f6f80', '#14306e', '#4b1a7a', '#a3124f'],
+  metal: ['#f2f2f2', '#e8eaee', '#c9ced8', '#9aa3ad', '#3a3d44', '#1a1b1f', '#0b0b0d', '#d4af37', '#b08d57'],
 } as const;
+export const PALETTE: readonly string[] = [...SWATCHES.loud, ...SWATCHES.deep, ...SWATCHES.metal];
 
 /**
- * A color well and its preset swatches, kept in step: a swatch sets the well and is marked, a color from
- * the well marks none. `preset` says whether a swatch picked it.
+ * A color: the well beside the palette's swatches, kept in step. A swatch sets the well and is marked, a color
+ * from the well marks none. `preset` says whether a swatch picked it.
  */
-export function colorPicker(value: string, presets: readonly string[], onInput: (c: string, preset: boolean) => void): HTMLElement {
+export function colorPicker(value: string, onInput: (c: string, preset: boolean) => void): HTMLElement {
   const sw = h('div', { class: 'garage-swatches' });
-  const well = color(value, (c) => {
+  const w = well(value, (c) => {
     sw.querySelectorAll('.garage-swatch.is-selected').forEach((x) => x.classList.remove('is-selected'));
     onInput(c, false);
   });
-  for (const p of presets) {
+  for (const p of PALETTE) {
     sw.append(
       swatch(p, value, (s) => {
-        well.value = p;
+        w.value = p;
         sw.querySelectorAll('.garage-swatch').forEach((x) => x.classList.toggle('is-selected', x === s));
         onInput(p, true);
       }),
     );
   }
-  return h('div', { class: 'row' }, well, sw);
+  return h('div', { class: 'garage-color' }, w, sw);
 }
 
 /**
@@ -116,14 +124,14 @@ export interface PaintMatch {
   label: string;
   ico?: IconNode;
   /** What the surface wears while on, named in the note that replaces the controls ("Body paint"). */
-  wears: () => { name: string; paint: Paint<WheelFinish> };
+  wears: () => { name: string; paint: Paint<AccentFinish> };
   on: () => boolean;
   /** Turn it on (any other match goes off) or off (the surface takes back a paint of its own). */
   set: (on: boolean) => void;
 }
 
 /** Match body for an accent (wheels, calipers): matched, it follows the body; unmatched, it starts from the body's paint, so nothing jumps. */
-export function matchBody<F extends WheelFinish>(a: AccentPaint<F>, body: Paint): PaintMatch {
+export function matchBody<F extends AccentFinish>(a: AccentPaint<F>, body: Paint): PaintMatch {
   return {
     label: 'Match body',
     wears: () => ({ name: 'Body paint', paint: body }),
@@ -136,15 +144,13 @@ export function matchBody<F extends WheelFinish>(a: AccentPaint<F>, body: Paint)
 }
 
 /**
- * Every paint's controls (body, wheels and their trims, calipers): its color over its finish, edited in place, then
- * onChange. `matches` (Match body, Match wheel...) sit in a row above: while one is on, the surface wears that paint
- * and the picker shows it instead of its controls. `finishes` defaults to the paint finishes; a wheel surface adds
- * chrome, which starts from plain chrome's color (a color pick then tints it).
+ * A paint's controls (body, trim, wheels and their trims, calipers): its color over its finish (`finishes`: the
+ * ones this surface takes; the body has no chrome), edited in place, then onChange. `matches` (Match body, Match
+ * wheel...) sit in a row above: while one is on, the surface wears that paint and the picker shows it instead of
+ * its controls. Chrome starts from plain chrome's color (a color pick then tints it).
  */
-export function paintPicker<F extends WheelFinish>(paint: Paint<F>, presets: readonly string[], onChange: () => void, opts: { matches?: PaintMatch[]; finishes?: readonly F[] } = {}): HTMLElement {
+export function paintPicker<F extends AccentFinish>(paint: Paint<F>, finishes: readonly F[], onChange: () => void, matches: PaintMatch[] = []): HTMLElement {
   const root = h('div', { class: 'garage-paint' });
-  const matches = opts.matches ?? [];
-  const finishes = opts.finishes ?? (PAINT_FINISHES as readonly WheelFinish[] as readonly F[]);
   const draw = () => {
     const active = matches.find((m) => m.on());
     const worn = active?.wears();
@@ -168,7 +174,7 @@ export function paintPicker<F extends WheelFinish>(paint: Paint<F>, presets: rea
       ...(worn
         ? [h('div', { class: 'muted garage-note' }, h('span', { class: 'garage-dot', style: `background:${worn.paint.color}` }), `${worn.name} · ${capital(worn.paint.finish)}`)]
         : [
-            colorPicker(paint.color, presets, (c) => {
+            colorPicker(paint.color, (c) => {
               paint.color = c;
               onChange();
             }),
