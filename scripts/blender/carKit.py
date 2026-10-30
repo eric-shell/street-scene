@@ -1487,20 +1487,23 @@ def end_plate(target, edge, base, heights, thick=0.006, curl=0.025, curl_height=
     return secs
 
 
-def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032, width_end=1.0, proud=0.07, proud_end=0.5,
-                lean=0.004, foot=0.003, nose=0.002, stations=33, bolts=5, bolt_r=0.006, bolt_inset=0.012,
-                bolt_margin=10, material='Paint', bolt_material='Black', x_min=0.78):
+def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032, width_end=1.0, proud=0.07, proud_end=0.25,
+                lean=0.004, shelf=0.06, shelf_end=0.5, thick=0.004, foot=0.003, nose=0.002, stations=33, bolts=5,
+                bolt_r=0.006, bolt_inset=0.012, bolt_margin=10, material='Paint', bolt_material='Black', x_min=0.78):
     """A bolt-on over-fender flare round one arch: the stock arch flange pushed straight out, a box in
     section. `proud` m out at the top of the arch and `proud_end` of that at both legs' ends (a cosine
     taper: the user wanted the ends half the middle, "more fluid"); the band, the face seen from the side,
     stands parallel to the panel (leaning `lean` m back in over its height, "90 % flat"), `width` m tall
-    (the Wendt Strom's own flange round the opening is 32 mm) and `width_end` of that at the ends; a flat
-    shelf on top runs straight back in to the panel. The lip is the flat wall straight out along x (an extrusion of the panel's outline round
+    (the Wendt Strom's own flange round the opening is 32 mm) and `width_end` of that at the ends; the
+    shelf on top slopes from the band's top edge back onto the panel `shelf` m further up at the top of
+    the arch and `shelf_end` of that at the ends (the user: a box's flat shelf read stiff, "angled like it
+    was before"), ending in a `thick` m step on the panel. The lip is the flat wall straight out along x (an extrusion of the panel's outline round
     the opening), `proud` measured from the panel's outermost face within 3 cm of the arch edge, not from
     the painted edge: on a donor's rear arches that edge rolls 5 to 7 mm in behind the face, and a wall
     standing on it started tucked behind the panel and read as leaning. The wall runs `foot` m inside the
     edge from the painted edge itself up to the lip, with a `nose` m round at the top. `bolts` button heads
-    sit on the band `bolt_inset` m below its top edge. What failed before this: a band that sloped from
+    sit on the shelf `bolt_inset` m from its edge on the body (the user: "on the body side of the shelf").
+    What failed before this: a band that sloped from
     the lip back to the panel (7 cm at 40 degrees, then 3.2 cm at 26 degrees once the stand-out grew) read
     as a sloped shelf from below, not a flange standing out; the user's words for the box are "the extrusion
     needs to come from the outermost panel" and "the lip ... vertical". The arch is
@@ -1511,7 +1514,7 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
     at the rear) over the top to the middle, so the legs end where a real kit's do: a0 ahead over the
     bumper, a1 behind near the sill. `skin_objs` are every piece the band may sit on (the body, the
     fenders, the bumper). The band is one `sweep` (capped square at both ends) and the heads are `tube`s.
-    Returns the stations' (deg, band width, stand-out, edge r, edge x, panel face x, panel x at the outer edge) and the heads."""
+    Returns the stations' (deg, band width, stand-out, shelf climb, edge r, edge x, panel face x, panel x at the shelf's edge) and the heads."""
     from mathutils.bvhtree import BVHTree
     dg = bpy.context.evaluated_depsgraph_get()
     trees = [(o, BVHTree.FromObject(o, dg)) for o in skin_objs]
@@ -1541,6 +1544,7 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
 
     band = lambda deg: taper(deg, width, width_end)
     stand = lambda deg: taper(deg, proud, proud_end)
+    climb = lambda deg: taper(deg, shelf, shelf_end)
 
     degs = [a0 + (a1 - a0) * i / (stations - 1) for i in range(stations)]
     angs = [math.radians(d) for d in degs]
@@ -1561,9 +1565,10 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
     xe = [sm([e[1] for e in edges], i) for i in range(stations)]
     ws = [band(d) for d in degs]
     ps = [stand(d) for d in degs]
+    hs = [climb(d) for d in degs]
     xo = []
     for i, a in enumerate(angs):
-        xs = [skin_x(a, re[i] + ws[i] + d) for d in (-0.006, 0, 0.006)]
+        xs = [skin_x(a, re[i] + ws[i] + hs[i] + d) for d in (-0.006, 0, 0.006)]
         xs = [x for x in xs if x is not None]
         xo.append(sum(xs) / len(xs) if xs else xe[i] - 0.02)
     xo = [sm(xo, i) for i in range(stations)]
@@ -1583,7 +1588,7 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
 
     secs = []
     for i, a in enumerate(angs):
-        r, x, xw, w, xp, pr = re[i], xe[i], xo[i], ws[i], xf[i], ps[i]
+        r, x, xw, w, xp, pr, hh = re[i], xe[i], xo[i], ws[i], xf[i], ps[i], hs[i]
         x_in = skin_x(a, r + 0.012)
         x_in = (x_in if x_in is not None else x) + 0.001
         secs.append([
@@ -1591,7 +1596,8 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
             p3(a, r - foot, xp + pr - nose),       # the lip's top, straight out from the panel's face
             p3(a, r - foot + nose, xp + pr),       # the nose
             p3(a, r + w, on_band(i, 1.0)),         # the band's top edge: the face stands beside the panel
-            p3(a, r + w, xw + 0.0005),             # the shelf, flat, straight back in to the panel
+            p3(a, r + w + hh, xw + thick),         # the shelf, sloping back onto the panel
+            p3(a, r + w + hh, xw + 0.0005),        # the step down to the panel
             p3(a, r + 0.012, x_in),                # the underside, back along the panel
         ])
     sweep(target, secs, material)
@@ -1600,12 +1606,12 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
         deg = a0 + bolt_margin + (a1 - a0 - 2 * bolt_margin) * k / max(bolts - 1, 1)
         a = math.radians(deg)
         i = min(range(stations), key=lambda j: abs(degs[j] - deg))
-        r, x, xw, w, xp, pr = re[i], xe[i], xo[i], ws[i], xf[i], ps[i]
-        rb = r + w - bolt_inset
-        t = (rb - (r - foot + nose)) / (w + foot - nose)
-        xb = on_band(i, t)
-        # The face's outward normal in the (r, x) plane, turned into the car's frame at this angle.
-        dr, dx = w + foot - nose, -lean
+        r, x, xw, w, xp, pr, hh = re[i], xe[i], xo[i], ws[i], xf[i], ps[i], hs[i]
+        x0, x1 = on_band(i, 1.0), xw + thick
+        dr, dx = hh, x1 - x0
+        t = 1 - bolt_inset / math.hypot(dr, dx)
+        rb, xb = r + w + hh * t, x0 + dx * t
+        # The shelf's outward normal in the (r, x) plane, turned into the car's frame at this angle.
         n_r, n_x = -dx, dr
         ln = math.hypot(n_r, n_x)
         n_r, n_x = n_r / ln, n_x / ln
@@ -1613,7 +1619,7 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
         c = Vector(p3(a, rb, xb)) - d * 0.001
         tube(target, c, d, bolt_r, 0.0035, bolt_material, n=8)
         out.append(('bolt', round(deg, 1), round(rb, 3), round(xb, 3)))
-    return [(round(degs[i], 1), round(ws[i], 3), round(ps[i], 3), round(re[i], 4), round(xe[i], 4), round(xf[i], 4), round(xo[i], 4)) for i in range(stations)] + out
+    return [(round(degs[i], 1), round(ws[i], 3), round(ps[i], 3), round(hs[i], 3), round(re[i], 4), round(xe[i], 4), round(xf[i], 4), round(xo[i], 4)) for i in range(stations)] + out
 
 
 def end_cap(surface, target, y, x_out, bot, ztop, toward, width=0.15, thick=0.004, samples=10, material='Black'):
