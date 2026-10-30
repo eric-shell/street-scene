@@ -1622,6 +1622,46 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
     return [(round(degs[i], 1), round(ws[i], 3), round(ps[i], 3), round(hs[i], 3), round(re[i], 4), round(xe[i], 4), round(xf[i], 4), round(xo[i], 4)) for i in range(stations)] + out
 
 
+def panel_groove(o, only, co, no, half=0.003, depth=0.003, reach=0.1, radius=0.15):
+    """A bevelled shut line across a built piece where it crosses a seam of the body under it (an over-fender
+    flare over the bumper's joint: real kits are split there, the Voomeran's in two pieces each). The faces
+    whose integer face attribute `only` is set (the built piece's own: the stock panel it was copied from
+    may end on the same seam, and a position test caught the Wendt Strom's fender edge) and within `reach`
+    m of the plane (co, no) and `radius` m of `co` (a plane is infinite: the level front seam's plane also
+    crossed the flare's other leg, over the fender) are
+    bisected at the plane and `half` m either side of it; the vertices on the plane sink `depth` m along
+    their normals, a V like the donor body's own panel gaps (3 to 5 mm on the Wendt Strom's sides). The
+    plane holds the seam's line on the panel and the direction straight out from it, so the groove runs
+    across the piece the way the joint runs across the panel. The groove's faces shade flat (their corners'
+    `src_normal` zeroed: stash_normals first, restore_normals after), so its two walls catch the light.
+    Returns the vertices sunk."""
+    co, no = Vector(co), Vector(no).normalized()
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    tag = bm.faces.layers.int.get(only)
+    near = lambda f, m: f[tag] and abs((f.calc_center_median() - co).dot(no)) < m and (f.calc_center_median() - co).length < radius
+    for off in (-half, 0.0, half):
+        faces = [f for f in bm.faces if near(f, reach)]
+        geom = list({v for f in faces for v in f.verts}) + list({e for f in faces for e in f.edges}) + faces
+        bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=co + no * off, plane_no=no)
+    bm.normal_update()
+    band = [f for f in bm.faces if near(f, half + 1e-4) and all(abs((v.co - co).dot(no)) <= half + 1e-5 for v in f.verts)]
+    sink = {v for f in band for v in f.verts if abs((v.co - co).dot(no)) < 1e-5}
+    moves = [(v, v.normal.copy()) for v in sink]
+    for v, n in moves:
+        v.co -= n * depth
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    if sn is not None:
+        for f in band:
+            for loop in f.loops:
+                loop[sn] = (0.0, 0.0, 0.0)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return len(sink)
+
+
 def end_cap(surface, target, y, x_out, bot, ztop, toward, width=0.15, thick=0.004, samples=10, material='Black'):
     """A flat panel closing a lip's open end at a wheel well, in the plane y (`toward` +1 or -1: the side
     it is thickened to, away from the wheel): from the lip's outer edge `x_out` (sign gives the side)

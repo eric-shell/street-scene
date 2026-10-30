@@ -50,8 +50,9 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   frontBumper: 7500,
   rearBumper: 5500,
   // Both front wings in one piece, cut from a donor shell along its shut lines (the Wendt Strom's: 1,122), and a
-  // part may add bolt-on flares round all four arches (its Voomeran: 3,514).
-  fenders: 3600,
+  // part may add bolt-on flares round all four arches (its Voomeran Overs, with a shut line where each crosses a
+  // bumper's joint: 3,754).
+  fenders: 4000,
   sideSkirts: 2000,
   spoiler: 1500,
   hood: 2000,

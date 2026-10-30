@@ -398,7 +398,7 @@
     },
     {
       "id": "wendtStrom_fenders_voomeran",
-      "displayName": "Voomeran",
+      "displayName": "Voomeran Overs",
       "carId": "wendtStrom",
       "slot": "fenders",
       "file": "parts/wendtStrom_fenders_voomeran.glb",
@@ -410,7 +410,7 @@
         "ClearLens",
         "Black"
       ],
-      "tris": 3514,
+      "tris": 3754,
       "generated": true
     },
     {
