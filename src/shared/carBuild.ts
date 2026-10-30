@@ -77,6 +77,14 @@ export type GlowPattern = (typeof GLOW_PATTERNS)[number];
  */
 const GLOW_RENAMES: Record<string, GlowPattern> = { breathe: 'pulse', alternate: 'strobe', wave: 'rainbow' };
 
+/**
+ * A car's unique features, each a switch a car's manifest offers (`bodyFeatures`, render/car/bodyFeatures.ts):
+ * Euro mirrors narrow the mirror housings, a shaved hatch loses its handle, a black grille paints the grille's
+ * body colored bars flat black like the lips and diffusers.
+ */
+export const BODY_FEATURES = ['euroMirrors', 'shavedHatch', 'blackGrille'] as const;
+export type BodyFeature = (typeof BODY_FEATURES)[number];
+
 /** Tire shapes (render/car/tireShapes.ts draws each). */
 /** Tire stretch, least to most: none ('standard'), mild, and full ('stretched', the first stretched tire, so old saves keep their look). */
 export const TIRE_SHAPES = ['standard', 'mild', 'stretched'] as const;
@@ -189,6 +197,8 @@ export interface VisualBuild {
    * Cosmetic, so it lives here and never reaches the sim. A missing value reads 1.
    */
   popsBangs: number;
+  /** The car's unique features switched on (BODY_FEATURES order); a car without one ignores it. Builds from before read none. */
+  features: BodyFeature[];
 }
 
 export interface CarBuild {
@@ -213,6 +223,7 @@ export function defaultVisual(): VisualBuild {
     banner: { enabled: false, height: 'medium', vinyl: false, paint: { color: '#f2f2f2', finish: 'gloss', match: false } },
     underglow: { enabled: false, color: '#00e5ff', color2: '#ff3df2', pattern: 'steady', brightness: 1, speed: 1, size: 1 },
     popsBangs: 1,
+    features: [],
   };
 }
 
@@ -357,6 +368,7 @@ export function validateVisual(v: unknown): VisualBuild {
       size: num(glow.size, 0.6, 1.6, 1),
     },
     popsBangs: num(o.popsBangs, 0, 2, d.popsBangs),
+    features: Array.isArray(o.features) ? BODY_FEATURES.filter((f) => (o.features as unknown[]).includes(f)) : [],
   };
 }
 

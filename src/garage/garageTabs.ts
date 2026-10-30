@@ -9,7 +9,7 @@
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partById, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, BANNER_HEIGHTS, CarBuild, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
+import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, BANNER_HEIGHTS, BODY_FEATURES, BodyFeature, CarBuild, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
@@ -359,6 +359,8 @@ export function renderTabContent(host: TabHost): void {
               ),
             ]
           : []),
+        // Last, the paint switches only this car has.
+        ...featureSection(host, PAINT_FEATURES),
       );
       break;
     }
@@ -509,12 +511,40 @@ export function renderTabContent(host: TabHost): void {
       }
       // A slot picked from elsewhere (the dev part drop) scrolls into view; one already in view stays put.
       if (host.bodySlot !== BODY_PART_SLOTS[0]) requestAnimationFrame(() => host.body.querySelector(`[data-slot='${host.bodySlot}']`)?.scrollIntoView({ block: 'nearest' }));
+      // Last, the shape switches only this car has.
+      host.body.append(...featureSection(host, BODY_SHAPE_FEATURES));
       break;
     }
     case 'tune':
       renderPerformance(host);
       break;
   }
+}
+
+/** The unique features' names, and which tab lists each: the shapes on Body, the paint on Paint. */
+const FEATURE_LABELS: Record<BodyFeature, string> = { euroMirrors: 'Euro mirrors', shavedHatch: 'Shaved hatch', blackGrille: 'Black grille' };
+const BODY_SHAPE_FEATURES: readonly BodyFeature[] = ['euroMirrors', 'shavedHatch'];
+const PAINT_FEATURES: readonly BodyFeature[] = ['blackGrille'];
+
+/** A tab's Unique features panel: a switch for each of `features` the car's manifest offers (bodyFeatures), or nothing when it offers none. */
+function featureSection(host: TabHost, features: readonly BodyFeature[]): HTMLElement[] {
+  const v = host.build.visual;
+  const offered = features.filter((f) => manifestCar(host.build.carId).bodyFeatures?.[f]);
+  if (!offered.length) return [];
+  return [
+    section(
+      'Unique features',
+      ...offered.map((f) =>
+        field(
+          FEATURE_LABELS[f],
+          onOffSwitch(v.features.includes(f), (on) => {
+            v.features = BODY_FEATURES.filter((x) => (x === f ? on : v.features.includes(x)));
+            host.changed();
+          }, FEATURE_LABELS[f]),
+        ),
+      ),
+    ),
+  ];
 }
 
 /** The Stance tab's link: linked, front and rear sit the same (height, camber, offset, wheel size and tire); unlinked, each axle has its own. */

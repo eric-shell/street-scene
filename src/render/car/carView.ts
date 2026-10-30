@@ -9,6 +9,7 @@ import { STANCE_LIMITS, TireShape, VisualBuild, defaultVisual } from '../../shar
 import { CarAssetLibrary, ManifestCar, manifestCar, partById, partsFor } from './carAssets';
 import { CarMaterialSet, LAMP_GLOW, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBannerDepth, setBrake } from './carMaterials';
 import type { MirrorCapMaterial } from './mirrorCaps';
+import { BodyFeatureView } from './bodyFeatures';
 import { bannerDepth, type WindshieldMaterial, type WindshieldSpan } from './windshield';
 import { makeRadialGlow } from '../textures/textures';
 import { DecalLayerView } from './decals';
@@ -240,6 +241,8 @@ export class CarView {
   private rake = 0;
   private slotObjects = new Map<PartSlot, THREE.Object3D>();
   private baseModel: THREE.Object3D | null = null;
+  /** The base model's unique features (euro mirrors, shaved hatch, black grille), switched by applyVisual. */
+  private bodyFeatures: BodyFeatureView | null = null;
   private placeholder = false;
   private visual: VisualBuild = defaultVisual();
   private headlights: THREE.SpotLight[] = [];
@@ -494,6 +497,7 @@ export class CarView {
         this.placeholder = true;
       }
       this.bindMaterials(this.baseModel);
+      this.bodyFeatures = new BodyFeatureView(this.baseModel);
       for (const name of this.car.wheelNodes) {
         const n = this.baseModel.getObjectByName(name);
         if (n) n.visible = false;
@@ -512,6 +516,7 @@ export class CarView {
   async applyVisual(v: VisualBuild, token = ++this.loadToken): Promise<void> {
     this.visual = v;
     applyVisualToMaterials(this.materials, v);
+    this.bodyFeatures?.apply(v.features ?? [], this.materials.Paint, this.materials.Black);
     const span = this.baseModel?.userData.windshield as WindshieldSpan | undefined;
     setBannerDepth(this.materials, span && v.banner.enabled ? bannerDepth(span, v.banner.height) : -1);
     this.applyStance();

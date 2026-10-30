@@ -11,8 +11,10 @@ import manifestJson from '../../assets/carManifest.json';
 import catalogJson from '../../assets/partsCatalog.json';
 import type { PartEntry, PartSlot, PartsCatalog } from '../../shared/parts';
 import type { EngineSpec } from '../../shared/carSpec';
+import type { BodyFeature } from '../../shared/carBuild';
 import { resolveMaterialName } from './carMaterials';
 import { splitMirrorCaps, type MirrorCapBox } from './mirrorCaps';
+import { splitBodyFeatures, type BodyFeatureBox } from './bodyFeatures';
 import { splitWindshield } from './windshield';
 
 export interface ManifestCar {
@@ -49,6 +51,8 @@ export interface ManifestCar {
   exhaustTips?: [number, number, number][];
   /** The left mirror cap's box (car space, m; mirrored for the right), whose Paint faces wear the mirror paint (mirrorCaps.ts); missing, the mirrors keep the body paint and the garage lists no mirror paint. */
   mirrorCaps?: MirrorCapBox;
+  /** The unique features the garage offers for the car, each with its box (car space, m; bodyFeatures.ts); missing, none. */
+  bodyFeatures?: Partial<Record<BodyFeature, BodyFeatureBox>>;
 }
 
 export const MANIFEST = manifestJson as unknown as { version: number; cars: ManifestCar[] };
@@ -100,6 +104,7 @@ export class CarAssetLibrary {
       scene.userData.split = true;
       splitWindshield(scene, (m) => resolveMaterialName(m.name, car.materialMap) === 'Glass');
       if (car.mirrorCaps) splitMirrorCaps(scene, car.mirrorCaps, (m) => resolveMaterialName(m.name, car.materialMap) === 'Paint');
+      if (car.bodyFeatures) splitBodyFeatures(scene, car.bodyFeatures, (m) => resolveMaterialName(m.name, car.materialMap) === 'Paint');
     }
     return scene.clone(true);
   }
