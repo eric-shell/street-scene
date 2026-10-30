@@ -2358,3 +2358,59 @@ def cut_plate(o, x, thick, outline, holes, name):
             faces.append((a, b, m + b, m + a))
         base += k
     add_geom(o, verts, faces, name)
+
+
+def side_fin(target, surface, profile, x_out, thick, side=1, z0=0.0, radius=0.012, sink=0.006, name='Paint'):
+    """A fibreglass upright on a curved panel (the Wendt Strom Sex Spec's mid wing uprights, after
+    Wings West's G-Spec): a side `profile` of (y, z) points round the fin, in order, swept across its
+    thickness. A point with z None sits on the panel: cast straight down onto `surface` (a world space
+    BVH, `surface_tree`) at that station's x and sunk `sink`, so the foot follows a shoulder that falls
+    away sideways; a run of them is eroded (each the lowest of itself and its neighbours), since a
+    steep shoulder made the raw casts a sawtooth. A z given as `(dz, zmin)` is `dz` above the panel
+    there but never below `zmin`: a front edge rising off a shoulder that is lower at the outer face
+    than at the inner (all absolute, it sank under the outer foot; all relative, it climbed over the
+    fin's top on the inner face, where the pillar stands higher). The outer face is at `x_out(y, z)`: give it the
+    car's side a few mm out where the fin wraps the shoulder and a leaning line above it, so the face
+    reads flush with the side down to the lamp's top edge, as the real kit's does (sat on top of the
+    shoulder, the fin read as stuck on). `thick(z)` across; `z0` is where a cast starts its x guess. The long edges are rounded by `radius`: quarter circle stations each inset in
+    the side plane along the profile's own normal (cast points stay on the panel). A slab with square
+    edges read as cut plate, not moulded fibreglass. `side=-1` builds the right-hand twin.
+    Returns the sections."""
+    def foot(x, y):
+        h = surface.ray_cast(Vector((x, y, 3.0)), Vector((0, 0, -1)))
+        return (h[0].z if h[0] else z0) - sink
+    r = radius
+    q = r - math.sqrt(r * r - (r - 0.29 * r) ** 2)  # inset of the station 0.29 r in from a face
+    stations = [(0.0, 0.75 * r, 'in'), (0.29 * r, q, 'in'), (r, 0.0, 'in'), (r, 0.0, 'out'), (0.29 * r, q, 'out'), (0.0, 0.75 * r, 'out')]
+    n = len(profile)
+    secs = []
+    for off, ins, face in stations:
+        pts = []
+        for y, z in profile:
+            cast = not isinstance(z, float) and not isinstance(z, int)
+            zz = z0 if cast else z
+            for _ in range(3 if cast else 1):  # x moves with z, the cast z with x
+                xo = x_out(y, zz)
+                x = xo - thick(zz) + off if face == 'in' else xo - off
+                if cast:
+                    zz = foot(x * side, y) if z is None else max(foot(x * side, y) + sink + z[0], z[1])
+            pts.append([x, y, zz])
+        on = [z is None for _, z in profile]
+        low = [p[2] for p in pts]
+        for i in range(n):
+            if on[i]:
+                pts[i][2] = min(low[j % n] for j in (i - 1, i, i + 1) if on[j % n])
+        yz = [Vector((p[1], p[2])) for p in pts]
+        area = sum(yz[i].x * yz[(i + 1) % n].y - yz[(i + 1) % n].x * yz[i].y for i in range(n))
+        sec = []
+        for i, (p, (y, z)) in enumerate(zip(pts, profile)):
+            t = (yz[(i + 1) % n] - yz[i - 1]).normalized()
+            nrm = Vector((t.y, -t.x)) * (1 if area > 0 else -1)
+            if on[i] and on[i - 1] and on[(i + 1) % n]:
+                nrm = Vector((0, 0))
+            sec.append((p[0] * side, p[1] - nrm.x * ins, p[2] - nrm.y * ins))
+        secs.append(sec)
+    if side < 0:
+        secs.reverse()
+    sweep(target, secs, name)
+    return secs

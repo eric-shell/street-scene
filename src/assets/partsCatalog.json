@@ -406,16 +406,16 @@
       "generated": true
     },
     {
-      "id": "wendtStrom_spoiler_oldSchool",
-      "displayName": "Old School",
+      "id": "wendtStrom_spoiler_sexSpec",
+      "displayName": "Sex Spec",
       "carId": "wendtStrom",
       "slot": "spoiler",
-      "file": "parts/wendtStrom_spoiler_oldSchool.glb",
+      "file": "parts/wendtStrom_spoiler_sexSpec.glb",
       "hides": [],
       "materialSlots": [
         "Paint"
       ],
-      "tris": 1430,
+      "tris": 1458,
       "generated": true
     },
     {
