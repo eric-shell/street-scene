@@ -1628,7 +1628,7 @@ def stadium(cx, cz, r, stretch, sides=16, along='z'):
     return right + left
 
 
-def trim_plate(surface, target, holes, cells, gap=0.001, thick=0.003, material='Black'):
+def trim_plate(surface, target, holes, cells, gap=0.001, thick=0.003, material='Black', side=-1):
     """A thin plate laid over a row of holes on a panel seen from the front: each hole ((cx, cz) and its
     counterclockwise outline as `stadium` gives it) has a convex cell around it (counterclockwise (x, z)
     points), and the plate in that cell runs from the hole's outline out to the cell's edge: each
@@ -1638,7 +1638,9 @@ def trim_plate(surface, target, holes, cells, gap=0.001, thick=0.003, material='
     Strom's Track Wild, black like its lips, round four slots). Every point is laid onto `surface` by a
     ray along +y, `gap` m off it and `thick` m thick, so the plate follows the panel and takes its
     normals; walls run round the holes and the plate's border. A free fill (tessellate_polygon) made
-    slivers that sank behind the curved bumper; cells keep every face short. Carries authored normals."""
+    slivers that sank behind the curved bumper; cells keep every face short. `side` is the face the
+    plate sits on: -1 the front (rays along +y), +1 the rear (rays along -y; the Track Wild rear's two
+    slots). Carries authored normals."""
     from mathutils.bvhtree import BVHTree
     from mathutils.geometry import intersect_line_line_2d
     t = BVHTree.FromObject(surface, bpy.context.evaluated_depsgraph_get())
@@ -1652,11 +1654,11 @@ def trim_plate(surface, target, holes, cells, gap=0.001, thick=0.003, material='
     def vert(p):
         key = (round(p[0], 6), round(p[1], 6))
         if key not in cache:
-            h = t.ray_cast(Vector((p[0], -5, p[1])), Vector((0, 1, 0)), 10)
-            y, n = (h[0].y, h[1].copy()) if h[0] else (-2.1, Vector((0, -1, 0)))
-            if n.y > 0:
+            h = t.ray_cast(Vector((p[0], 5 * side, p[1])), Vector((0, -side, 0)), 10)
+            y, n = (h[0].y, h[1].copy()) if h[0] else (2.1 * side, Vector((0, side, 0)))
+            if n.y * side < 0:
                 n = -n
-            cache[key] = (bm.verts.new((p[0], y - gap - thick, p[1])), bm.verts.new((p[0], y - gap, p[1])), n)
+            cache[key] = (bm.verts.new((p[0], y + side * (gap + thick), p[1])), bm.verts.new((p[0], y + side * gap, p[1])), n)
         return cache[key]
 
     def face(pts, facing, smooth):
@@ -1677,7 +1679,7 @@ def trim_plate(surface, target, holes, cells, gap=0.001, thick=0.003, material='
                 loop[sn] = nm[loop.vert] if smooth else f.normal.copy()
 
     ang = lambda c, p: math.atan2(p[1] - c[1], p[0] - c[0]) % (2 * math.pi)
-    fwd = Vector((0, -1, 0))
+    fwd = Vector((0, side, 0))
     dividers = set()
     for cell in cells:
         for (ax, az), (bx, bz) in zip(cell, cell[1:] + cell[:1]):
