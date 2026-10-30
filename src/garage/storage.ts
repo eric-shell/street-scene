@@ -241,6 +241,7 @@ const SHORT: Record<string, string> = {
   nitrous: 'o',
   frontBumper: 'fb',
   rearBumper: 'rb',
+  fenders: 'fd',
   sideSkirts: 'ss',
   spoiler: 'sp',
   hood: 'hd',

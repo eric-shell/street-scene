@@ -382,6 +382,21 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_fenders_shaved",
+      "displayName": "Shaved",
+      "carId": "wendtStrom",
+      "slot": "fenders",
+      "file": "parts/wendtStrom_fenders_shaved.glb",
+      "hides": [
+        "Fenders"
+      ],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 1122,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",

@@ -4,11 +4,11 @@
  */
 
 /** Every swappable visible piece lives in one of these slots. Add new slots here. */
-export const PART_SLOTS = ['body', 'frontBumper', 'rearBumper', 'sideSkirts', 'spoiler', 'hood', 'roof', 'wheels'] as const;
+export const PART_SLOTS = ['body', 'frontBumper', 'rearBumper', 'fenders', 'sideSkirts', 'spoiler', 'hood', 'roof', 'wheels'] as const;
 export type PartSlot = (typeof PART_SLOTS)[number];
 
 /** Slots shown as body part menus in the garage (body and wheels have their own menus). */
-export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'sideSkirts', 'rearBumper', 'hood', 'spoiler', 'roof'];
+export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'fenders', 'sideSkirts', 'rearBumper', 'hood', 'spoiler', 'roof'];
 
 /** Slots where "none" is a valid choice (nothing rendered, base meshes still visible unless hidden). */
 export const OPTIONAL_SLOTS: PartSlot[] = ['spoiler'];
@@ -17,6 +17,7 @@ export const SLOT_LABELS: Record<PartSlot, string> = {
   body: 'Body kit',
   frontBumper: 'Front bumper',
   rearBumper: 'Rear bumper',
+  fenders: 'Fenders',
   sideSkirts: 'Side skirts',
   spoiler: 'Spoiler',
   hood: 'Hood',
@@ -48,6 +49,8 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   // plate round oval speed holes: 7,357).
   frontBumper: 7500,
   rearBumper: 5500,
+  // Both front wings in one piece, cut from a donor shell along its shut lines.
+  fenders: 2000,
   sideSkirts: 2000,
   spoiler: 1500,
   hood: 2000,

@@ -491,14 +491,17 @@ def _classify(R, mat_name):
     raise KeyError(f'{R["name"]}: no class for material {mat_name!r}')
 
 
-def patch_out(o, lo, hi, mats=None, flush=True, ring=0.12):
+def patch_out(o, lo, hi, mats=None, flush=True, ring=0.12, pin=False):
     """Remove a feature the generic car does without. flush=False: delete the faces centered in the
     box lo..hi (of `mats` only, when given): a part lying on the body (roof plate, antenna).
     flush=True: press it into its panel instead (sunroof, fuel door): fit a quadratic to the Paint
     faces in a `ring` around the box, in that panel's own frame (so a roof and a quarter panel work
     alike), move every vertex in the box onto it and paint the box's faces. The topology stays, so
     the reduction sees one smooth panel; deleting and covering leaves open, branching edges and
-    overlaps that the collapse folds into dark slivers. Returns the faces changed."""
+    overlaps that the collapse folds into dark slivers. `pin=True` moves only the vertices inside the box
+    and keeps the stashed normals of the corners outside it: on a reduced donor a face centred on the
+    feature can reach far past it (the Wendt Strom's fender repeaters: to the door's shut line), and the
+    quadratic carried out there pulled the panel's edge 1 mm in from the door. Returns the faces changed."""
     import numpy as np
     inside = lambda c, m=0.0: all(lo[i] - m <= c[i] <= hi[i] + m for i in range(3))
     me = o.data
@@ -525,7 +528,11 @@ def patch_out(o, lo, hi, mats=None, flush=True, ring=0.12):
         k = np.linalg.lstsq(A, h, rcond=None)[0]
         surf = lambda u, v: k[0] + k[1] * u + k[2] * v + k[3] * u * u + k[4] * v * v + k[5] * u * v
         sn = bm.loops.layers.float_vector.get('src_normal')
-        for v in {v for f in hit for v in f.verts}:
+        # Indices, not BMVerts: the wrappers do not hash stably (/blender, Known traps).
+        bm.verts.index_update()
+        bm.verts.ensure_lookup_table()
+        moved = {v.index for f in hit for v in f.verts if not pin or inside(v.co, 0.001)}
+        for v in (bm.verts[i] for i in moved):
             u, w = (v.co - c0).dot(t1), (v.co - c0).dot(t2)
             v.co = c0 + t1 * u + t2 * w + n0 * surf(u, w)
         for f in hit:
@@ -535,6 +542,8 @@ def patch_out(o, lo, hi, mats=None, flush=True, ring=0.12):
                 f.normal_flip()
             if sn is not None:
                 for loop in f.loops:
+                    if loop.vert.index not in moved:
+                        continue
                     u, w = (loop.vert.co - c0).dot(t1), (loop.vert.co - c0).dot(t2)
                     du, dv = k[1] + 2 * k[3] * u + k[5] * w, k[2] + 2 * k[4] * w + k[5] * u
                     loop[sn] = (n0 - t1 * du - t2 * dv).normalized()
@@ -542,6 +551,40 @@ def patch_out(o, lo, hi, mats=None, flush=True, ring=0.12):
     bm.free()
     me.update()
     return len(hit)
+
+
+def blend_patch_normals(o, lo, hi, ring=0.05):
+    """After `patch_out(..., flush=True)` on a piece with authored normals (between `stash_normals` and
+    `restore_normals`): give every corner inside the box lo..hi the inverse cube weighted mean of the
+    authored corner normals in a `ring` round it, on the same side of the car. The quadratic's own normals
+    are right in shape but read a shade lighter than the donor's shading beside them (the Wendt Strom's
+    Euro markers, its Shaved fenders); borrowing the surrounding normals hides where the feature was.
+    Returns the corners changed."""
+    me = o.data
+    if not me.has_custom_normals:
+        return 0
+    inside = lambda c, m=0.0: all(lo[i] - m <= c[i] <= hi[i] + m for i in range(3))
+    side = 1 if lo[0] + hi[0] > 0 else -1
+    cn = [Vector(c.vector) for c in me.corner_normals]
+    src, dst = [], []
+    for p in me.polygons:
+        for li in p.loop_indices:
+            co = me.vertices[me.loops[li].vertex_index].co
+            if co.x * side <= 0:
+                continue
+            if inside(co, 0.001):
+                dst.append((li, co.copy()))
+            elif inside(co, ring):
+                src.append((co.copy(), cn[li]))
+    for li, co in dst:
+        acc = Vector()
+        for c, n in src:
+            acc += n / max((c - co).length, 0.003) ** 3
+        if acc.length > 0:
+            cn[li] = acc.normalized()
+    me.normals_split_custom_set(cn)
+    me.update()
+    return len(dst)
 
 
 def close_opening(o, cut, ring=0.08, step=0.06, snap=0.004, back=None, fit_cut=True, degree=3):

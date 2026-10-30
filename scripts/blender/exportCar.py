@@ -11,7 +11,7 @@ so nothing is measured or rescaled afterwards. The .blend holds four
 collections:
 
   Car     the base model: `Body` plus the stock pieces the part slots replace
-          (`Bumper_Front`, `Bumper_Rear`, `Skirts`, `Hood`, `Roof`, and any other
+          (`Bumper_Front`, `Bumper_Rear`, `Fenders`, `Skirts`, `Hood`, `Roof`, and any other
           node a part may hide, such as the Wendt Strom's `Exhaust`), one node each.
   Parts   one object per catalog part, named `<slot>_<partId>`
           (`frontBumper_street`, `spoiler_1`); optional custom properties
@@ -55,6 +55,7 @@ SHADE_ANGLE_DEG = 35
 DEFAULT_HIDES = {
     "frontBumper": ["Bumper_Front"],
     "rearBumper": ["Bumper_Rear"],
+    "fenders": ["Fenders"],
     "sideSkirts": ["Skirts"],
     "hood": ["Hood"],
     "roof": ["Roof"],

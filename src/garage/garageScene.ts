@@ -113,6 +113,8 @@ const FRAMES: Record<TabFrame, { shot: string | CameraPreset; spin: boolean }> =
   'body:body': { shot: 'Three quarter', spin: true },
   'body:frontBumper': { shot: 'Front', spin: false },
   'body:rearBumper': { shot: 'Rear', spin: false },
+  // The left front fender from ahead and a little above: the arch, the flank behind it and the door's shut line.
+  'body:fenders': { shot: { name: 'Fender', pos: [3.0, 1.15, 2.5], target: [0.7, 0.62, 1.05] }, spin: false },
   'body:spoiler': { shot: 'Rear', spin: false },
   'body:sideSkirts': { shot: 'Low side', spin: false },
   'body:hood': { shot: { name: 'Hood', pos: [2.8, 2.5, 4.8], target: [0, 0.8, 0.9] }, spin: false },

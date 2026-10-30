@@ -11,6 +11,7 @@ Every visible piece of a car lives in a slot. The slot list is `PART_SLOTS` in `
 | `body` | The whole shell (a full body swap) | Base car GLB node `Body`. Reserved for whole-body variants; bumpers and skirts are their own slots. |
 | `frontBumper` | Front bumper, splitter, lip | Base car node `Bumper_Front` |
 | `rearBumper` | Rear bumper, diffuser | Base car node `Bumper_Rear` |
+| `fenders` | Both front fenders (wings) in one file | Base car node `Fenders` on authored cars |
 | `sideSkirts` | Both side skirts in one file | Base car node `Skirts` on authored cars |
 | `spoiler` | Wing or ducktail | Garage offers "None" |
 | `hood` | Bonnet | Base car node `Hood` on authored cars |
@@ -69,7 +70,7 @@ Only `HeadLight`, `TailLight` and `BrakeLight` glow: a lamp that is not one of t
 |---|---|
 | frontBumper | 7500 |
 | rearBumper | 5500 |
-| sideSkirts, hood, roof | 2000 |
+| fenders, sideSkirts, hood, roof | 2000 |
 | spoiler | 1500 |
 | wheels | 12000 |
 | body | 20000 |
