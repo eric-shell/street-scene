@@ -2,9 +2,9 @@
  * The mirror caps, split from a car's body paint once per loaded model (CarAssetLibrary.carModel), so the build's
  * mirror paint (VisualBuild.mirrors) dresses them apart from the body: matched, a contrast color, or chrome. No car
  * model names its mirrors and most are welded to the door skin, so the manifest gives each car a box round its left
- * cap (`mirrorCaps`, car space, measured off the GLB where the housing stands clear of the door), mirrored for the
- * right one. A Paint face with all three corners in a box is cap; a face across the box's edge stays body, so the cut
- * runs along the model's own edges where the stalk meets the housing. The caps become a mesh under each Paint mesh,
+ * mirror (`mirrorCaps`, car space, mirrored for the right one), reaching inboard until no more faces come in: the whole
+ * housing with its inner end and stalk, short of the door's own faces. A Paint face with all three corners in a box is
+ * cap; a face across the box's edge (the door's) stays body, so the cut runs along the model's own edges. The caps become a mesh under each Paint mesh,
  * sharing its attributes with an index of their own (windshield.ts does the same for the glass), so they ride its
  * node and hide with it; CarView.bindMaterials gives them MirrorPaint (carMaterial on the placeholder).
  */

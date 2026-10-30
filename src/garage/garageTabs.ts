@@ -310,7 +310,7 @@ export function renderTabContent(host: TabHost): void {
         // A contrast roof is real paint or a wrap, so the body's finishes; only cars with a roof piece list it.
         ...(roofShown ? [surface('roof', section('Roof', paintPicker(v.roof, PAINT_FINISHES, () => host.changed(), [matchBody(v.roof, v.paint)]), note('The roof panel only: the pillars keep the body paint.')))] : []),
         // Mirror caps take chrome too, like a factory brightwork option; only cars with boxed caps list them.
-        ...(manifestCar(b.carId).mirrorCaps ? [surface('mirrors', section('Mirror caps', paintPicker(v.mirrors, ACCENT_FINISHES, () => host.changed(), [matchBody(v.mirrors, v.paint)]), note('The housings only: the stalks keep the body paint.')))] : []),
+        ...(manifestCar(b.carId).mirrorCaps ? [surface('mirrors', section('Mirror caps', paintPicker(v.mirrors, ACCENT_FINISHES, () => host.changed(), [matchBody(v.mirrors, v.paint)]), note('The mirror housings and their stalks.')))] : []),
         // One caliper paint for all four corners, whatever the axle switch says.
         surface('calipers', section('Calipers', paintPicker(v.calipers, ACCENT_FINISHES, () => host.changed(), [matchBody(v.calipers, v.paint)]), note('One paint for all four corners.'))),
         surface(
