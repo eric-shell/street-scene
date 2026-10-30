@@ -333,6 +333,20 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_spoiler_trackMild",
+      "displayName": "Track Mild",
+      "carId": "wendtStrom",
+      "slot": "spoiler",
+      "file": "parts/wendtStrom_spoiler_trackMild.glb",
+      "hides": [],
+      "materialSlots": [
+        "Chrome",
+        "Black"
+      ],
+      "tris": 2926,
+      "generated": true
+    },
+    {
       "id": "wendtStrom_spoiler_trackWild",
       "displayName": "Track Wild",
       "carId": "wendtStrom",
