@@ -17,7 +17,7 @@ import { Sfx } from '../../audio/sfx';
 import { CarAlarms } from '../../audio/carAlarm';
 import { CarHorns } from '../../audio/carHorn';
 import { CityAmbience, ambienceTraits } from '../../audio/cityAmbience';
-import { manifestCar } from '../../render/car/carAssets';
+import { engineSpecFor } from '../../render/car/carAssets';
 import type { Snap } from './snap';
 import { StreetIron } from './streetIron';
 
@@ -58,7 +58,7 @@ export class SessionAudio {
     if (hub) {
       hub.applyLevels(settings);
       this.engines = race.cars.map((rc, i) => {
-        const voice = new EngineVoice(manifestCar(rc.carId).engine, i === 0 ? 0.26 : 0.2, { lite: i > 0 });
+        const voice = new EngineVoice(engineSpecFor(rc.carId, rc.tuning.swap), i === 0 ? 0.26 : 0.2, { lite: i > 0 });
         // An overrun pop flashes a flame at the car's tailpipe when it sounds.
         voice.onPop = (pipe, size, delay) => views[i]?.popFlash(pipe, size, delay);
         return voice;

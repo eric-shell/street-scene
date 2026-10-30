@@ -18,7 +18,7 @@ import { Settings, loadSettings, saveSettings } from './ui/settings';
 import { AutoQualityController, MAX_LEVEL, QUALITY_LEVELS, autoLabel, deviceKey, guessLevel, loadRememberedLevel, readDeviceInfo, saveRememberedLevel } from './render/autoQuality';
 import { GameRenderer } from './render/scene';
 import { FreeFlyCamera } from './render/camera/freeFly';
-import { CarAssetLibrary, manifestCar } from './render/car/carAssets';
+import { CarAssetLibrary, engineSpecFor, manifestCar } from './render/car/carAssets';
 import { InputManager } from './input/inputManager';
 import { PadNav } from './input/padNav';
 import { RaceSession, type SessionOptions } from './game/session';
@@ -421,7 +421,7 @@ function showMenu(step: MenuStep = 'home'): void {
     bests: { circuit: loadBest(seed, 'circuit'), sprint: loadBest(seed, 'sprint'), drag: loadBest(seed, 'drag'), waypoint: loadBest(seed, 'waypoint'), drift: loadBest(seed, 'drift') },
     builds: garage.slots.map((b) => {
       const car = manifestCar(b.carId);
-      return { name: b.name, car: car.displayName, tags: specBadges(car.engine, getBaseTuning(b.carId).drivetrain.layout) };
+      return { name: b.name, car: car.displayName, tags: specBadges(engineSpecFor(b.carId, b.performance.swap), getBaseTuning(b.carId).drivetrain.layout) };
     }),
     build: garage.current,
     onBuild: (i) => {

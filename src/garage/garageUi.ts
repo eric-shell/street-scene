@@ -36,7 +36,7 @@
  * placing a layer on the car).
  */
 import type { GameRenderer } from '../render/scene';
-import { CarAssetLibrary, manifestCar } from '../render/car/carAssets';
+import { CarAssetLibrary, engineSpecFor, manifestCar } from '../render/car/carAssets';
 import type { StreetStage } from '../game/streetStage';
 import type { Quality } from '../ui/settings';
 import { RailSteps, railInset, screenHead } from '../ui/rail/rail';
@@ -492,7 +492,7 @@ export class GarageScreen implements TabHost {
       ),
       h('h2', { class: 'car-card__name' }, b.name),
       h('div', { class: 'car-card__car' }, car.displayName, AUTHORS[car.source] ? h('span', { class: 'muted' }, ` · by ${AUTHORS[car.source]}`) : null),
-      h('div', { class: 'car-card__tags' }, ...specBadges(car.engine, getBaseTuning(b.carId).drivetrain.layout).map((t, i) => specChip(t, i))),
+      h('div', { class: 'car-card__tags' }, ...specBadges(engineSpecFor(b.carId, b.performance.swap), getBaseTuning(b.carId).drivetrain.layout).map((t, i) => specChip(t, i))),
       statLines(b),
       go,
     );
@@ -620,7 +620,7 @@ export class GarageScreen implements TabHost {
   }
 
   /**
-   * Idle and redline of the current build feed the garage rev model, and on the Tune tab its launch rpm (the gas
+   * The current build's engine (its swap, else the car's own) is the voice; its idle and redline feed the garage rev model, and on the Tune tab its launch rpm (the gas
    * bounces off the two-step there, as at the line); its steering lock and rate the turntable's front wheels; its
    * power and torque curves, pull gear and driven axle the dyno (garage/dynoRun.ts, from the sim's own torque curve).
    */
@@ -628,6 +628,7 @@ export class GarageScreen implements TabHost {
     const t = tuningForBuild(this.build.carId, this.build.performance);
     const L = t.launch;
     const tune = this.step === 'build' && this.tab === 'tune' && L.twoStepRpm > 0;
+    this.scene.setEngineSpec(engineSpecFor(this.build.carId, t.swap));
     this.scene.setEngine(t.engine.idleRpm, t.engine.redline, tune ? { rpm: L.twoStepRpm, depth: L.twoStepDepth, cutTime: L.twoStepCutTime, pedal: L.pedalThreshold } : null);
     this.scene.setSteering(t.steering.maxDeg, t.steering.rateDegPerSec);
     this.scene.setDyno(dynoSetup(t));

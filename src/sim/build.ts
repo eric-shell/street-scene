@@ -4,17 +4,20 @@
  * each, 3 the stock car), its launch rpm and its antilag rpm, and applyBuild, the only way the sim reads a build. The sliders
  * trade one thing for another rather than add performance, so a setup suits a track, not a tier. Validation
  * clamps imported positions, and a build saved with the retired component upgrades starts on the stock setup.
+ * The Power tab's engine swap rides here too: it changes the physics, so the sim has to read it.
  */
-import { CarTuning, SETUP, SETUP_SLIDERS, STOCK_POSITION, getBaseTuning, type SetupPosition, type SetupSlider } from './tuning';
+import { CarTuning, SETUP, SETUP_SLIDERS, STOCK_POSITION, applySwap, getBaseTuning, swapIds, type SetupPosition, type SetupSlider } from './tuning';
 import { clamp01, pow } from './math';
 import { num, obj } from '../shared/validate';
 
 /**
  * A position per setup slider (1 left .. 5 right, 3 stock), plus the launch rpm the two-step holds at the line
- * (rpm; 0 = off, free revs) and the rpm rolling antilag holds a turbo car at (rpm; 0 = off; missing keeps the
- * car's own, as race configs, replays and the AI's builds from before the setting do).
+ * (rpm; 0 = off, free revs), the rpm rolling antilag holds a turbo car at (rpm; 0 = off; missing keeps the
+ * car's own, as race configs, replays and the AI's builds from before the setting do) and the engine swapped in
+ * (a key of drivingParams.json `swaps.<carId>`; missing is the car's own engine). Not `engine`: that key marks a
+ * build from the retired upgrades.
  */
-export type PerformanceBuild = Record<SetupSlider, SetupPosition> & { launchRpm: number; antilagRpm?: number };
+export type PerformanceBuild = Record<SetupSlider, SetupPosition> & { launchRpm: number; antilagRpm?: number; swap?: string };
 
 /** The Tune tab's launch and antilag rpm picks: off, then LAUNCH_RPM.min up to the car's redline less the two-step's depth, in LAUNCH_RPM.step. */
 export const LAUNCH_RPM = { min: 2500, step: 250 } as const;
@@ -51,6 +54,8 @@ export function isStockSetup(perf: PerformanceBuild): boolean {
 export function applyBuild(base: CarTuning, perf: PerformanceBuild): CarTuning {
   const t: CarTuning = JSON.parse(JSON.stringify(base));
   const p = validatePerformance(perf);
+  // The engine first: the sliders work on whatever engine and gearbox the swap leaves.
+  if (p.swap) applySwap(t, p.swap);
   // Suspension: springs, travel, turn in, and the grip it finds on smooth and on rough ground.
   const sus = SETUP.suspension;
   const k = p.suspension - 1;
@@ -88,14 +93,21 @@ export function applyBuild(base: CarTuning, perf: PerformanceBuild): CarTuning {
   return t;
 }
 
-/** A car's stock launch rpm (drivingParams.json launch.defaultRpm; 0 = off), where its donor's owners launch. */
-export function defaultLaunchRpm(carId: string): number {
-  return getBaseTuning(carId).launch.defaultRpm;
+/** A car's tuning with `swap` fitted (none: its own engine), before any setup. */
+function engineTuning(carId: string, swap?: string): CarTuning {
+  const t = getBaseTuning(carId);
+  if (swap) applySwap(t, swap);
+  return t;
 }
 
-/** A car's stock rolling antilag rpm (drivingParams.json launch.antilagRpm; 0 = off): on boost, near its torque peak. */
-export function defaultAntilagRpm(carId: string): number {
-  return getBaseTuning(carId).launch.antilagRpm;
+/** A car's stock launch rpm (drivingParams.json launch.defaultRpm; 0 = off), where its donor's owners launch; with a swap, where that engine launches. */
+export function defaultLaunchRpm(carId: string, swap?: string): number {
+  return engineTuning(carId, swap).launch.defaultRpm;
+}
+
+/** A car's stock rolling antilag rpm (drivingParams.json launch.antilagRpm; 0 = off): on boost, near its torque peak; with a swap, that engine's. */
+export function defaultAntilagRpm(carId: string, swap?: string): number {
+  return engineTuning(carId, swap).launch.antilagRpm;
 }
 
 export function tuningForBuild(carId: string, perf: PerformanceBuild): CarTuning {
@@ -113,10 +125,12 @@ export function validatePerformance(v: unknown, carId?: string): PerformanceBuil
   const o = obj(v);
   const p = stockPerformance();
   if (!RETIRED_UPGRADES.some((c) => c in o)) for (const s of SETUP_SLIDERS) p[s] = Math.round(num(o[s], 1, 5, STOCK_POSITION)) as SetupPosition;
+  // A swap the named car does not offer is dropped; without a car (the sim) it is kept and applySwap ignores it on the wrong car.
+  if (typeof o.swap === 'string' && (!carId || swapIds(carId).includes(o.swap))) p.swap = o.swap;
   // Off, or a step of the Tune tab's slider; applyBuild clamps it under the car's redline.
-  const lr = num(o.launchRpm, 0, 12000, carId ? defaultLaunchRpm(carId) : 0);
+  const lr = num(o.launchRpm, 0, 12000, carId ? defaultLaunchRpm(carId, p.swap) : 0);
   const step = (x: number) => (x >= LAUNCH_RPM.min ? Math.round(x / LAUNCH_RPM.step) * LAUNCH_RPM.step : 0);
   p.launchRpm = step(lr);
-  if (o.antilagRpm !== undefined || carId) p.antilagRpm = step(num(o.antilagRpm, 0, 12000, carId ? defaultAntilagRpm(carId) : 0));
+  if (o.antilagRpm !== undefined || carId) p.antilagRpm = step(num(o.antilagRpm, 0, 12000, carId ? defaultAntilagRpm(carId, p.swap) : 0));
   return p;
 }

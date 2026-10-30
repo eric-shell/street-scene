@@ -225,6 +225,8 @@ const SHORT: Record<string, string> = {
   features: 'ft',
   // The Tune tab's setup sliders.
   suspension: 's',
+  // The Power tab's engine swap.
+  swap: 'sw',
   gearing: 'gr',
   differential: 'df',
   brakeBalance: 'bb',

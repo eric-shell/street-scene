@@ -25,6 +25,39 @@ const SLIDER_CARS: [string, CarTuning][] = [
 /** A build saved with the retired component upgrades (every tier at 2). */
 const LEGACY_TIERS = { engine: 2, turbo: 2, exhaust: 2, transmission: 2, tires: 2, suspension: 2, brakes: 2, weight: 2, nitrous: 2 };
 
+describe('engine swaps', () => {
+  it('lay the swap over the car before the setup, keep the stock car bit for bit, and drop a swap the car does not offer', async () => {
+    const stock = tuningForBuild('wendtStrom', stockPerformance('wendtStrom'));
+    expect(JSON.stringify(tuningForBuild('wendtStrom', { ...stockPerformance('wendtStrom'), swap: undefined }))).toBe(JSON.stringify(stock));
+    const daza = tuningForBuild('wendtStrom', { ...stockPerformance('wendtStrom'), swap: 'daza' });
+    expect(daza.swap).toBe('daza');
+    expect(daza.engine.turbo).toBe(true);
+    expect(daza.engine.redline).not.toBe(stock.engine.redline);
+    expect(daza.mass).toBeLessThan(stock.mass);
+    // The sliders still act on the swapped car: Short gearing moves its final drive as it does the stock one's.
+    const short = tuningForBuild('wendtStrom', { ...stockPerformance('wendtStrom'), gearing: 1, swap: 'daza' });
+    expect(short.gearbox.finalDrive / daza.gearbox.finalDrive).toBeCloseTo(SETUP.gearing.finalDriveMul[0]);
+    // The garage drops a swap another car does not offer; the sim keeps it and drives that car's own engine.
+    expect(validatePerformance({ swap: 'daza' }, 'kazamaRotor').swap).toBeUndefined();
+    expect(validatePerformance({ swap: 'daza' }, 'wendtStrom').swap).toBe('daza');
+    const rotor = tuningForBuild('kazamaRotor', { ...stockPerformance('kazamaRotor'), swap: 'daza' });
+    expect(JSON.stringify(rotor)).toBe(JSON.stringify(tuningForBuild('kazamaRotor', stockPerformance('kazamaRotor'))));
+    // A share code carries the swap.
+    const b = { ...defaultBuild(), carId: 'wendtStrom' };
+    b.performance = { ...b.performance, swap: 'turbo07k' };
+    expect((await decodeShareCode(await encodeShareCode(b)))?.performance.swap).toBe('turbo07k');
+  });
+
+  it('every swap is quicker than the car it goes into', () => {
+    const stock = measureStats(tuningForBuild('wendtStrom', stockPerformance('wendtStrom')));
+    for (const swap of ['vr36', 'turbo07k', 'daza']) {
+      const st = measureStats(tuningForBuild('wendtStrom', { ...stockPerformance('wendtStrom'), swap }));
+      expect(st.zeroTo60, swap).toBeLessThan(stock.zeroTo60);
+      expect(st.power, swap).toBeGreaterThan(stock.power);
+    }
+  });
+});
+
 describe('build validation', () => {
   it('clamps and repairs garbage input', () => {
     const b = validateBuild({

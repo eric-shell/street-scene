@@ -20,10 +20,10 @@ import type { IconNode } from '../ui/kit/icons';
 /** A label from a lower case id: "metallic" reads "Metallic". */
 export const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Measured stats per car and performance build (its setup and launch rpm): measuring drives the sim for up to a minute of game time. */
+/** Measured stats per car and performance build (its engine swap, setup and launch rpm): measuring drives the sim for up to a minute of game time. */
 const statsCache = new Map<string, CarStats>();
 function statsFor(b: CarBuild): CarStats {
-  const key = `${b.carId}:${SETUP_SLIDERS.map((s) => b.performance[s]).join('')}:${b.performance.launchRpm}`;
+  const key = `${b.carId}:${b.performance.swap ?? ''}:${SETUP_SLIDERS.map((s) => b.performance[s]).join('')}:${b.performance.launchRpm}`;
   let st = statsCache.get(key);
   if (!st) statsCache.set(key, (st = measureStats(tuningForBuild(b.carId, b.performance))));
   return st;

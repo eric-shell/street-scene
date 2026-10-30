@@ -34,6 +34,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { GameRenderer } from '../render/scene';
 import { CarPose, CarView, WHEEL_KEYS } from '../render/car/carView';
 import { CarAssetLibrary } from '../render/car/carAssets';
+import type { EngineSpec } from '../shared/carSpec';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { BlipScript, REV_LEVEL, RevModel, revVoice, type TwoStep } from './revModel';
 import { PULL, pullLoad } from './dynoRun';
@@ -85,7 +86,7 @@ const DYNO_CAMERAS: CameraPreset[] = [
 const ROLLERS_PRESET = 'Rollers';
 
 /** What a Customize tab asks the room to show: the tab, the Body tab with the slot on show, or the Paint tab with the surface. */
-export type TabFrame = 'model' | 'stance' | 'wheels' | 'vinyl' | 'tint' | 'neon' | 'tune' | `body:${PartSlot}` | `paint:${PaintSurface}`;
+export type TabFrame = 'model' | 'power' | 'stance' | 'wheels' | 'vinyl' | 'tint' | 'neon' | 'tune' | `body:${PartSlot}` | `paint:${PaintSurface}`;
 
 /**
  * The shots the Customize tabs frame, in car space like CAMERAS (a name found there reuses that preset), and
@@ -96,6 +97,8 @@ export type TabFrame = 'model' | 'stance' | 'wheels' | 'vinyl' | 'tint' | 'neon'
  */
 const FRAMES: Record<TabFrame, { shot: string | CameraPreset; spin: boolean }> = {
   model: { shot: 'Three quarter', spin: true },
+  // The engine bay: the hood from ahead and above, where a swap goes.
+  power: { shot: { name: 'Hood', pos: [2.8, 2.5, 4.8], target: [0, 0.8, 0.9] }, spin: false },
   stance: { shot: 'Low side', spin: false },
   wheels: { shot: 'Wheel', spin: false },
   'paint:body': { shot: 'Three quarter', spin: true },
@@ -203,7 +206,10 @@ export class GarageScene {
   private steerLock = 0;
   private steerRate = 0;
   private voice: EngineVoice | null = null;
-  private voiceCar = '';
+  /** The engine the voice was built for: a swap or a car change builds a new one. */
+  private voiceSpec: EngineSpec | null = null;
+  /** The current build's engine (setEngineSpec): its swap's, else the car's own. */
+  private engineSpec: EngineSpec | null = null;
   private audioOk = false;
   private engineVolume = 0.7;
   private quietFor = 0;
@@ -434,6 +440,11 @@ export class GarageScene {
    * Engine limits for the current build (from its tuning), and the two-step the gas meets while the Tune tab
    * is open (null otherwise). Only on the turntable: the Street view's car is rolling, where no two-step arms.
    */
+  /** The current build's engine (a swap's, or the car's own), which the engine voice speaks with. */
+  setEngineSpec(spec: EngineSpec): void {
+    this.engineSpec = spec;
+  }
+
   setEngine(idle: number, redline: number, launch: TwoStep | null = null): void {
     this.session.setRevs(idle, redline);
     this.rev.configure({ idle, redline, rest: this.restRpm(idle, redline), launch: this.mode === 'garage' ? launch : null, load: this.mode === 'dyno' ? pullLoad(idle, redline) : null });
@@ -508,12 +519,15 @@ export class GarageScene {
 
   private ensureVoice(): EngineVoice | null {
     if (!this.audioOk || !this.car || this.engineVolume <= 0) return null;
-    if (this.voice && this.voiceCar === this.car.car.id) return this.voice;
+    // A spec set for another car (the new one still loading) waits for it; until then the car speaks with its own.
+    const swapped = this.engineSpec && this.car.car.engineSwaps?.some((s) => s.engine === this.engineSpec);
+    const spec = swapped ? this.engineSpec! : this.car.car.engine;
+    if (this.voice && this.voiceSpec === spec) return this.voice;
     this.voice?.dispose();
     this.voice = null;
     try {
-      this.voice = new EngineVoice(this.car.car.engine, REV_LEVEL.base);
-      this.voiceCar = this.car.car.id;
+      this.voice = new EngineVoice(spec, REV_LEVEL.base);
+      this.voiceSpec = spec;
       this.voice.onPop = (pipe, size, delay) => this.car?.popFlash(pipe, size, delay);
     } catch {
       this.audioOk = false;

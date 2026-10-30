@@ -61,6 +61,61 @@
           "muffler": "sport"
         }
       },
+      "engineSwaps": [
+        {
+          "id": "vr36",
+          "name": "3.6 VR6",
+          "note": "The R36 conversion: the Passat R36's bigger narrow angle six (BWS), naturally aspirated.",
+          "engine": {
+            "layout": "VR6",
+            "aspiration": "na",
+            "position": "front",
+            "voice": {
+              "headers": "unequal",
+              "headerSpread": 0.3,
+              "pipes": 1,
+              "muffler": "sport"
+            }
+          }
+        },
+        {
+          "id": "turbo07k",
+          "name": "07K 2.5 Turbo",
+          "note": "The Jetta's junkyard inline five on stock internals, with a big single turbo on a top mount manifold.",
+          "engine": {
+            "layout": "I5",
+            "aspiration": "turbo",
+            "position": "front",
+            "voice": {
+              "headers": "equal",
+              "pipes": 1,
+              "muffler": "straight",
+              "diverter": "vent",
+              "flutter": 0.3,
+              "wastegate": 0.8,
+              "whoosh": 1.4
+            }
+          }
+        },
+        {
+          "id": "daza",
+          "name": "2.5 TFSI (DAZA)",
+          "note": "The RS3's turbocharged aluminium block five, dropped in whole with its own tune.",
+          "engine": {
+            "layout": "I5",
+            "aspiration": "turbo",
+            "position": "front",
+            "voice": {
+              "headers": "equal",
+              "pipes": 1,
+              "muffler": "sport",
+              "diverter": "recirculating",
+              "whoosh": 0.6,
+              "flaps": 0.6
+            }
+          }
+        }
+      ],
       "exhaustTips": [
         [
           0.449,

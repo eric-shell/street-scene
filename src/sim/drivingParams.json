@@ -414,6 +414,75 @@
       }
     }
   },
+  "swaps": {
+    "_": "The garage Power tab's engine swaps, per car: swaps.<carId>.<swapId> is an override merged over that car's tuning (cars.<carId> over base) when a build fits the swap (build.ts applyBuild, before the setup sliders). Same rules as cars: absolute values, arrays replace whole, unknown keys throw. The swapped engine's layout, aspiration and voice are the manifest car's engineSwaps (src/assets/carManifest.json), which must list the same ids in the same order. Donor data and what is estimated: docs/carEngines.md, Wendt Strom engine swaps.",
+    "wendtStrom": {
+      "vr36": {
+        "_name": "3.6 VR6 (BWS, the Passat R36's): the 3.2's narrow angle six bored to 89.0 mm and stroked to 96.4 (3,598 cc, a 10.6 degree V), naturally aspirated. 300 PS (220 kW) at 6,600 rpm and 350 N\u00b7m from 2,400 to 5,300. The curve runs through those points (319 N\u00b7m at 6,600 is the power peak); the 6,900 redline is an estimate. About 10 kg over the 3.2 (estimate). torqueMul stays the car's 0.86, so the gain over the 3.2 is the real one.",
+        "mass": 1490,
+        "engine": {
+          "redline": 6900,
+          "torqueCurve": [
+            [800, 200],
+            [1500, 285],
+            [2400, 350],
+            [5300, 350],
+            [6000, 336],
+            [6600, 319],
+            [6900, 295]
+          ]
+        }
+      },
+      "turbo07k": {
+        "_name": "07K 2.5 turbo: the Mk5 Jetta and Rabbit's 2,480 cc inline five (82.5 x 92.8 mm, chain driven DOHC 20 valve, iron block; 170 hp at 5,700 and 240 N\u00b7m at 4,250 stock) on stock internals with a big single turbo on a T3 top mount manifold and an external wastegate, about 20 psi: 440 PS at 6,500 and 540 N\u00b7m at 4,500, the torque the stock rods are trusted with (an estimate: kits are sold for 400 to 500 hp). The big turbo is lazy: little under 3,000, the boost arriving through 3,500 to 4,500, so a longer spool and more of the torque behind it than the stock turbo cars. Rev limit 7,300 (034Motorsport's turbo tune raises the 07K's to that). Iron block plus the turbo, intercooler and piping: about the VR6's weight.",
+        "mass": 1475,
+        "engine": {
+          "redline": 7300,
+          "torqueCurve": [
+            [800, 150],
+            [2000, 215],
+            [3000, 330],
+            [3800, 470],
+            [4500, 540],
+            [5500, 520],
+            [6500, 475],
+            [7000, 430],
+            [7300, 395]
+          ]
+        },
+        "launch": {
+          "_": "A big turbo wants revs at the line: 4,500 is where it is on boost, so the launch and rolling antilag both sit there.",
+          "defaultRpm": 4500,
+          "antilagRpm": 4500,
+          "spoolTime": 0.9,
+          "turboShare": 0.5
+        }
+      },
+      "daza": {
+        "_name": "2.5 TFSI (DAZA, EA855 evo, the 2017-20 RS3 8V's): 2,480 cc inline five (82.5 mm bore, the 07K's dimensions), aluminium crankcase, port and direct injection, one turbo. 400 PS (294 kW) from 5,850 to 7,000 rpm and 480 N\u00b7m from 1,700 to 5,850, a flat line to the power plateau: 401 N\u00b7m at 7,000 is the power at its end. Rev limit 7,200 is an estimate (the power plateau ends at 7,000). Audi gives it 26 kg under the iron block CEPA (183 kg), so about 25 kg under the VR6 (an estimate). Quick spool: a short lag behind a small share of the torque.",
+        "mass": 1455,
+        "engine": {
+          "redline": 7200,
+          "torqueCurve": [
+            [800, 180],
+            [1300, 340],
+            [1700, 480],
+            [5850, 480],
+            [6500, 438],
+            [7000, 401],
+            [7200, 380]
+          ]
+        },
+        "launch": {
+          "_": "RS3 launch control holds about 4,000 to 4,500: full boost and the plateau. Rolling antilag at 4,500.",
+          "defaultRpm": 4000,
+          "antilagRpm": 4500,
+          "spoolTime": 0.4,
+          "turboShare": 0.25
+        }
+      }
+    }
+  },
   "setup": {
     "_readme": "The garage Tune tab's four sliders (applyBuild() in build.ts lays them over the car tuning). Each table holds one entry per position, left to right (1..5). Position 3 is the stock car: every *Mul table holds exactly 1 there and every other table 0 (tuning.ts throws otherwise), so a stock build is bit for bit the car's own tuning and the AI, stock replays and bests are unchanged.",
     "suspension": {

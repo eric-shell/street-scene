@@ -23,6 +23,8 @@ export const DRIVETRAIN_LAYOUTS: readonly DrivetrainLayout[] = ['rwd', 'awd', 'f
 
 export interface CarTuning {
   carId: string;
+  /** The engine swapped in (the build's `performance.swap`, applySwap); missing on the car's own engine. */
+  swap?: string;
   mass: number;
   /** Multiplies the box approximation of yaw inertia. Higher = lazier rotation. */
   yawInertiaScale: number;
@@ -290,6 +292,8 @@ type DeepPartial<T> = { [K in keyof T]?: T[K] extends unknown[] ? T[K] : T[K] ex
 const BASE = params.base as unknown as BaseTuning;
 /** Per car deep-partial overrides from drivingParams.json (absolute values, `_` keys are comments). */
 export const CAR_OVERRIDES = params.cars as unknown as Record<string, DeepPartial<BaseTuning>>;
+/** Engine swaps per car (drivingParams.json `swaps.<carId>.<swapId>`): overrides merged over the car's tuning, as a car's are over base. */
+export const SWAP_OVERRIDES = params.swaps as unknown as Record<string, Record<string, DeepPartial<BaseTuning>>>;
 
 // ---------------------------------------------------------------------------
 // The garage Tune tab's setup (build.ts applyBuild): four sliders, five positions each, left to right.
@@ -424,6 +428,8 @@ interface ManifestCar {
   id: string;
   /** The engine spec (shared/carSpec.ts); only the aspiration reaches the tuning (engine.turbo). */
   engine?: { aspiration?: string };
+  /** The Power tab's engine swaps (shared/carSpec.ts EngineSwap); the aspiration of the one fitted replaces the car's. */
+  engineSwaps?: { id: string; engine: { aspiration?: string } }[];
   wheels: Record<'FL' | 'FR' | 'RL' | 'RR', number[]>;
   wheelRadius: number;
   wheelbase: number;
@@ -499,6 +505,35 @@ export function getBaseTuning(carId: string): CarTuning {
     resolved.set(id, t);
   }
   return deepClone(t);
+}
+
+/** The engine swaps a car offers (drivingParams.json `swaps.<carId>`), in the file's order; none for most cars. */
+export function swapIds(carId: string): string[] {
+  return Object.keys(SWAP_OVERRIDES[carId] ?? {}).filter((k) => !k.startsWith('_'));
+}
+
+/**
+ * Lay an engine swap over a car's tuning, in place: its override merged key by key (as a car's is over base) and
+ * the swapped engine's aspiration from the manifest. A swap the car does not offer leaves the tuning as it is
+ * and returns false, so a build carried to another car drives that car's own engine.
+ */
+export function applySwap(t: CarTuning, swapId: string): boolean {
+  const over = SWAP_OVERRIDES[t.carId]?.[swapId];
+  if (!over || swapId.startsWith('_')) return false;
+  mergeOverride(t as unknown as Record<string, unknown>, over as Record<string, unknown>, `swaps.${t.carId}.${swapId}`);
+  const spec = (manifest.cars as ManifestCar[]).find((c) => c.id === t.carId)?.engineSwaps?.find((s) => s.id === swapId)?.engine;
+  t.engine.turbo = spec?.aspiration === 'turbo';
+  t.swap = swapId;
+  return true;
+}
+
+// Every swap merges cleanly at startup (a typo throws here, not mid race), and the physics and the manifest name the same swaps.
+for (const carId of Object.keys(SWAP_OVERRIDES).filter((k) => !k.startsWith('_'))) {
+  if (!CAR_IDS.includes(carId)) throw new Error(`drivingParams.json: swaps.${carId} is not a car`);
+  const listed = ((manifest.cars as ManifestCar[]).find((c) => c.id === carId)?.engineSwaps ?? []).map((s) => s.id);
+  const ids = swapIds(carId);
+  if (listed.join() !== ids.join()) throw new Error(`drivingParams.json: swaps.${carId} (${ids.join(', ')}) must match the manifest's engineSwaps (${listed.join(', ')}), in order`);
+  for (const id of ids) applySwap(getBaseTuning(carId), id);
 }
 
 /** Drive torque split per axle (fractions summing to 1). */

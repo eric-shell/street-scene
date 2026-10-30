@@ -42,6 +42,58 @@ Shipped (`drivingParams.json` `wendtStrom`) vs sourced: mass 1,480 kg matches 1,
 
 Sources fetched: https://en.wikipedia.org/wiki/Volkswagen_Golf_Mk4 , https://en.wikipedia.org/wiki/VR6_engine ; via search only: https://www.encycarpedia.com/volkswagen/02-golf-r32-hatch , https://www.supercars.net/blog/2006-volkswagen-golf-r32 , https://www.carexpert.com.au/volkswagen/golf/2003/r32/features-and-specs , https://www.parkers.co.uk/volkswagen/golf/r32-2005/32-v6-r32-4motion-3d/specs/ .
 
+## Wendt Strom engine swaps (the Power tab)
+
+The R32's three swaps (`engineSwaps` on the manifest car, physics in `drivingParams.json` `swaps.wendtStrom`). Same source key as above. Web search was thin again (spec aggregators, parts vendors, Audi's own pages now 404), so peaks and dimensions are sourced and most of the sound-relevant detail (manifolds, rev limits, turbos) is **est.**
+
+### 3.6 VR6 (`vr36`): the R36 conversion, BWS, naturally aspirated
+
+| | |
+|---|---|
+| Engine | VR6 3,598 cc, **89.0 x 96.4 mm** (sourced: mymotorlist BHK/BWS pages, Wikipedia infobox mirror), a **10.6° V** against the 3.2's 15° (sourced: Wikipedia VR6, the 3.6 FSI BLV). FSI direct injection, 24v, variable cam timing. Compression 11.4 to 12.0:1 (sources disagree). |
+| Firing | 1-5-3-6-2-4, 120° (sourced for the VR6 family; the 3.6 assumed the same) |
+| Power / torque | **300 PS (220 kW) at 6,600 rpm** (Passat R36: autobild, carmagazine); **350 N·m from 2,400 to 5,300** (one source says 360). Touareg/Q7 BHK: 280 PS, 360 N·m. |
+| Redline | about 6,900: **est.** (none found; the power peak is 6,600) |
+| Exhaust | One cast manifold per row (left and right part numbers 03H253031B / C in a parts listing: weak inference); the R36 Passat has twin chromed tailpipes. |
+| Mass | about +10 kg on the 3.2: **est.** |
+| Sound | The 3.2's growl, deeper and fuller: the same zigzag firing across the narrow V, a shorter reach round a 10.6° V for the far row. |
+| Voice | `VR6`, `na`, `headers: unequal`, `headerSpread: 0.3` (0.35 on the 3.2: a narrower V, a shorter reach; **est.**), `pipes: 1`, `muffler: sport` |
+| Synth gaps | Displacement does not reach the voice (a bigger bore at the same rpm sounds the same); the switchable intake manifold. |
+| Turbo / supercharged 3.6 kits | Common (forged JE pistons sold for "R36 turbo"), 500 to 600+ hp; not offered yet. A turbo 3.6 would be a second swap with `aspiration: turbo`. |
+
+### 07K 2.5 turbo (`turbo07k`): the Jetta five on stock internals
+
+| | |
+|---|---|
+| Engine | Inline 5, **2,480 cc, 82.5 x 92.8 mm**, DOHC 20v, **chain driven** (sourced: auto-data, mymotorlist CBTA, automoli). Iron block **est.** (commonly said; not on a fetched page). The "half a Lamborghini V10" story was not confirmed by any source. |
+| Stock output | **150 hp at 5,000** (2005-07 BGP/BGQ) or **170 hp at 5,700, 240 N·m (177 lb-ft) at 4,250** (2008-14 CBTA/CBUA) (sourced: auto-data). |
+| Firing | 1-2-4-5-3, 144° **est.** (the VW/Audi five's order; no 07K page states it) |
+| Turbo kit | Sold as **T3 top mount** cast manifolds with a **44 mm V-band external wastegate** and a cast intake (SPA Turbo listings); 034Motorsport's kit runs **8-9 psi on a Precision 5858** and raises the **rev limit to 7,300** (sourced, vendor). The game's build is a bigger one: about 20 psi, **440 PS at 6,500 and 540 N·m at 4,500, est.** (inside the 400 to 500+ hp the user's brief and the vendors claim; stock rods are the usual limit on fives, per the TFSI threads). |
+| Mass | iron block plus turbo, intercooler and piping: about the VR6's, **est.** |
+| Sound | The five's 2.5 order warble ("baby Gallardo" is the owners' phrase), made loud by an open turbo-back exhaust: an aftermarket atmospheric blow-off valve, wastegate chatter from the external gate, a big filter's induction roar. |
+| Voice | `I5`, `turbo`, `headers: equal`, `pipes: 1`, `muffler: straight`, `diverter: vent`, `flutter: 0.3`, `wastegate: 0.8`, `whoosh: 1.4` |
+| Synth gaps | The I5 runner table is the S2's cast log (`FIVE_LOG`) for every five; a T3 top mount is a tubular manifold with near equal runners, so it should have its own table (a `manifold` option for the I5). An external gate's screamer pipe (a separate open vent) is not modelled. |
+| Physics | Lazy spool: `spoolTime 0.9`, `turboShare 0.5`; launch and rolling antilag at 4,500. |
+
+### 2.5 TFSI DAZA (`daza`): the RS3 8V's EA855 evo
+
+| | |
+|---|---|
+| Engine | Inline 5, **2,480 cc, 82.5 mm bore** (Bar-Tek piston listings; stroke 92.8 the 07K's and CEPA's, **est.** for the DAZA), **aluminium crankcase, 26 kg lighter than the iron CEPA** (sourced: Audi via autocar / gtspirit), port plus direct injection (sourced), Audi valvelift on the exhaust cams (sourced for the 2017 engine on Audi's TT RS page, see the TT-RS section). |
+| Firing | **1-2-4-5-3, 144°** (Audi's five, sourced on the TT RS page) |
+| Power / torque | **400 PS (294 kW) at 5,850-7,000 rpm; 480 N·m at 1,700-5,850** (sourced: auto-data, Audi press). |
+| Turbo | One turbo; boost up to 1.35 bar on the 2017 engine (Audi's TT RS page, see the TT-RS section); maker not found. |
+| Redline | about 7,200: **est.** (the power plateau ends at 7,000) |
+| Mass | CEPA 183 kg less 26: about 157 kg, about 25 kg under the VR6: **est.** |
+| Builds | Golf swaps with the RS3/TT RS five exist (a Mk4 R32 with fabricated subframe and AWD tunnel: fastcar.co.uk, page 403 here; a Kraftwerx Mk4 GLI with a TT RS engine and 4Motion; a 600 PS Mk7 Golf R on a TTE625). The "R25" name turned up only for a SEAT Leon Cupra. Weak points: rods and rod bolts (seatcupra forum). |
+| Sound | The same warble, smoother and more refined: stock diverter valve, a quick small turbo, the RS3's flap exhaust that opens on load (and crackles on the overrun). |
+| Voice | `I5`, `turbo`, `headers: equal`, `pipes: 1`, `muffler: sport`, `diverter: recirculating`, `whoosh: 0.6`, `flaps: 0.6` (the first engine in the game with flaps) |
+| Physics | Quick spool: `spoolTime 0.4`, `turboShare 0.25`; launch 4,000, antilag 4,500. |
+
+Measured (`measureStats`, stock setup): stock 3.2 0-100 6.30 s / 225 km/h; 3.6 VR6 5.58 s / 243; 07K turbo 3.98 s / 262; DAZA 4.53 s / 258. The swaps keep the R32's gearbox, so the 07K and the DAZA reach sixth's limiter (265 and 261 km/h) close to their drag top speed.
+
+Sources: https://en.wikipedia.org/wiki/VR6_engine , https://mymotorlist.com/engines/volkswagen/ea390/bhk/ , https://mymotorlist.com/engines/volkswagen/ea390/bws/ , https://www.autobild.de/artikel/vorstellung-vw-passat-r36-58255.html , https://www.carmagazine.co.uk/car-news/first-official-pictures/volkswagen/volkswagen-passat-r36-2006-first-official-pictures-/ , https://www.auto-data.net/en/volkswagen-rabbit-a5-5-door-2.5-170hp-tiptronic-50515 , https://mymotorlist.com/engines/volkswagen/ea855/cbta/ , https://eurosporttuning.com/07k-turbo-kit-stock-intake-manifold-ecu-upgrade-8-9-psi-mkv-volkswagen-jetta-rabbit-2-5l/ (search snippet; the page 404s), https://store.ngpracing.com/products/vw-jetta-golf-mk5-2-5l-5-cylinder-20v-07k-t3-top-mount-turbo-manifold-intake-manifold , https://www.auto-data.net/en/audi-rs-3-sedan-8v-facelift-2017-2.5-tfsi-400hp-quattro-s-tronic-27838 , https://www.bar-tek.com/forged-pistons-mahle-2-5-l-tfsi-daza-dnw , https://gtspirit.com/2017/02/10/official-2017-audi-rs3-sportback/ , https://www.fastcar.co.uk/cars/modified-vw-golf-r32-mk4/ , https://engineswapdepot.com/?p=73685 , https://www.seatcupra.net/forums/threads/leon-cupra-r25.424771/ .
+
 ## Kazama Rotor: 1999 Mazda RX-7 FD3S (13B-REW)
 
 Source status key: **sourced** = read on a fetched page (URL in Sources); **est.** = not found.

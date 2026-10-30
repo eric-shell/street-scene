@@ -3,12 +3,13 @@ import manifest from '../src/assets/carManifest.json';
 import { DRIVE_WHEELS, ENGINE_LAYOUTS, ENGINE_POSITIONS, EngineLayout, EnginePosition, EngineSpec, drivetrainCode, engineName, engineSpecErrors, firingsPerRev, specBadges } from '../src/shared/carSpec';
 import { DRIVETRAIN_LAYOUTS, SELECTABLE_CAR_IDS, getBaseTuning } from '../src/sim/tuning';
 
-const cars = manifest.cars as { id: string; engine: EngineSpec }[];
+const cars = manifest.cars as { id: string; engine: EngineSpec; engineSwaps?: { id: string; engine: EngineSpec }[] }[];
 const spec = (layout: EngineLayout, aspiration: EngineSpec['aspiration'] = 'na', position: EnginePosition = 'front'): EngineSpec => ({ layout, aspiration, position });
 
 describe('car spec labels', () => {
   it('every car in the manifest has a valid engine spec', () => {
     for (const c of cars) expect(engineSpecErrors(c.engine), c.id).toEqual([]);
+    for (const c of cars) for (const s of c.engineSwaps ?? []) expect(engineSpecErrors(s.engine), `${c.id} ${s.id}`).toEqual([]);
     expect(engineSpecErrors(undefined)).toHaveLength(1);
     expect(engineSpecErrors({ type: 'v6', cylinders: 6 })).toHaveLength(5); // three missing fields, two unknown ones
     expect(engineSpecErrors({ layout: 'V7', aspiration: 'na', position: 'front' })).toEqual([expect.stringContaining('engine.layout "V7"')]);

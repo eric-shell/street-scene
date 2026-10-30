@@ -25,6 +25,7 @@ interface ManifestCar {
   provisional: boolean;
   dimensions: { length: number; width: number; height: number };
   engine?: unknown;
+  engineSwaps?: { id: string; engine: unknown }[];
 }
 
 const ROOT = process.cwd();
@@ -44,6 +45,7 @@ export async function validateCatalog(catalogPath = 'src/assets/partsCatalog.jso
 
   for (const car of manifest.cars) {
     for (const e of engineSpecErrors(car.engine)) errors.push(`car ${car.id}: ${e}`);
+    for (const s of car.engineSwaps ?? []) for (const e of engineSpecErrors(s.engine)) errors.push(`car ${car.id} swap ${s.id}: ${e}`);
     const file = join(ROOT, publicDir, car.file);
     if (!existsSync(file)) {
       if (!car.provisional) errors.push(`car ${car.id}: ${car.file} is missing (run npm run assets)`);

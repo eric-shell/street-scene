@@ -334,8 +334,9 @@ describe('loudness and width across the cars', () => {
     return { rms: Math.sqrt((ll + rr) / (2 * (n - skip))), correlation: lr / Math.sqrt(ll * rr) };
   };
 
-  it('the manifest cars land within 2 dB of each other and none is mono', () => {
-    const results = (manifest.cars as { id: string; engine: EngineSpec }[]).map((c) => ({ id: c.id, ...loudness(buildProgram(c.engine, { seed: 5 })) }));
+  it('the manifest cars and their engine swaps land within 2 dB of each other and none is mono', () => {
+    const engines = (manifest.cars as { id: string; engine: EngineSpec; engineSwaps?: { id: string; engine: EngineSpec }[] }[]).flatMap((c) => [{ id: c.id, engine: c.engine }, ...(c.engineSwaps ?? []).map((s) => ({ id: `${c.id}:${s.id}`, engine: s.engine }))]);
+    const results = engines.map((c) => ({ id: c.id, ...loudness(buildProgram(c.engine, { seed: 5 })) }));
     const values = results.map((r) => r.rms);
     const spread = 20 * Math.log10(Math.max(...values) / Math.min(...values));
     expect(spread, JSON.stringify(results)).toBeLessThan(2);

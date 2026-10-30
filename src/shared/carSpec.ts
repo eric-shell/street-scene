@@ -204,6 +204,22 @@ export interface EngineSpec {
 }
 
 /**
+ * An engine the garage's Power tab can swap into a car (the manifest car's `engineSwaps`): its name, a line on
+ * what it is, and the spec the badges and the voice read in place of the car's own. Its physics (torque curve,
+ * redline, the mass it adds or saves, the turbo's lag) are `swaps.<carId>.<id>` in drivingParams.json, merged
+ * over the car's tuning by the sim (tuning.ts applySwap); the two lists must name the same swaps.
+ */
+export interface EngineSwap {
+  /** Key in drivingParams.json `swaps.<carId>` and in a build's `performance.swap`. */
+  id: string;
+  /** The engine as tuners call it: '3.6 VR6'. */
+  name: string;
+  /** One line under the name: where the engine comes from and what the swap is. */
+  note: string;
+  engine: EngineSpec;
+}
+
+/**
  * Combustion events per crankshaft revolution: the engine's fundamental
  * frequency is rpm / 60 times this. A four stroke piston fires every other
  * revolution; a rotor fires once per eccentric shaft revolution.

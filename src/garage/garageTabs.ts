@@ -1,5 +1,5 @@
 /**
- * What each Customize tab shows (Model, Tune, Stance, Wheels, Body, Paint, Neon
+ * What each Customize tab shows (Model, Power, Tune, Stance, Wheels, Body, Paint, Neon
  * and Tint; Vinyls is garageVinyls.ts): the tab list, and one builder that fills
  * the body for the open tab from the build. The builders reach the screen only
  * through TabHost, so garageUi.ts keeps the steps, saving and dialogs and this
@@ -10,12 +10,12 @@ import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partById, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, BANNER_HEIGHTS, BODY_FEATURES, BodyFeature, CarBuild, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
-import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
+import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning, type CarTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges } from '../shared/carSpec';
 import { cycler, h, multiSelect, onOffSwitch, segmented, toast } from '../ui/kit/dom';
-import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, ListFilter, Paintbrush, Sparkles, IconNode } from '../ui/kit/icons';
+import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, ListFilter, Paintbrush, Sparkles, Zap, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { GaragePrefs, saveGaragePrefs } from './storage';
 import { capital, choiceList, cm, colorPicker, field, matchBody, mm, note, paintPicker, percent, revealable, rowName, section, sectionWith, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
@@ -24,11 +24,12 @@ import { setupSlider } from './setupSliders';
 import { wheelPicker } from './wheelPicker';
 import type { WheelThumbs } from './wheelThumbs';
 
-export type Tab = 'model' | 'stance' | 'wheels' | 'paint' | 'vinyl' | 'tune' | 'body' | 'tint' | 'neon';
+export type Tab = 'model' | 'power' | 'stance' | 'wheels' | 'paint' | 'vinyl' | 'tune' | 'body' | 'tint' | 'neon';
 
-/** The tabs in order: the car and its setup first, then how it sits, its parts, its look, and the night look (Neon, Tint) last. */
+/** The tabs in order: the car, its engine and its setup first, then how it sits, its parts, its look, and the night look (Neon, Tint) last. */
 export const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'model', label: 'Model', icon: Car },
+  { id: 'power', label: 'Power', icon: Zap },
   { id: 'tune', label: 'Tune', icon: Gauge },
   { id: 'stance', label: 'Stance', icon: ArrowUpDown },
   { id: 'wheels', label: 'Wheels', icon: Disc3 },
@@ -178,8 +179,9 @@ export function renderTabContent(host: TabHost): void {
         (id) => {
           if (id === b.carId) return;
           // A launch or antilag rpm left on the old car's stock pick follows the new car's; one the player chose stays (applyBuild clamps it).
-          if (b.performance.launchRpm === defaultLaunchRpm(b.carId)) b.performance.launchRpm = defaultLaunchRpm(id);
-          if ((b.performance.antilagRpm ?? defaultAntilagRpm(b.carId)) === defaultAntilagRpm(b.carId)) b.performance.antilagRpm = defaultAntilagRpm(id);
+          // Swaps are per car: the new one starts on its own engine.
+          followEngine(b.performance, b.carId, b.performance.swap, id, undefined);
+          delete b.performance.swap;
           b.carId = id;
           // Parts are per car; wheels are universal and stay.
           const wheels = v.parts.wheels;
@@ -515,10 +517,66 @@ export function renderTabContent(host: TabHost): void {
       host.body.append(...featureSection(host, BODY_SHAPE_FEATURES));
       break;
     }
+    case 'power':
+      renderPower(host);
+      break;
     case 'tune':
       renderPerformance(host);
       break;
   }
+}
+
+/**
+ * Move a build's launch and antilag rpm from one engine's stock picks to another's (a car change or an engine swap):
+ * a value left on the old stock pick follows the new one; one the player chose stays (applyBuild clamps it).
+ */
+function followEngine(p: CarBuild['performance'], fromCar: string, fromSwap: string | undefined, toCar: string, toSwap: string | undefined): void {
+  if (p.launchRpm === defaultLaunchRpm(fromCar, fromSwap)) p.launchRpm = defaultLaunchRpm(toCar, toSwap);
+  if ((p.antilagRpm ?? defaultAntilagRpm(fromCar, fromSwap)) === defaultAntilagRpm(fromCar, fromSwap)) p.antilagRpm = defaultAntilagRpm(toCar, toSwap);
+}
+
+/** An engine's peak figures off its torque curve, as the maker quotes them: PS and N·m, before the sim's drivetrain calibration (torqueMul). */
+function engineFigures(t: CarTuning): string {
+  const curve = t.engine.torqueCurve;
+  const nm = Math.max(...curve.map(([, tq]) => tq));
+  const kw = Math.max(...curve.map(([rpm, tq]) => (tq * rpm * Math.PI) / 30000));
+  return `${Math.round(kw / 0.73549875)} PS · ${nm} N·m`;
+}
+
+/**
+ * The Power tab: the car's own engine and the swaps it offers (manifest `engineSwaps`, physics in drivingParams.json
+ * `swaps`), each with its peak figures and spec tags, over the build's measured stats. A pick refits the voice, the
+ * rev model and the dyno (garageUi configureEngine) and re-measures the stats.
+ */
+function renderPower(host: TabHost): void {
+  const b = host.build;
+  const car = manifestCar(b.carId);
+  const drive = getBaseTuning(b.carId).drivetrain.layout;
+  const swaps = car.engineSwaps ?? [];
+  host.body.append(section('Stats', statLines(b)));
+  const stock = { value: null, label: `Stock ${car.engine.layout}`, sub: engineFigures(tuningForBuild(b.carId, { ...b.performance, swap: undefined })), tags: specBadges(car.engine, drive) };
+  const list = choiceList<string | null>(
+    [stock, ...swaps.map((s) => ({ value: s.id, label: s.name, sub: engineFigures(tuningForBuild(b.carId, { ...b.performance, swap: s.id })), tags: specBadges(s.engine, drive) }))],
+    b.performance.swap ?? null,
+    (id) => {
+      const swap = id ?? undefined;
+      if (swap === b.performance.swap) return;
+      followEngine(b.performance, b.carId, b.performance.swap, b.carId, swap);
+      if (swap) b.performance.swap = swap;
+      else delete b.performance.swap;
+      // Hear it: a short blip on the new engine, and the stats for it.
+      void host.changed().then(() => host.scene.blip());
+      host.renderTab();
+    },
+  );
+  const fitted = swaps.find((s) => s.id === b.performance.swap);
+  host.body.append(
+    section(
+      'Engine swaps',
+      list,
+      swaps.length ? note(fitted ? fitted.note : 'Your car runs its own engine. A swap changes the power, the weight and the sound.') : note('No engine swaps for this car yet.'),
+    ),
+  );
 }
 
 /** The unique features' names, and which tab lists each: the shapes on Body, the paint on Paint. */

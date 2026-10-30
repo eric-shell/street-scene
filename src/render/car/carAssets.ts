@@ -10,7 +10,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import manifestJson from '../../assets/carManifest.json';
 import catalogJson from '../../assets/partsCatalog.json';
 import type { PartEntry, PartSlot, PartsCatalog } from '../../shared/parts';
-import type { EngineSpec } from '../../shared/carSpec';
+import type { EngineSpec, EngineSwap } from '../../shared/carSpec';
 import type { BodyFeature } from '../../shared/carBuild';
 import { resolveMaterialName } from './carMaterials';
 import { splitMirrorCaps, type MirrorCapBox } from './mirrorCaps';
@@ -47,6 +47,8 @@ export interface ManifestCar {
   selectable?: boolean;
   /** Engine layout, aspiration and position (src/shared/carSpec.ts); the driven wheels come from drivingParams.json. */
   engine: EngineSpec;
+  /** The engines the garage's Power tab can swap in (shared/carSpec.ts EngineSwap; their physics are drivingParams.json `swaps.<id>`); missing, none. */
+  engineSwaps?: EngineSwap[];
   /** Each exhaust tip's opening in car space (m, x left, y up, z forward), where the nitrous and backfire flames sit and the dyno's extraction funnels stand; missing, a tip each side at the tail, empty, none. Measured off the GLB's tip rings (the rearmost circle of each pipe's opening: Chrome on most cars, Black on the Wendt Strom and Kazama Rotor), one entry per real tip; a twin tip muffler lists both. */
   exhaustTips?: [number, number, number][];
   /** The left mirror cap's box (car space, m; mirrored for the right), whose Paint faces wear the mirror paint (mirrorCaps.ts); missing, the mirrors keep the body paint and the garage lists no mirror paint. */
@@ -60,6 +62,12 @@ export const CATALOG = catalogJson as unknown as PartsCatalog;
 
 export function manifestCar(id: string): ManifestCar {
   return MANIFEST.cars.find((c) => c.id === id) ?? MANIFEST.cars[0];
+}
+
+/** The engine a car runs with `swap` fitted (a build's `performance.swap`): the swap's spec, or the car's own without one or for a swap it does not offer. */
+export function engineSpecFor(carId: string, swap?: string): EngineSpec {
+  const car = manifestCar(carId);
+  return (swap && car.engineSwaps?.find((s) => s.id === swap)?.engine) || car.engine;
 }
 
 export function partsFor(carId: string, slot: PartSlot): PartEntry[] {
