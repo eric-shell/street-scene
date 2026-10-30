@@ -291,19 +291,20 @@ $step-rise: 0.58s, 0.45s, 0.32s;
 }
 
 /* Each category's hue, on its tab and, while it is open, on the body (garageUi.ts sets data-tab on the root).
-   Every category has its own: Model orange like the menu's Garage row, Power violet (electric, and clear of its
-   neighbours' orange and green), Stance purple, Wheels cyan, Paint red, Tune green, Body yellow, Tint blue, Neon
-   pink. Vinyls (behind FEATURES.vinyls) borrows Paint's red. */
+   The tabs walk the colour wheel in their order, so the bar reads as one spectrum rather than a scatter: Model
+   orange (like the menu's Garage row), Power yellow, Tune green, Stance cyan, Wheels blue, Body purple, Paint
+   violet, Neon pink, and Tint red, which closes the wheel back toward orange. Vinyls (behind FEATURES.vinyls, between
+   Paint and Neon) borrows Paint's violet. */
 $tab-hues: (
   'orange': (model),
-  'violet': (power),
-  'purple': (stance),
-  'cyan': (wheels),
-  'red': (paint, vinyl),
+  'yellow': (power),
   'green': (tune),
-  'yellow': (body),
-  'blue': (tint),
+  'cyan': (stance),
+  'blue': (wheels),
+  'purple': (body),
+  'violet': (paint, vinyl),
   'pink': (neon),
+  'red': (tint),
 );
 @each $hue, $tabs in $tab-hues {
   $attrs: ();
