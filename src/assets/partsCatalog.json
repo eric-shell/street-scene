@@ -347,8 +347,24 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_fenders_overMild",
+      "displayName": "Over Fenders Mild",
+      "carId": "wendtStrom",
+      "slot": "fenders",
+      "file": "parts/wendtStrom_fenders_overMild.glb",
+      "hides": [
+        "Fenders"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 3632,
+      "generated": true
+    },
+    {
       "id": "wendtStrom_fenders_voomeran",
-      "displayName": "Voomeran Overs",
+      "displayName": "Over Fenders Wild",
       "carId": "wendtStrom",
       "slot": "fenders",
       "file": "parts/wendtStrom_fenders_voomeran.glb",
