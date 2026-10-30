@@ -333,34 +333,6 @@
       "generated": true
     },
     {
-      "id": "wendtStrom_spoiler_trackMild",
-      "displayName": "Track Mild",
-      "carId": "wendtStrom",
-      "slot": "spoiler",
-      "file": "parts/wendtStrom_spoiler_trackMild.glb",
-      "hides": [],
-      "materialSlots": [
-        "Chrome",
-        "Black"
-      ],
-      "tris": 4134,
-      "generated": true
-    },
-    {
-      "id": "wendtStrom_spoiler_trackWild",
-      "displayName": "Track Wild",
-      "carId": "wendtStrom",
-      "slot": "spoiler",
-      "file": "parts/wendtStrom_spoiler_trackWild.glb",
-      "hides": [],
-      "materialSlots": [
-        "Black",
-        "Chrome"
-      ],
-      "tris": 4867,
-      "generated": true
-    },
-    {
       "id": "wendtStrom_fenders_overMild",
       "displayName": "Over Fenders Mild",
       "carId": "wendtStrom",
@@ -390,6 +362,86 @@
         "Black"
       ],
       "tris": 3632,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_spoiler_sportMildRoof",
+      "displayName": "Sport Mild Roof",
+      "carId": "wendtStrom",
+      "slot": "spoiler",
+      "file": "parts/wendtStrom_spoiler_sportMildRoof.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 428,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_spoiler_sportWildRoof",
+      "displayName": "Sport Wild Roof",
+      "carId": "wendtStrom",
+      "slot": "spoiler",
+      "file": "parts/wendtStrom_spoiler_sportWildRoof.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 428,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_spoiler_sportMildMid",
+      "displayName": "Sport Mild Mid",
+      "carId": "wendtStrom",
+      "slot": "spoiler",
+      "file": "parts/wendtStrom_spoiler_sportMildMid.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 1100,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_spoiler_sportWildMid",
+      "displayName": "Sport Wild Mid",
+      "carId": "wendtStrom",
+      "slot": "spoiler",
+      "file": "parts/wendtStrom_spoiler_sportWildMid.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 1100,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_spoiler_trackMild",
+      "displayName": "Track Mild",
+      "carId": "wendtStrom",
+      "slot": "spoiler",
+      "file": "parts/wendtStrom_spoiler_trackMild.glb",
+      "hides": [],
+      "materialSlots": [
+        "Chrome",
+        "Black"
+      ],
+      "tris": 4134,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_spoiler_trackWild",
+      "displayName": "Track Wild",
+      "carId": "wendtStrom",
+      "slot": "spoiler",
+      "file": "parts/wendtStrom_spoiler_trackWild.glb",
+      "hides": [],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 4867,
       "generated": true
     },
     {
