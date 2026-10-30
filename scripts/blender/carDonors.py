@@ -1629,6 +1629,147 @@ def swap_islands(o, skin, box, near=0.015):
     return len(kill), len(isl)
 
 
+def _boundary_loops(bm):
+    """The boundary edge loops of a bmesh, each an ordered vertex list (vertices on more than two boundary
+    edges end a loop early, which the callers check for)."""
+    adj = {}
+    for e in bm.edges:
+        if len(e.link_faces) == 1:
+            a, b = e.verts
+            adj.setdefault(a, []).append(b)
+            adj.setdefault(b, []).append(a)
+    loops, seen = [], set()
+    for v0 in adj:
+        if v0 in seen:
+            continue
+        loop = [v0]
+        seen.add(v0)
+        while True:
+            nx = [w for w in adj[loop[-1]] if w not in seen]
+            if not nx:
+                break
+            loop.append(nx[0])
+            seen.add(nx[0])
+        loops.append(loop)
+    return loops
+
+
+def feature_nodes(o, skin, rect, y_min, inset=0.005, ring=0.025, step=0.01, off='shavedHatch_off', on='shavedHatch_on'):
+    """A body feature the garage switches (render/car/bodyFeatures.ts, nodes `<feature>_off` and `<feature>_on`)
+    cut out of a rear facing panel as two pieces of its own: the body gets a clean rectangular hole at
+    `rect` = (x0, x1, z0, z1) (faces with y over `y_min`), `on` is that hole closed flush (close_opening's fitted
+    cubic, the loop unmoved, so it meets the body without a crack) and `off` is the shading skin's full detail
+    feature (the source's own faces and normals, cut at the rect shrunk by `inset`) joined to the hole's loop by
+    a band triangulated between the two loops. Each piece shares the hole's loop and its fitted corner normals.
+    The Wendt Strom's hatch handle was the reduced body's (a few long fans) and the shaved switch pressed its
+    vertices flat at load, which left black slivers of the lock and the cup's walls; the swap needs neither.
+    Both pieces go into o's collection named `<prefix>.<off>` and `<prefix>.<on>`. Returns (off, on)."""
+    from mathutils.geometry import delaunay_2d_cdt
+    x0, x1, z0, z1 = rect
+    prefix = o.name.split('.')[0]
+    inside = lambda c, d=0.0: x0 + d < c.x < x1 - d and z0 + d < c.z < z1 - d and c.y > y_min
+
+    def edges(obj, d):
+        a0, a1, b0, b1 = x0 + d, x1 - d, z0 + d, z1 - d
+        near = lambda c: c.y > y_min and a0 - 0.3 < c.x < a1 + 0.3 and b0 - 0.3 < c.z < b1 + 0.3
+        cut(obj, [((a0, 0, 0), (1, 0, 0), near), ((a1, 0, 0), (1, 0, 0), near), ((0, 0, b0), (0, 0, 1), near), ((0, 0, b1), (0, 0, 1), near)])
+
+    carry = stash_normals(o)
+    edges(o, 0)
+    if carry:
+        restore_normals(o)
+    close_opening(o, lambda f, m: inside(f.calc_center_median()), ring=ring, step=step, snap=0.0, fit_cut=False)
+    plug = split_off(o, f'{prefix}.{on}', lambda c, m, n: inside(c))
+
+    # The skin's feature, cut at the inset rect.
+    crop = skin.copy()
+    crop.data = skin.data.copy()
+    crop.name = crop.data.name = f'{prefix}.{off}'
+    for c in list(crop.users_collection):
+        c.objects.unlink(crop)
+    o.users_collection[0].objects.link(crop)
+    edges(crop, inset)
+    bm = bmesh.new()
+    bm.from_mesh(crop.data)
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if not inside(f.calc_center_median(), inset)], context='FACES')
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    sn = bm.loops.layers.float_vector['src_normal']
+    on_rect = lambda p: (abs(p.x - x0 - inset) < 1e-4 or abs(p.x - x1 + inset) < 1e-4) or (abs(p.z - z0 - inset) < 1e-4 or abs(p.z - z1 + inset) < 1e-4)
+    outer = [lp for lp in _boundary_loops(bm) if sum(on_rect(v.co) for v in lp) > 0.9 * len(lp)]
+    if len(outer) != 1:
+        raise RuntimeError(f'feature_nodes: {len(outer)} loops on the inset rect, want 1')
+    l2 = outer[0]
+
+    # The hole's loop with the plug's corner normals.
+    pm = plug.data
+    pbm = bmesh.new()
+    pbm.from_mesh(pm)
+    pbm.verts.ensure_lookup_table()
+    holes = _boundary_loops(pbm)
+    if len(holes) != 1:
+        raise RuntimeError(f'feature_nodes: the plug has {len(holes)} boundary loops, want 1')
+    corner = {}
+    for p in pm.polygons:
+        for li in p.loop_indices:
+            corner[pm.loops[li].vertex_index] = Vector(pm.corner_normals[li].vector)
+    l1 = [bm.verts.new(v.co) for v in holes[0]]
+    n1 = [corner[v.index] for v in holes[0]]
+    pbm.free()
+    n2 = []
+    for v in l2:
+        s = sum((Vector(l[sn]) for l in v.link_loops), Vector())
+        n2.append(s.normalized() if s.length > 1e-6 else Vector((0, 1, 0)))
+
+    pts = [Vector((v.co.x, v.co.z)) for v in l1 + l2]
+    out_v, _, out_f, orig_v, _, _ = delaunay_2d_cdt(pts, [], [list(range(len(l1))), list(range(len(l1), len(pts)))], 0, 1e-7)
+    if len(out_v) != len(pts) or any(not ov for ov in orig_v):
+        raise RuntimeError('feature_nodes: the band triangulation made vertices of its own (the loops cross)')
+    verts, norms = l1 + l2, n1 + n2
+    # The band by position: the triangulation's face origins name only one of two nested loops.
+    poly1, poly2 = pts[:len(l1)], pts[len(l1):]
+    paint = [m.name.split('.')[0] for m in crop.data.materials].index('Paint')
+    made = 0
+    for fc in out_f:
+        ids = [orig_v[i][0] for i in fc]
+        c = sum((pts[i] for i in ids), Vector((0, 0))) / len(ids)
+        if not _inside_2d(c, poly1) or _inside_2d(c, poly2):
+            continue
+        vs = [verts[i] for i in ids]
+        ns = [norms[i] for i in ids]
+        if (vs[1].co - vs[0].co).cross(vs[2].co - vs[0].co).dot(sum(ns, Vector())) < 0:
+            vs.reverse()
+            ns.reverse()
+        f = bm.faces.new(vs)
+        f.material_index = paint
+        f.smooth = True
+        for l, n in zip(f.loops, ns):
+            l[sn] = n
+        made += 1
+    on_loop = {tuple(round(c, 5) for c in v.co) for v in l1}
+    bm.to_mesh(crop.data)
+    bm.free()
+    crop['authored_normals'] = True
+    restore_normals(crop)
+    # The loop's corners on all three pieces take the skin's own normal there: the fitted cubic's tilted 3 degrees
+    # off it along the Wendt Strom's hatch top, and the full detail feature inside the loop showed as a lighter box.
+    sbm, ssn, trees = _skin_trees(skin)
+    tree, fs = trees['Paint']
+    for obj in (o, plug, crop):
+        me = obj.data
+        ns = [Vector(c.vector) for c in me.corner_normals]
+        for li, lp in enumerate(me.loops):
+            p = me.vertices[lp.vertex_index].co
+            if tuple(round(c, 5) for c in p) in on_loop:
+                loc, _, fi, _ = tree.find_nearest(p)
+                n = _skin_normal(fs[fi], ssn, loc) if loc is not None else None
+                if n is not None:
+                    ns[li] = n
+        me.normals_split_custom_set(ns)
+    sbm.free()
+    print(f'feature_nodes: {off} {len(crop.data.polygons)} faces ({made} in the band), {on} {len(pm.polygons)} faces, loop of {len(l1)}')
+    return crop, plug
+
+
 def handle_tail(o, fit, y0, y1, zc, hw, proud, rc=0.012, r=0.003, crown=0.002, sink=(0.008, 0.003), cup=(0.322, 0.335),
                 material='Paint', step=0.008, arc=5, rounds=3):
     """A door handle's bar carried on to its rear end, on both sides (built at +x and mirrored): the bar's

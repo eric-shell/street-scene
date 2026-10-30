@@ -2,10 +2,10 @@
  * A car's unique features (VisualBuild.features, BODY_FEATURES), cut from its model once per loaded file
  * (CarAssetLibrary.carModel) and switched per car by BodyFeatureView. The manifest gives each feature a box in car
  * space (`bodyFeatures`), the way it boxes the mirror caps:
- * - shavedHatch: every piece wholly inside the box (the hatch handle and its lock) becomes a child that hides, and
- *   the recess it sat in is pressed flush: every other vertex in the box moves along z onto the plane of the skin
- *   round the box (SKIN_BAND). A reduced donor fans long triangles from the recess across the hatch, so the recess
- *   cannot be cut out by whole faces; pressing its vertices lays those triangles flat on the skin instead.
+ * - A feature authored in the model: nodes `<feature>_off`, drawn while the switch is off, and `<feature>_on`, drawn
+ *   while it is on; its box only says the car offers it. The Wendt Strom's shavedHatch is the hatch handle at the
+ *   source's full detail and the hatch skin closed flush over the same hole (carDonors.py feature_nodes). Pressing
+ *   the reduced body's recess flat at load, as it first did, left the lock's and the cup's black slivers showing.
  * - blackGrille: the Paint pieces wholly inside the box (the grille's bars) become a child that takes the Black
  *   material of the lips and diffusers.
  * - euroMirrors: the box is the left mirror's (mirrored for the right). Every face inside it, any material, the caps
@@ -28,9 +28,6 @@ export interface BodyFeatureBox {
 const EURO_MIRROR_WIDTH = 0.65;
 /** Positions closer than this weld into one piece (m). */
 const WELD = 5e-4;
-/** The shaved hatch's skin is read in a band round its box (x and y, m), grown a step at a time up to the most until it holds SKIN_MIN vertices: a reduced donor has few. */
-const SKIN_BAND = { step: 0.03, most: 0.3 } as const;
-const SKIN_MIN = 6;
 
 type Box = { min: THREE.Vector3; max: THREE.Vector3; mirrored: boolean };
 
@@ -39,8 +36,6 @@ interface Reshape {
   ids: number[];
   pos: number[];
   normal: number[];
-  /** Pressed flat, the faces of moved vertices only that face against this (mesh space) are dropped: a recess's walls folded back onto its floor. */
-  facing?: THREE.Vector3;
 }
 
 /** The reshapes of one position attribute (and the normal attribute beside it), and its variants built so far. */
@@ -147,13 +142,13 @@ function attributeGroups(root: THREE.Object3D, toRoot: THREE.Matrix4): Map<THREE
  * Record `feature`'s reshape of a position attribute: `move` sets vertex i's new position and normal (car space,
  * given the stock ones) and says whether it moves. Stored in mesh space.
  */
-function reshape(pos: THREE.BufferAttribute, normal: THREE.BufferAttribute | undefined, toCar: THREE.Matrix4, feature: BodyFeature, move: (i: number, p: THREE.Vector3, n: THREE.Vector3) => boolean, facing?: THREE.Vector3): void {
+function reshape(pos: THREE.BufferAttribute, normal: THREE.BufferAttribute | undefined, toCar: THREE.Matrix4, feature: BodyFeature, move: (i: number, p: THREE.Vector3, n: THREE.Vector3) => boolean): void {
   const fromCar = toCar.clone().invert();
   const normalToCar = new THREE.Matrix3().getNormalMatrix(toCar);
   const normalFromCar = new THREE.Matrix3().getNormalMatrix(fromCar);
   const p = new THREE.Vector3();
   const n = new THREE.Vector3();
-  const r: Reshape = { ids: [], pos: [], normal: [], facing: facing?.clone().applyMatrix3(normalFromCar).normalize() };
+  const r: Reshape = { ids: [], pos: [], normal: [] };
   for (let i = 0; i < pos.count; i++) {
     p.fromBufferAttribute(pos, i).applyMatrix4(toCar);
     if (normal) n.fromBufferAttribute(normal, i).applyMatrix3(normalToCar);
@@ -192,75 +187,32 @@ function narrowMirrors(root: THREE.Object3D, toRoot: THREE.Matrix4, box: Box): v
 }
 
 /**
- * The shaved hatch's recess pressed flush: the plane z = a + b x + c y through the skin's vertices in a band round
- * the box (least squares), every vertex in the box moved along z onto it and facing the way the skin does.
- */
-function flushRecess(root: THREE.Object3D, toRoot: THREE.Matrix4, box: Box): void {
-  for (const [pos, { geos, toCar }] of attributeGroups(root, toRoot)) {
-    const inside = verticesIn(pos, toCar, box);
-    if (!inside.includes(true)) continue;
-    const normal = geos[0].getAttribute('normal') as THREE.BufferAttribute | undefined;
-    const normalToCar = new THREE.Matrix3().getNormalMatrix(toCar);
-    const p = new THREE.Vector3();
-    const n = new THREE.Vector3();
-    // The skin: the vertices outside the box in the narrowest band round it that holds enough of them.
-    const skin: number[] = [];
-    for (let grow = SKIN_BAND.step; skin.length < SKIN_MIN && grow <= SKIN_BAND.most + 1e-9; grow += SKIN_BAND.step) {
-      const g = new THREE.Vector3(grow, grow, 0);
-      const band: Box = { min: box.min.clone().sub(g), max: box.max.clone().add(g), mirrored: false };
-      skin.length = 0;
-      for (let i = 0; i < pos.count; i++) if (!inside[i] && inBox(p.fromBufferAttribute(pos, i).applyMatrix4(toCar), band)) skin.push(i);
-    }
-    if (skin.length < SKIN_MIN) continue;
-    const A = new THREE.Matrix3();
-    const e = A.elements;
-    e.fill(0);
-    const r = new THREE.Vector3();
-    const facing = new THREE.Vector3();
-    for (const i of skin) {
-      p.fromBufferAttribute(pos, i).applyMatrix4(toCar);
-      const row = [1, p.x, p.y];
-      for (let u = 0; u < 3; u++) for (let v = 0; v < 3; v++) e[u * 3 + v] += row[u] * row[v];
-      r.x += p.z;
-      r.y += p.x * p.z;
-      r.z += p.y * p.z;
-      if (normal) facing.add(n.fromBufferAttribute(normal, i).applyMatrix3(normalToCar));
-    }
-    if (Math.abs(A.determinant()) < 1e-12) continue;
-    const [a, b, c] = r.applyMatrix3(A.invert()).toArray();
-    const plane = new THREE.Vector3(-b, -c, 1).normalize().multiplyScalar(Math.sign(facing.z) || 1);
-    reshape(pos, normal, toCar, 'shavedHatch', (i, q, m) => {
-      if (!inside[i]) return false;
-      q.z = a + b * q.x + c * q.y;
-      m.copy(plane);
-      return true;
-    }, plane);
-  }
-}
-
-/**
- * Cut the features in `boxes` from a freshly loaded car scene (before any clone, after the mirror caps' split).
+ * Tag the authored feature nodes and cut the other features in `boxes` from a freshly loaded car scene (before any
+ * clone, after the mirror caps' split).
  * `isPaint` says which source materials are body paint.
  */
 export function splitBodyFeatures(root: THREE.Object3D, boxes: Partial<Record<BodyFeature, BodyFeatureBox>>, isPaint: (m: THREE.Material) => boolean): void {
   root.updateMatrixWorld(true);
   const toRoot = new THREE.Matrix4().copy(root.matrixWorld).invert();
-  const pieces: [BodyFeature, (m: THREE.Material) => boolean][] = [
-    ['shavedHatch', () => true],
-    ['blackGrille', isPaint],
-  ];
-  for (const [feature, keep] of pieces) {
-    const b = boxes[feature];
-    if (!b) continue;
-    const box = toBox(b, false);
-    for (const { mesh, toCar } of meshesOf(root, toRoot, keep)) {
+  const authored = new Set<BodyFeature>();
+  root.traverse((o) => {
+    // Exact names only: a node with two materials loads as a group of meshes named `<node>_1`, `<node>_2`.
+    const [, feature, side] = /^(\w+?)_(on|off)$/.exec(o.name) ?? [];
+    if (!BODY_FEATURES.includes(feature as BodyFeature)) return;
+    o.userData.featureNode = { feature, on: side === 'on' };
+    // Stock until a BodyFeatureView says otherwise: the roadblocks draw the base model without one.
+    o.visible = side === 'off';
+    authored.add(feature as BodyFeature);
+  });
+  if (boxes.blackGrille && !authored.has('blackGrille')) {
+    const box = toBox(boxes.blackGrille, false);
+    for (const { mesh, toCar } of meshesOf(root, toRoot, isPaint)) {
       if (mesh.userData.bodyFeature) continue;
       const ids = faces(mesh.geometry);
-      splitOff(mesh, ids, piecesIn(mesh.geometry, ids, verticesIn(mesh.geometry.getAttribute('position'), toCar, box)), feature);
+      splitOff(mesh, ids, piecesIn(mesh.geometry, ids, verticesIn(mesh.geometry.getAttribute('position'), toCar, box)), 'blackGrille');
     }
   }
-  if (boxes.shavedHatch) flushRecess(root, toRoot, toBox(boxes.shavedHatch, false));
-  if (boxes.euroMirrors) narrowMirrors(root, toRoot, toBox(boxes.euroMirrors, true));
+  if (boxes.euroMirrors && !authored.has('euroMirrors')) narrowMirrors(root, toRoot, toBox(boxes.euroMirrors, true));
 }
 
 /** `geo` with the reshapes of the switches in `on` applied (built once per geometry and set of switches), or itself with none. */
@@ -288,7 +240,7 @@ function variant(geo: THREE.BufferGeometry, on: readonly BodyFeature[]): THREE.B
   if (!g) {
     g = new THREE.BufferGeometry();
     for (const [name, attr] of Object.entries(geo.attributes)) g.setAttribute(name, name === 'position' ? attrs.pos : name === 'normal' && attrs.normal ? attrs.normal : attr);
-    g.setIndex(culled(geo, attrs.pos, active.map((f) => all.by.get(f)!)));
+    g.setIndex(geo.getIndex());
     for (const gr of geo.groups) g.addGroup(gr.start, gr.count, gr.materialIndex);
     g.computeBoundingSphere();
     g.computeBoundingBox();
@@ -297,42 +249,19 @@ function variant(geo: THREE.BufferGeometry, on: readonly BodyFeature[]): THREE.B
   return g;
 }
 
-/** `geo`'s index without the faces the flattening reshape (the one with a `facing`) folded back, or its own index when none did. */
-function culled(geo: THREE.BufferGeometry, pos: THREE.BufferAttribute, reshapes: Reshape[]): THREE.BufferAttribute | null {
-  const index = geo.getIndex();
-  const r = reshapes.find((x) => x.facing);
-  if (!index || !r) return index;
-  const a = new THREE.Vector3();
-  const b = new THREE.Vector3();
-  const c = new THREE.Vector3();
-  const keep: number[] = [];
-  const moved = new Set(r.ids);
-  for (let t = 0; t + 2 < index.count; t += 3) {
-    const [i, j, k] = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
-    if (moved.has(i) && moved.has(j) && moved.has(k)) {
-      a.fromBufferAttribute(pos, i);
-      b.fromBufferAttribute(pos, j).sub(a);
-      c.fromBufferAttribute(pos, k).sub(a);
-      if (b.cross(c).dot(r.facing!) <= 0) continue;
-    }
-    keep.push(i, j, k);
-  }
-  if (keep.length === index.count) return index;
-  return new THREE.BufferAttribute(index.array instanceof Uint32Array ? new Uint32Array(keep) : new Uint16Array(keep), 1);
-}
-
 /** One car's features: the meshes each switch touches, found once in its bound model (CarView.load). */
 export class BodyFeatureView {
   private readonly reshaped: { mesh: THREE.Mesh; stock: THREE.BufferGeometry }[] = [];
-  private readonly handles: THREE.Mesh[] = [];
+  /** The authored feature nodes (`<feature>_on` / `_off`) and the state each is drawn in. */
+  private readonly nodes: { node: THREE.Object3D; feature: BodyFeature; on: boolean }[] = [];
   private readonly grilles: THREE.Mesh[] = [];
 
   constructor(model: THREE.Object3D) {
     model.traverse((o) => {
+      if (o.userData.featureNode) this.nodes.push({ node: o, ...o.userData.featureNode });
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       if (reshapesOf.has(mesh.geometry.getAttribute('position') as THREE.BufferAttribute)) this.reshaped.push({ mesh, stock: mesh.geometry });
-      if (mesh.userData.bodyFeature === 'shavedHatch') this.handles.push(mesh);
       if (mesh.userData.bodyFeature === 'blackGrille') this.grilles.push(mesh);
     });
   }
@@ -340,7 +269,7 @@ export class BodyFeatureView {
   /** Switch on the features in `on`, the rest off; `paint` and `black` are the car's bound materials. */
   apply(on: readonly BodyFeature[], paint: THREE.Material, black: THREE.Material): void {
     for (const m of this.reshaped) m.mesh.geometry = variant(m.stock, on);
-    for (const m of this.handles) m.visible = !on.includes('shavedHatch');
+    for (const n of this.nodes) n.node.visible = on.includes(n.feature) === n.on;
     for (const m of this.grilles) m.material = on.includes('blackGrille') ? black : paint;
   }
 }
