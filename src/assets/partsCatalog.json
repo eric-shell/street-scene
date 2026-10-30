@@ -315,6 +315,36 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_rearBumper_trackWild",
+      "displayName": "Track Wild",
+      "carId": "wendtStrom",
+      "slot": "rearBumper",
+      "file": "parts/wendtStrom_rearBumper_trackWild.glb",
+      "hides": [
+        "Bumper_Rear",
+        "Exhaust",
+        "Muffler"
+      ],
+      "exhaustTips": [
+        [
+          0.065,
+          0.257,
+          -2.01
+        ],
+        [
+          -0.065,
+          0.257,
+          -2.01
+        ]
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 924,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",
