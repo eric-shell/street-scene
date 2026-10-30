@@ -49,8 +49,9 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   // plate round oval speed holes: 7,357).
   frontBumper: 7500,
   rearBumper: 5500,
-  // Both front wings in one piece, cut from a donor shell along its shut lines.
-  fenders: 2000,
+  // Both front wings in one piece, cut from a donor shell along its shut lines (the Wendt Strom's: 1,122), and a
+  // part may add bolt-on flares round all four arches (its Voomeran: 3,514).
+  fenders: 3600,
   sideSkirts: 2000,
   spoiler: 1500,
   hood: 2000,

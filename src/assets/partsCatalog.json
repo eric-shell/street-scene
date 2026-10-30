@@ -397,6 +397,23 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_fenders_voomeran",
+      "displayName": "Voomeran",
+      "carId": "wendtStrom",
+      "slot": "fenders",
+      "file": "parts/wendtStrom_fenders_voomeran.glb",
+      "hides": [
+        "Fenders"
+      ],
+      "materialSlots": [
+        "Paint",
+        "ClearLens",
+        "Black"
+      ],
+      "tris": 3514,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",

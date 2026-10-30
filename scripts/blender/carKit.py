@@ -1487,6 +1487,109 @@ def end_plate(target, edge, base, heights, thick=0.006, curl=0.025, curl_height=
     return secs
 
 
+def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.07, proud=0.03, thick=0.005, ret=0.015,
+                bulge=0.004, stations=33, bolts=5, bolt_r=0.006, bolt_inset=0.016, bolt_margin=10, material='Paint',
+                bolt_material='Black', x_min=0.78):
+    """A bolt-on over-fender flare (Voomeran style) round one arch: a thin FRP band laid over the painted
+    arch edge, `proud` m out at the lip, sloping back to sit on the panel `width` m up from the lip, `thick`
+    m thick (its outer edge shows as a small step on the panel), a short return `ret` m into the opening
+    behind the lip, and `bolts` button heads along the band `bolt_inset` m in from its outer edge. The
+    arch is measured, never assumed: at each station angle about `center` (y, z of the wheel), rays along
+    -x from outside find the painted edge (the first Paint hit outboard of `x_min`, so the well's black lip
+    is skipped) and the panel above it; the edge radius and x are smoothed over three stations so the
+    donor's ragged arch does not wobble the band. Angles run from the car's end (`toward_end` -1 at the
+    front, +1 at the rear) over the top to the middle, so the legs end where a real kit's do: a0 ahead
+    over the bumper, a1 behind near the sill. `skin_objs` are every piece the band may sit on (the body,
+    the fenders, the bumper). The band is one `sweep` (capped square at both ends) and the heads are
+    `tube`s. Returns the stations' (deg, edge r, edge x, panel x at the outer edge)."""
+    from mathutils.bvhtree import BVHTree
+    dg = bpy.context.evaluated_depsgraph_get()
+    trees = [(o, BVHTree.FromObject(o, dg)) for o in skin_objs]
+    yc, zc = center
+
+    def hit(y, z):
+        best = None
+        for o, t in trees:
+            h = t.ray_cast(Vector((side * 1.4, y, z)), Vector((-side, 0, 0)), 1.0)
+            if h[0] and (best is None or h[3] < best[1][3]):
+                best = (o, h)
+        if best is None:
+            return None
+        o, h = best
+        return abs(h[0].x), o.data.materials[o.data.polygons[h[2]].material_index].name
+
+    def at(a, r):
+        return yc + toward_end * math.cos(a) * r, zc + math.sin(a) * r
+
+    def skin_x(a, r):
+        h = hit(*at(a, r))
+        return h[0] if h else None
+
+    angs = [math.radians(a0 + (a1 - a0) * i / (stations - 1)) for i in range(stations)]
+    edges = []
+    for a in angs:
+        e = None
+        for i in range(140):
+            r = 0.30 + i * 0.001
+            h = hit(*at(a, r))
+            if h and h[1] == 'Paint' and h[0] > x_min:
+                e = (r, h[0])
+                break
+        if e is None:
+            raise ValueError('no painted arch edge at %.1f deg' % math.degrees(a))
+        edges.append(e)
+    sm = lambda vals, i: sum(vals[max(0, min(len(vals) - 1, j))] for j in (i - 1, i, i + 1)) / 3
+    re = [sm([e[0] for e in edges], i) for i in range(stations)]
+    xe = [sm([e[1] for e in edges], i) for i in range(stations)]
+    xo = []
+    for i, a in enumerate(angs):
+        xs = [skin_x(a, re[i] + width + d) for d in (-0.006, 0, 0.006)]
+        xs = [x for x in xs if x is not None]
+        xo.append(sum(xs) / len(xs) if xs else xe[i] - 0.02)
+    xo = [sm(xo, i) for i in range(stations)]
+
+    def p3(a, r, x):
+        y, z = at(a, r)
+        return (side * x, y, z)
+
+    secs = []
+    for i, a in enumerate(angs):
+        r, x, xw = re[i], xe[i], xo[i]
+        x_in = skin_x(a, r + 0.012)
+        x_in = (x_in if x_in is not None else x) + 0.001
+        rm = r + width * 0.45
+        xm = x + proud + (xw + thick - x - proud) * 0.45 + bulge
+        secs.append([
+            p3(a, r - ret, x + 0.004),            # the return's end, inside the opening
+            p3(a, r - 0.005, x + proud - 0.004),  # the lip's rounded nose
+            p3(a, r + 0.004, x + proud),          # the lip
+            p3(a, rm, xm),                        # the band, a touch convex
+            p3(a, r + width, xw + thick),         # the outer edge, on the panel
+            p3(a, r + width, xw + 0.0005),        # the step down to the panel
+            p3(a, r + 0.012, x_in),               # the underside, back along the panel
+        ])
+    sweep(target, secs, material)
+    out = []
+    for k in range(bolts):
+        deg = a0 + bolt_margin + (a1 - a0 - 2 * bolt_margin) * k / max(bolts - 1, 1)
+        a = math.radians(deg)
+        i = min(range(stations), key=lambda j: abs(angs[j] - a))
+        r, x, xw = re[i], xe[i], xo[i]
+        rb = r + width - bolt_inset
+        t = (rb - (r + 0.004)) / (width - 0.004)
+        xb = x + proud + (xw + thick - x - proud) * t + bulge * (1 - abs(t - 0.45) / 0.55)
+        # The band's outward normal in the (r, x) plane, turned into the car's frame at this angle.
+        dr, dx = width - 0.004, (xw + thick) - (x + proud)
+        n_r, n_x = -dx, dr
+        ln = math.hypot(n_r, n_x)
+        n_r, n_x = n_r / ln, n_x / ln
+        d = Vector((side * n_x, toward_end * math.cos(a) * n_r, math.sin(a) * n_r)).normalized()
+        c = Vector(p3(a, rb, xb)) - d * 0.001
+        tube(target, c, d, bolt_r, 0.0035, bolt_material, n=8)
+        out.append(('bolt', round(deg, 1), round(rb, 3), round(xb, 3)))
+    return [(round(math.degrees(a), 1), round(re[i], 4), round(xe[i], 4), round(xo[i], 4)) for i, a in enumerate(angs)] + out
+
+
 def end_cap(surface, target, y, x_out, bot, ztop, toward, width=0.15, thick=0.004, samples=10, material='Black'):
     """A flat panel closing a lip's open end at a wheel well, in the plane y (`toward` +1 or -1: the side
     it is thickened to, away from the wheel): from the lip's outer edge `x_out` (sign gives the side)
