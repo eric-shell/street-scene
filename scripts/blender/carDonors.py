@@ -1814,6 +1814,132 @@ def strip_nodes(o, y0, y1, lo, hi, x_min=0.8, off='shavedRubstrip_off'):
     return off_o
 
 
+def half_cup_nodes(o, skin, y0, y1, z_cut, z_top, cols=(0.17, 0.385), x_min=0.8, proud=0.002,
+                   off='halfCupHandles_off', on='halfCupHandles_on'):
+    """Half cup door handles, a body feature the garage switches (render/car/bodyFeatures.ts): the part of each
+    door handle's cup above `z_cut` (the bar's middle, so the step is hidden behind it) pressed flush with the
+    door, the lower half left as it is. The door faces (Paint, facing out, standing no more than `proud` off the
+    door, so never the bar) are cut by the box y0 < y < y1, z_cut < z < z_top on both sides, and those inside
+    leave o as `<prefix>.<off>`; `<prefix>.<on>` is a copy with every corner off the box's edge moved onto the
+    door, its bottom row too, and a ledge from that row down to the cup's floor, facing down into the lower cup.
+    The box's edge stays where it is, so both pieces meet the body without a crack, and lies on plain door.
+
+    A box, not the cup's own faces: the reduced door is a few long triangles fanned from the cup's rim to the
+    shut lines, triangulated differently on each side, so a selection by face gave two different patches and
+    left the rim's curl on the fan's far ends (a sawtooth of light and dark), and a depth test missed the cup's
+    rear end walls, under a millimetre deep but leaning 17 degrees. The door is read off the skin along x at two
+    stations clear of the cup (`cols`, y; the +x side's, for both), interpolated in y: the Wendt Strom's door there
+    is a function of z alone within 0.3 mm. `on` shades with the door's own normal, its ledge flat; `off` keeps the
+    authored normals, and o's corners and both pieces' on the box's edge take the door's. Into o's collection.
+    Returns (off, on)."""
+    from mathutils.bvhtree import BVHTree
+    prefix = o.name.split('.')[0]
+    sbm = bmesh.new()
+    sbm.from_mesh(skin.data)
+    sbm.transform(skin.matrix_world)
+    tree = BVHTree.FromBMesh(sbm)
+    sbm.free()
+    zs = np.arange(z_cut - 0.03, z_top + 0.03, 0.002)
+
+    def column(y):
+        out = []
+        for z in zs:
+            hit = tree.ray_cast(Vector((1.5, y, z)), Vector((-1, 0, 0)))
+            if hit[0] is None:
+                raise RuntimeError(f'half_cup_nodes: no door at y {y}, z {z:.3f}')
+            out.append(hit[0].x)
+        return np.array(out)
+
+    door_a, door_b = column(cols[0]), column(cols[1])
+
+    def door(y, z):
+        """|x| of the door at (y, z), either side."""
+        t = (y - cols[0]) / (cols[1] - cols[0])
+        return float(np.interp(z, zs, door_a) * (1 - t) + np.interp(z, zs, door_b) * t)
+
+    def door_normal(co):
+        h = 0.002
+        fy = (door(co.y + h, co.z) - door(co.y - h, co.z)) / (2 * h)
+        fz = (door(co.y, co.z + h) - door(co.y, co.z - h)) / (2 * h)
+        return Vector((1 if co.x > 0 else -1, -fy, -fz)).normalized()
+
+    side = lambda c: 1 if c.x > 0 else -1
+    dep = lambda c: door(c.y, c.z) - abs(c.x)
+    in_box = lambda c: abs(c.x) > x_min and y0 < c.y < y1 and z_cut < c.z < z_top
+    on_door = lambda c: abs(c.x) > x_min and dep(c) > -proud
+
+    carry = stash_normals(o)
+    pad = 0.04
+    near = lambda c: on_door(c) and y0 - pad < c.y < y1 + pad and z_cut - pad < c.z < z_top + pad
+    cut(o, [((0, 0, z_cut), (0, 0, 1), near), ((0, 0, z_top), (0, 0, 1), near),
+            ((0, y0, 0), (0, 1, 0), near), ((0, y1, 0), (0, 1, 0), near)])
+    if carry:
+        restore_normals(o)
+    me = o.data
+    paint = [m.name.split('.')[0] for m in me.materials].index('Paint')
+    key = lambda co: tuple(round(c, 5) for c in co)
+    centers = {key(p.center) for p in me.polygons
+               if p.material_index == paint and in_box(p.center) and on_door(p.center) and side(p.center) * p.normal.x > 0.3}
+    off_o = split_off(o, f'{prefix}.{off}', lambda c, m, n: key(c) in centers)
+
+    on_o = off_o.copy()
+    on_o.data = off_o.data.copy()
+    on_o.name = on_o.data.name = f'{prefix}.{on}'
+    o.users_collection[0].objects.link(on_o)
+    bm = bmesh.new()
+    bm.from_mesh(on_o.data)
+    rim = {v for e in bm.edges if len(e.link_faces) == 1 for v in e.verts}
+    # The box's edge on plain door, which every piece shades with the door's normal (not where the box meets
+    # the bar or the cup below it).
+    edge = {key(v.co) for v in rim if abs(dep(v.co)) < 0.001 and (abs(v.co.y - y0) < 1e-4 or abs(v.co.y - y1) < 1e-4
+                                                                     or abs(v.co.z - z_top) < 1e-4)}
+    bottom = {v for v in rim if abs(v.co.z - z_cut) < 1e-4 and dep(v.co) > 1e-4}
+    floor = {}
+    for v in list(bm.verts):
+        if v in rim and v not in bottom:
+            continue
+        if v in bottom:
+            floor[v] = bm.verts.new(v.co)
+        v.co.x = side(v.co) * door(v.co.y, v.co.z)
+    n_ledge = 0
+    for e in list(bm.edges):
+        a, b = e.verts
+        # Along the floor row, and where the row's last pressed corner meets the rest of the rim.
+        if len(e.link_faces) != 1 or not (a in floor or b in floor):
+            continue
+        vs = [floor.get(a, a), floor.get(b, b), b, a]
+        vs = [v for i, v in enumerate(vs) if v not in vs[:i]]
+        f = bm.faces.new(vs)
+        f.material_index = paint
+        f.smooth = False
+        f.normal_update()
+        if f.normal.z > 0:
+            f.normal_flip()
+        n_ledge += 1
+    bm.to_mesh(on_o.data)
+    bm.free()
+
+    me = on_o.data
+    first_ledge = len(me.polygons) - n_ledge
+    ns = []
+    for p in me.polygons:
+        for li in p.loop_indices:
+            ns.append(p.normal.copy() if p.index >= first_ledge else door_normal(me.vertices[me.loops[li].vertex_index].co))
+    me.normals_split_custom_set(ns)
+    on_o['authored_normals'] = True
+    for obj in (o, off_o):
+        m = obj.data
+        ns = [Vector(c.vector) for c in m.corner_normals]
+        for li, lp in enumerate(m.loops):
+            co = m.vertices[lp.vertex_index].co
+            if key(co) in edge:
+                ns[li] = door_normal(co)
+        m.normals_split_custom_set(ns)
+    print(f'half_cup_nodes: {off} {len(off_o.data.polygons)} faces, {on} {len(me.polygons)} faces ({n_ledge} in the ledge), '
+          f'{len(o.data.polygons)} left in {o.name}')
+    return off_o, on_o
+
+
 def handle_tail(o, fit, y0, y1, zc, hw, proud, rc=0.012, r=0.003, crown=0.002, sink=(0.008, 0.003), cup=(0.322, 0.335),
                 material='Paint', step=0.008, arc=5, rounds=3):
     """A door handle's bar carried on to its rear end, on both sides (built at +x and mirrored): the bar's

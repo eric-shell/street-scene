@@ -170,6 +170,8 @@ This file is the memory of the parts process. After every part job, before the c
 
 - 2026-10-30 wendtStrom Sex Spec: built from one product photo at a three-quarter, the uprights came out slim pods sitting on the shoulder; the user's side close-up showed broad wedges flush with the car's side down to the lamp's top edge, leaning in with the tumblehome from behind. Ask for a side and a rear view of an upright before building one. `side_fin` (carKit.py) now builds them: a side profile swept across the thickness, the outer face a callable of (y, z) so it can follow the body's side and then lean, the foot cast and eroded or held level, the edges rounded.
 
+- 2026-10-30 wendtStrom half cup handles: a swap patch picked face by face on a reduced donor body comes out different on each side (the collapse triangulated the two sides differently, vertices mirrored to 0.3 um) and leaves shading seams where its long faces run on. Cut a box in (y, z) with the same planes on both sides, put its edge on plain panel, press everything inside onto one surface read from the skin, and give the box's edge the panel's normal on every piece (`half_cup_nodes`, carDonors.py). Mirroring the body itself round a feature fails where the panel's long triangles reach an asymmetric shut line.
+
 ### Open questions
 
 - The split is not in the Wendt Strom's donor recipe: a rebuild from the donor (`ship_donor`) gives one `Body` again, and the cut, the body's repairs (docs/carDonors.md, Repairs on a shipped body) and every part must be redone (the parts from the helpers' calls in section 6). Answer: a `split` entry in the recipe once two cars have been cut.

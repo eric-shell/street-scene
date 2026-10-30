@@ -10,8 +10,9 @@
  *   underneath it (carDonors.py strip_nodes). Its fogLights is an `_on` node alone (the lamps in the outer intakes, outside
  *   every front bumper part, so they show on any of them), and its shavedMarkers a patch cut out of the stock
  *   fenders and of every fender part that carries those faces, so the switch works whichever fenders are on.
- *   A feature with a box and no nodes or reshape (halfCupHandles, for now) is a switch
- *   that changes nothing.
+ *   Its halfCupHandles is a swap patch over each door handle's upper cup: `_off` the stock cup, `_on` the door
+ *   pressed flush down to behind the bar's middle with a ledge onto the lower cup (carDonors.py half_cup_nodes).
+ *   A feature with a box and no nodes or reshape is a switch that changes nothing.
  * - blackGrille: the Paint pieces wholly inside the box (the grille's bars) become a child that takes the Black
  *   material of the lips and diffusers.
  * - euroMirrors: the box is the left mirror's (mirrored for the right). Every face inside it, any material, the caps

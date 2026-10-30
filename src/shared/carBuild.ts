@@ -80,7 +80,8 @@ const GLOW_RENAMES: Record<string, GlowPattern> = { breathe: 'pulse', alternate:
 /**
  * A car's unique features, each a switch a car's manifest offers (`bodyFeatures`, render/car/bodyFeatures.ts):
  * Euro mirrors narrow the mirror housings, a shaved hatch loses its handle, a shaved rubstrip loses the moulded
- * strip along the doors and the quarters, half cup handles (not built yet: the switch alone) and a black grille
+ * strip along the doors and the quarters, half cup handles fill each door handle's cup flush above the bar's middle,
+ * leaving its lower half, and a black grille
  * paints the grille's body colored bars flat black like the lips and diffusers. Fog lights are a pair of round
  * lamps in the front bumper's outer intakes, and fit every front bumper; shaved markers press the fenders' side
  * repeaters flush, on every fender option. Every feature is bought per car, like a part (shared/economy.ts).
