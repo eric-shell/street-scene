@@ -47,7 +47,7 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   // canards: 4,973; its Track Wild, a dropped splitter with its air dam, spats, rods, a tow strap and a trim
   // plate round oval speed holes: 7,357).
   frontBumper: 7500,
-  rearBumper: 4000,
+  rearBumper: 4500,
   sideSkirts: 2000,
   spoiler: 1500,
   hood: 2000,
