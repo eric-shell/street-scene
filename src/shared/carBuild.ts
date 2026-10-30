@@ -81,10 +81,33 @@ const GLOW_RENAMES: Record<string, GlowPattern> = { breathe: 'pulse', alternate:
  * A car's unique features, each a switch a car's manifest offers (`bodyFeatures`, render/car/bodyFeatures.ts):
  * Euro mirrors narrow the mirror housings, a shaved hatch loses its handle, a shaved rubstrip loses the moulded
  * strip along the doors and the quarters, half cup handles (not built yet: the switch alone) and a black grille
- * paints the grille's body colored bars flat black like the lips and diffusers.
+ * paints the grille's body colored bars flat black like the lips and diffusers. Fog lights are a pair of round
+ * lamps in the front bumper's outer intakes, and fit every front bumper; shaved markers press the fenders' side
+ * repeaters flush, on every fender option. Every feature is bought per car, like a part (shared/economy.ts).
  */
-export const BODY_FEATURES = ['euroMirrors', 'shavedHatch', 'shavedRubstrip', 'halfCupHandles', 'blackGrille'] as const;
+export const BODY_FEATURES = ['euroMirrors', 'shavedHatch', 'shavedRubstrip', 'halfCupHandles', 'blackGrille', 'fogLights', 'shavedMarkers'] as const;
 export type BodyFeature = (typeof BODY_FEATURES)[number];
+
+/** The features' names, for the garage's switches and the dialogs that list what a build wears. */
+export const FEATURE_LABELS: Record<BodyFeature, string> = {
+  euroMirrors: 'Euro mirrors',
+  shavedHatch: 'Shaved hatch',
+  shavedRubstrip: 'Shaved rubstrip',
+  halfCupHandles: 'Half cup handles',
+  blackGrille: 'Black grille',
+  fogLights: 'Fog lights',
+  shavedMarkers: 'Shaved side markers',
+};
+
+/**
+ * Catalog parts that became a feature: builds, share codes and ledgers still naming one get the plain part
+ * (`part`, null for the slot's stock piece) and the feature switched on, owning the old part owns both.
+ */
+export const RETIRED_PARTS: Readonly<Record<string, { slot: PartSlot; part: string | null; feature: BodyFeature }>> = {
+  wendtStrom_frontBumper_euroFogs: { slot: 'frontBumper', part: 'wendtStrom_frontBumper_euro', feature: 'fogLights' },
+  wendtStrom_frontBumper_cupraRFogs: { slot: 'frontBumper', part: 'wendtStrom_frontBumper_cupraR', feature: 'fogLights' },
+  wendtStrom_fenders_shaved: { slot: 'fenders', part: null, feature: 'shavedMarkers' },
+};
 
 /** Tire shapes (render/car/tireShapes.ts draws each). */
 /** Tire stretch, least to most: none ('standard'), mild, and full ('stretched', the first stretched tire, so old saves keep their look). */
@@ -291,6 +314,16 @@ export function validateVisual(v: unknown): VisualBuild {
       parts[slot] = val;
     }
   }
+  // A part that became a feature: the plain part (or stock) and the feature on.
+  const migrated = new Set<BodyFeature>();
+  for (const slot of PART_SLOTS) {
+    const old = parts[slot];
+    const r = typeof old === 'string' ? RETIRED_PARTS[old] : undefined;
+    if (!r) continue;
+    if (r.part) parts[slot] = r.part;
+    else delete parts[slot];
+    migrated.add(r.feature);
+  }
   const decals: DecalLayer[] = [];
   if (Array.isArray(o.decals)) {
     for (const raw of o.decals.slice(0, MAX_DECALS)) {
@@ -369,7 +402,7 @@ export function validateVisual(v: unknown): VisualBuild {
       size: num(glow.size, 0.6, 1.6, 1),
     },
     popsBangs: num(o.popsBangs, 0, 2, d.popsBangs),
-    features: Array.isArray(o.features) ? BODY_FEATURES.filter((f) => (o.features as unknown[]).includes(f)) : [],
+    features: BODY_FEATURES.filter((f) => migrated.has(f) || (Array.isArray(o.features) && (o.features as unknown[]).includes(f))),
   };
 }
 

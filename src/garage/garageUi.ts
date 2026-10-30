@@ -61,11 +61,10 @@ import { btn, chip, h, iconBtn, isTyping, scrollHint, segmented, sheen, specChip
 import { door, transitioning } from '../ui/transitions/transitions';
 import { openSignInDialog, onSignedIn, wantsSignIn } from '../ui/screens/signIn';
 import { Car, Check, ChevronRight, CircleUser, CloudOff, Coins, Copy, Download, Gauge, Hammer, Lock, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
-import type { PartEntry } from '../shared/parts';
-import { priceOf, racesToUnlock, unlockRaces } from '../shared/economy';
-import { buy } from '../shared/purchases';
+import type { Buyable } from '../shared/economy';
+import { buyItem } from '../shared/purchases';
 import { pointsBalance } from '../shared/points';
-import { loadStats } from '../shared/stats';
+import { loadStats, racesForUnlocks } from '../shared/stats';
 import { formatPoints } from '../ui/kit/format';
 import { strippedText } from './ownershipNotice';
 import { GarageScene } from './garageScene';
@@ -486,41 +485,40 @@ export class GarageScreen implements TabHost {
   }
 
   /**
-   * TabHost.offer: a part this car does not own is on the car to preview. Locked, a note of the races still to
-   * finish; unlocked, the buy dialog (its price, the balance and what is left after). The dialog leaves the scene
-   * undimmed so the part shows on the car; anything but Buy takes it back off.
+   * TabHost.offer: a part or feature this car does not own is on the car to preview. Locked, a note of the races
+   * still to finish; unlocked, the buy dialog (its price, the balance and what is left after). The dialog leaves
+   * the scene undimmed so it shows on the car; anything but Buy takes it back off.
    */
-  offer(part: PartEntry, revert: () => void): void {
+  offer(item: Buyable, revert: () => void): void {
     const b = this.build;
     const car = manifestCar(b.carId).displayName;
-    const name = part.slot === 'wheels' ? `${part.displayName} wheels` : `${part.displayName} ${SLOT_LABELS[part.slot].toLowerCase()}`;
+    const { name, price } = item;
     const back = () => {
       revert();
       void this.changed(true);
     };
-    const left = racesToUnlock(part, loadStats());
+    const left = Math.max(0, item.unlock - racesForUnlocks(loadStats()));
     if (left > 0) {
       const ok = btn(Check, 'OK', () => this.closeDialog(), '--primary');
       this.openDialog(
         Lock,
         'Locked',
-        h('div', { class: 'muted' }, `The ${name} unlock once you have finished ${unlockRaces(part)} races: ${moreRaces(left)} to go. It comes off the ${car} when you close this.`),
+        h('div', { class: 'muted' }, `The ${name} unlocks once you have finished ${item.unlock} races: ${moreRaces(left)} to go. It comes off the ${car} when you close this.`),
         h('div', { class: 'row' }, ok),
       );
       this.preview(back);
       ok.focus();
       return;
     }
-    const price = priceOf(part, b.carId);
     const balance = pointsBalance();
     const short = balance < price;
     const line = (label: string, value: string, cls = '') => h('div', { class: `garage-buy__line${cls}` }, h('span', {}, label), h('b', {}, value));
-    const buyBtn = btn(Coins, short ? `${formatPoints(price - balance)} short` : `Buy for ${formatPoints(price)}`, () => this.purchase(part, name, car), '--primary');
+    const buyBtn = btn(Coins, short ? `${formatPoints(price - balance)} short` : `Buy for ${formatPoints(price)}`, () => this.purchase(item, car), '--primary');
     buyBtn.disabled = short;
     const later = btn(null, 'Not now', () => this.closeDialog());
     this.openDialog(
       Coins,
-      'Buy part',
+      'Buy',
       h(
         'div',
         { class: 'garage-buy' },
@@ -529,7 +527,7 @@ export class GarageScreen implements TabHost {
         line('Balance', formatPoints(balance)),
         line('After', short ? '–' : formatPoints(balance - price), ' garage-buy__line--after'),
       ),
-      h('div', { class: 'muted garage-note' }, short ? 'Finish races to earn the points. It comes off the car when you close this.' : 'Bought parts belong to this car, for every build of it. Save keeps it on this build.'),
+      h('div', { class: 'muted garage-note' }, short ? 'Finish races to earn the points. It comes off the car when you close this.' : 'Bought parts and features belong to this car, for every build of it. Save keeps it on this build.'),
       h('div', { class: 'row' }, buyBtn, later),
     );
     this.preview(back);
@@ -542,10 +540,11 @@ export class GarageScreen implements TabHost {
     this.dialogClosed = back;
   }
 
-  /** Buy the part on preview: the points go, the counter rolls down and the part stays on (the build still saves on Save). */
-  private purchase(part: PartEntry, name: string, car: string): void {
-    const r = buy(this.build.carId, part);
-    if (r !== 'bought' && r !== 'owned') return toast(r === 'locked' ? 'That part is not unlocked yet' : 'Not enough points', Lock);
+  /** Buy the part or feature on preview: the points go, the counter rolls down and it stays on (the build still saves on Save). */
+  private purchase(item: Buyable, car: string): void {
+    const { name } = item;
+    const r = buyItem(this.build.carId, item);
+    if (r !== 'bought' && r !== 'owned') return toast(r === 'locked' ? 'That is not unlocked yet' : 'Not enough points', Lock);
     this.dialogClosed = null;
     this.closeDialog();
     this.counter?.set(pointsBalance());

@@ -34,24 +34,6 @@
       "generated": true
     },
     {
-      "id": "wendtStrom_frontBumper_euroFogs",
-      "displayName": "Euro w/ Fogs",
-      "carId": "wendtStrom",
-      "slot": "frontBumper",
-      "file": "parts/wendtStrom_frontBumper_euroFogs.glb",
-      "hides": [
-        "Bumper_Front"
-      ],
-      "materialSlots": [
-        "Paint",
-        "Black",
-        "Chrome",
-        "HeadLight"
-      ],
-      "tris": 3474,
-      "generated": true
-    },
-    {
       "id": "wendtStrom_frontBumper_cupraR",
       "displayName": "Cupra R Lip",
       "carId": "wendtStrom",
@@ -65,24 +47,6 @@
         "Black"
       ],
       "tris": 3676,
-      "generated": true
-    },
-    {
-      "id": "wendtStrom_frontBumper_cupraRFogs",
-      "displayName": "Cupra R Lip w/ Fogs",
-      "carId": "wendtStrom",
-      "slot": "frontBumper",
-      "file": "parts/wendtStrom_frontBumper_cupraRFogs.glb",
-      "hides": [
-        "Bumper_Front"
-      ],
-      "materialSlots": [
-        "Paint",
-        "Black",
-        "Chrome",
-        "HeadLight"
-      ],
-      "tris": 3984,
       "generated": true
     },
     {
@@ -383,21 +347,6 @@
       "generated": true
     },
     {
-      "id": "wendtStrom_fenders_shaved",
-      "displayName": "Shaved",
-      "carId": "wendtStrom",
-      "slot": "fenders",
-      "file": "parts/wendtStrom_fenders_shaved.glb",
-      "hides": [
-        "Fenders"
-      ],
-      "materialSlots": [
-        "Paint"
-      ],
-      "tris": 1122,
-      "generated": true
-    },
-    {
       "id": "wendtStrom_fenders_voomeran",
       "displayName": "Voomeran Overs",
       "carId": "wendtStrom",
@@ -408,10 +357,9 @@
       ],
       "materialSlots": [
         "Paint",
-        "ClearLens",
         "Black"
       ],
-      "tris": 3818,
+      "tris": 3632,
       "generated": true
     },
     {

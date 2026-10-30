@@ -215,6 +215,15 @@ describe('build validation', () => {
   });
 });
 
+describe('retired parts', () => {
+  it('become the plain part plus the feature in a saved build', () => {
+    const b = validateBuild({ carId: 'wendtStrom', visual: { parts: { frontBumper: 'wendtStrom_frontBumper_cupraRFogs', fenders: 'wendtStrom_fenders_shaved' }, features: ['euroMirrors'] } });
+    expect(b.visual.parts.frontBumper).toBe('wendtStrom_frontBumper_cupraR');
+    expect(b.visual.parts.fenders).toBeUndefined();
+    expect(b.visual.features).toEqual(['euroMirrors', 'fogLights', 'shavedMarkers']);
+  });
+});
+
 describe('parts catalog', () => {
   it('every catalog entry validates against its file', async () => {
     const r = await validateCatalog();

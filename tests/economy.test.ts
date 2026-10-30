@@ -6,9 +6,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { addRunPoints, balanceOf, loadPoints, mergePoints, pointsBalance, spendPoints, POINTS_KEY } from '../src/shared/points';
 import { cleanStats, mergeStats, recordRace, STATS_KEY } from '../src/shared/stats';
-import { ECONOMY, catalogPart, isUnlocked, priceOf, stockWheel } from '../src/shared/economy';
-import { buy, enforceOwnership, hasLedger, loadPurchases, mergePurchases, owns, startLedger, PURCHASES_KEY } from '../src/shared/purchases';
-import { defaultBuild } from '../src/shared/carBuild';
+import { ECONOMY, catalogPart, featureBuyable, featureId, featurePrice, featureRacesToUnlock, isUnlocked, priceOf, stockWheel } from '../src/shared/economy';
+import { buy, buyItem, cleanPurchases, enforceOwnership, grandfathered, hasLedger, loadPurchases, mergePurchases, owns, ownsFeature, startLedger, PURCHASES_KEY } from '../src/shared/purchases';
+import { defaultBuild, FEATURE_LABELS } from '../src/shared/carBuild';
 import catalog from '../src/assets/partsCatalog.json';
 import type { PartEntry } from '../src/shared/parts';
 
@@ -133,5 +133,41 @@ describe('purchases', () => {
     expect(buy('wendtStrom', w, unlocked)).toBe('owned');
     expect(store.has(`nightrun.${PURCHASES_KEY}`)).toBe(true);
     expect(store.has(`nightrun.${STATS_KEY}`)).toBe(false);
+  });
+});
+
+describe('body features', () => {
+  it('cost one price above every bumper and fender part, unlocked after the same races', () => {
+    expect(featurePrice()).toBe(ECONOMY.features.price);
+    for (const p of (catalog as unknown as { parts: PartEntry[] }).parts.filter((x) => x.slot === 'frontBumper' || x.slot === 'rearBumper' || x.slot === 'fenders')) expect(priceOf(p, 'wendtStrom')).toBeLessThan(featurePrice());
+    expect(featureRacesToUnlock(cleanStats({ races: 0 }))).toBe(ECONOMY.features.unlock);
+    expect(featureRacesToUnlock(cleanStats({ races: ECONOMY.features.unlock }))).toBe(0);
+    expect(featureId('fogLights')).toBe('feature.fogLights');
+  });
+
+  it('are bought per car like parts, and enforced and grandfathered with them', () => {
+    startLedger([]);
+    const fog = featureBuyable('fogLights', FEATURE_LABELS.fogLights);
+    expect(ownsFeature('wendtStrom', 'fogLights')).toBe(false);
+    expect(buyItem('wendtStrom', fog, cleanStats({ races: 0 }))).toBe('locked');
+    const ready = cleanStats({ races: ECONOMY.features.unlock });
+    expect(buyItem('wendtStrom', fog, ready)).toBe('short');
+    addRunPoints(fog.price);
+    expect(buyItem('wendtStrom', fog, ready)).toBe('bought');
+    expect(buyItem('wendtStrom', fog, ready)).toBe('owned');
+    expect(ownsFeature('kazamaRotor', 'fogLights')).toBe(false);
+
+    const b = defaultBuild('wendtStrom');
+    b.visual.features = ['fogLights', 'shavedMarkers'];
+    const gone = enforceOwnership(b);
+    expect(gone.map((g) => g.feature)).toEqual(['shavedMarkers']);
+    expect(b.visual.features).toEqual(['fogLights']);
+    expect(grandfathered([b])).toEqual({ wendtStrom: ['feature.fogLights'] });
+  });
+
+  it('read a retired part in a ledger as its replacement and the feature', () => {
+    expect(cleanPurchases({ wendtStrom: ['wendtStrom_frontBumper_euroFogs', 'wendtStrom_fenders_shaved'] })).toEqual({
+      wendtStrom: ['feature.fogLights', 'feature.shavedMarkers', 'wendtStrom_frontBumper_euro'],
+    });
   });
 });

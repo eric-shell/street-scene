@@ -1,6 +1,6 @@
 # Points and parts (the economy)
 
-Races pay points; points buy garage parts. Everything else in the garage (paint, calipers, wheel trims, stance, tires, tint, underglow, pops and bangs, the setup sliders) is free from the first race, and so is stock: a car's own wheel, its stock body pieces, no spoiler. The sim never reads any of this: a part is visual only, so buying one never changes how a car drives, and a replay or ghost is untouched by what anyone owns.
+Races pay points; points buy garage parts and the body features (fog lights, shaved side markers, Euro mirrors ...). Everything else in the garage (paint, calipers, wheel trims, stance, tires, tint, underglow, pops and bangs, the setup sliders) is free from the first race, and so is stock: a car's own wheel, its stock body pieces, no spoiler. The sim never reads any of this: a part is visual only, so buying one never changes how a car drives, and a replay or ghost is untouched by what anyone owns.
 
 `FEATURES.economy` (`src/shared/features.ts`, on by default; `?features=-economy` turns it off on one device) is the switch. Off, every part is free, unlocked and owned, the garage shows no prices or counter, and nothing is spent or recorded: the game plays as it did before.
 
@@ -10,8 +10,8 @@ Races pay points; points buy garage parts. Everything else in the garage (paint,
 |---|---|---|---|
 | `src/shared/points.ts` | `points.v1` | `{ total, spent, best }`: lifetime earned, lifetime spent, best run | max of each field |
 | `src/shared/stats.ts` | `stats.v1` | races finished (all and per mode), wins, podiums, best finish, race time (s), distance (m), drift score, best run, points lost to crashes, free roam drives | max of each counter, min of the (set) best finish |
-| `src/shared/economy.ts` | none | the price and unlock table (`ECONOMY`), `priceOf`, `unlockRaces`, `isUnlocked` | |
-| `src/shared/purchases.ts` | `purchases.v1` | `{ [carId]: partId[] }` | union per car |
+| `src/shared/economy.ts` | none | the price and unlock table (`ECONOMY`), `priceOf`, `unlockRaces`, `isUnlocked`; `Buyable`, `featureId`, `featurePrice`, `featureRacesToUnlock` | |
+| `src/shared/purchases.ts` | `purchases.v1` | `{ [carId]: id[] }`: part ids and `feature.<name>` ids | union per car |
 
 All three keys sync with an account (`src/account/cloudSave.ts`, `SYNCED`). A download is merged with this device's copy before it is written (`mergeLocalPoints`, which covers all three), so signing in on a second device never loses a run, a race or a purchase.
 
@@ -47,6 +47,12 @@ A race pays about three thousand points (a full nitrous stage is 1,000). The tab
 | Spoiler | 11,000 | 0.3 | 11,000 to 14,300 | 6 races |
 | Body kit | 32,000 | 0.4 | 32,000 to 44,800 | 10 races |
 
+### Body features
+
+Every body feature (`BODY_FEATURES`: Euro mirrors, shaved hatch, shaved rubstrip, half cup handles, black grille, fog lights, shaved side markers) is bought per car like a part, at one price: `ECONOMY.features` is 15,000 points (about five races, above every bumper and fender part) after 6 races. The ledger id is `feature.<name>` in the same per-car list; `buyItem(carId, item)` buys a `Buyable` (a part via `partBuyable`, a feature via `featureBuyable`), and `buy` is its part form. Fog lights sit in the Front bumper section and shaved side markers in the Fenders section (`SLOT_FEATURES` in `garageTabs.ts`); the other features stay in the Unique features panels, all with the same tag as a part.
+
+Three catalog parts became features (`RETIRED_PARTS` in `carBuild.ts`): the Euro and Cupra R fog bumpers are the plain bumper plus fog lights, and the shaved fenders are stock fenders plus shaved markers. A saved build or share code wearing an old id reads as the replacement and the feature on (`validateVisual`), and a ledger owning one owns both (`cleanPurchases`).
+
 A car's own stock wheel is free on that car (it is stock), and so is choosing Stock or None in any slot. Balancing is one edit to `ECONOMY` in `src/shared/economy.ts`.
 
 ## Ownership is per car
@@ -59,12 +65,12 @@ The first time the economy runs on a device with no `purchases.v1` saved (`start
 
 ## Where ownership is enforced
 
-`enforceOwnership(build)` strips the parts a build's car does not own back to stock (or none; a rear wheel back to following the front) and returns what went.
+`enforceOwnership(build)` strips the parts a build's car does not own back to stock (or none; a rear wheel back to following the front) and switches off the features it does not own, and returns what went (`WornPart`, a feature's `slot` is null).
 
 - Import: a code pasted in the garage (`storage.ts importBuild`, a dialog lists what went: "You haven't unlocked these for the Wendt Strom R6 yet: ...") and a `?build=` link at boot (`main.ts`, the same wording in `garage/ownershipNotice.ts`).
 - Load: `loadGarage` strips every slot quietly and saves the result. A cloud save lands in storage before the load (at boot, or a sign-in that reloads the page), so a stale or tampered save never equips what was not bought.
 - Race start: `main.ts ownedVisual` strips a copy of the player's look for the race and free roam, defensively (visual only; racing is never blocked).
-- The garage: a part the car does not own is put on to preview while its buy dialog (or, when locked, a note of the races still to finish) is up, and comes off again unless it is bought, so a build only ever keeps owned parts and Save never has to refuse. Switching a build's model asks first when the new car does not own the wheels it wears ("Switching to X resets these parts to stock: ..."), then resets them.
+- The garage: a part or feature the car does not own is put on to preview while its buy dialog (or, when locked, a note of the races still to finish) is up, and comes off again unless it is bought, so a build only ever keeps owned parts and Save never has to refuse. Switching a build's model asks first when the new car does not own the wheels it wears ("Switching to X resets these parts to stock: ..."), then resets them.
 
 ## The garage
 

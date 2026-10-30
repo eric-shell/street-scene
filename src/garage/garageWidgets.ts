@@ -21,8 +21,9 @@ import { KMH_PER_MPH, horsepower, pounds } from '../ui/kit/units';
 import { Coins, Lock, icon, type IconNode } from '../ui/kit/icons';
 import { formatPoints } from '../ui/kit/format';
 import type { PartEntry } from '../shared/parts';
-import { priceOf, racesToUnlock } from '../shared/economy';
-import { owns, type PurchasesSave } from '../shared/purchases';
+import { featurePrice, featureRacesToUnlock, priceOf, racesToUnlock } from '../shared/economy';
+import { owns, ownsFeature, type PurchasesSave } from '../shared/purchases';
+import type { BodyFeature } from '../shared/carBuild';
 import type { StatsSave } from '../shared/stats';
 import { FEATURES } from '../shared/features';
 
@@ -391,6 +392,13 @@ export function partTag(carId: string, part: PartEntry, saved: PurchasesSave, st
   const price = priceOf(part, carId);
   const races = racesToUnlock(part, stats);
   return races > 0 ? { state: 'locked', races, price } : { state: 'buy', price };
+}
+
+/** A body feature's standing for `carId` (one price for all of them, economy.ts), like a part's. */
+export function featureTag(carId: string, f: BodyFeature, saved: PurchasesSave, stats: StatsSave): PartTag {
+  if (ownsFeature(carId, f, saved)) return { state: 'owned' };
+  const races = featureRacesToUnlock(stats);
+  return races > 0 ? { state: 'locked', races, price: featurePrice() } : { state: 'buy', price: featurePrice() };
 }
 
 /** "3 more races" / "1 more race". */

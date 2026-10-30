@@ -12,16 +12,21 @@
  * part the garage's builds wear is recorded as owned for its car, so nobody loses what they had before parts
  * cost points. From then on the ledger exists and only purchases add to it.
  *
+ * Body features (fog lights, shaved markers ...) are bought the same way, per car, under the ledger id
+ * `feature.<name>` (economy.ts `featureId`), and enforced and grandfathered with the parts. A catalog part that
+ * became a feature (carBuild.ts RETIRED_PARTS) reads as its replacement part plus the feature, in a build and in a
+ * ledger alike.
+ *
  * Visual only: the sim never reads ownership (a build's performance half is free), and nothing here touches a
  * race. With FEATURES.economy off every part is owned and nothing is recorded.
  */
 import { loadJson, loadText, saveJson } from './store';
 import { FEATURES } from './features';
 import { PART_SLOTS, SLOT_LABELS, type PartEntry, type PartSlot } from './parts';
-import type { CarBuild, VisualBuild } from './carBuild';
-import { catalogPart, isStock, isUnlocked, priceOf } from './economy';
+import { BODY_FEATURES, FEATURE_LABELS, RETIRED_PARTS, type BodyFeature, type CarBuild, type VisualBuild } from './carBuild';
+import { catalogPart, featureId, isStock, partBuyable, priceOf, type Buyable } from './economy';
 import { spendPoints } from './points';
-import { loadStats, type StatsSave } from './stats';
+import { loadStats, racesForUnlocks, type StatsSave } from './stats';
 
 /** The store key (without the `nightrun.` prefix). */
 export const PURCHASES_KEY = 'purchases.v1';
@@ -31,13 +36,19 @@ export type PurchasesSave = Record<string, string[]>;
 
 const ID = /^[A-Za-z0-9_\-.]{1,64}$/;
 
+/** A ledger id with a retired part swapped for what replaced it: the plain part (if any) and the feature. */
+const migrated = (id: string): string[] => {
+  const r = RETIRED_PARTS[id];
+  return r ? [...(r.part ? [r.part] : []), featureId(r.feature)] : [id];
+};
+
 /** A save from storage or another device, cleaned: ids deduplicated and sorted, anything malformed dropped. */
 export function cleanPurchases(v: unknown): PurchasesSave {
   const out: PurchasesSave = {};
   if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
   for (const [car, list] of Object.entries(v as Record<string, unknown>)) {
     if (!ID.test(car) || !Array.isArray(list)) continue;
-    const ids = [...new Set(list.filter((x): x is string => typeof x === 'string' && ID.test(x)))].sort();
+    const ids = [...new Set(list.filter((x): x is string => typeof x === 'string' && ID.test(x)).flatMap(migrated))].sort();
     if (ids.length) out[car] = ids;
   }
   return out;
@@ -73,9 +84,15 @@ export function owns(carId: string, partId: string, saved: PurchasesSave = loadP
   return saved[carId]?.includes(partId) ?? false;
 }
 
-/** A part a build wears: its slot, id and whether it is the rear axle's own wheel (`wheels.rearPart`). */
+/** Whether `carId` may wear a body feature: free, or bought for that car. */
+export const ownsFeature = (carId: string, f: BodyFeature, saved: PurchasesSave = loadPurchases()): boolean => owns(carId, featureId(f), saved);
+
+/** A part (or body feature) a build wears: its slot, id and whether it is the rear axle's own wheel (`wheels.rearPart`). */
 export interface WornPart {
-  slot: PartSlot;
+  /** The part's slot; null for a body feature. */
+  slot: PartSlot | null;
+  /** Set for a body feature (`id` is then its ledger id). */
+  feature?: BodyFeature;
   id: string;
   rear: boolean;
   /** Its name for a dialog ("Yari wheels (rear)"). */
@@ -97,6 +114,7 @@ export function wornParts(v: VisualBuild): WornPart[] {
   }
   const rear = v.wheels.rearPart;
   if (rear && rear !== v.parts.wheels) out.push({ slot: 'wheels', id: rear, rear: true, name: partName('wheels', rear, true) });
+  for (const f of BODY_FEATURES) if (v.features.includes(f)) out.push({ slot: null, feature: f, id: featureId(f), rear: false, name: FEATURE_LABELS[f] });
   return out;
 }
 
@@ -106,10 +124,12 @@ export function unownedParts(v: VisualBuild, carId: string): WornPart[] {
   return wornParts(v).filter((w) => !owns(carId, w.id, saved));
 }
 
-/** Takes worn parts off a look: each slot back to stock (or none), a rear wheel back to following the front. */
+/** Takes worn parts off a look: each slot back to stock (or none), a rear wheel back to following the front, a feature off. */
 export function stripParts(v: VisualBuild, parts: readonly WornPart[]): void {
   for (const w of parts) {
-    if (w.rear) v.wheels.rearPart = null;
+    if (w.feature) v.features = v.features.filter((f) => f !== w.feature);
+    else if (!w.slot) continue;
+    else if (w.rear) v.wheels.rearPart = null;
     else delete v.parts[w.slot];
   }
 }
@@ -146,11 +166,14 @@ export function grandfathered(builds: readonly CarBuild[]): PurchasesSave {
 export type BuyResult = 'bought' | 'owned' | 'locked' | 'short';
 
 /** Buys a part for a car: checks it is unlocked and affordable, spends its price and records it. */
-export function buy(carId: string, part: PartEntry, stats: StatsSave = loadStats()): BuyResult {
+export const buy = (carId: string, part: PartEntry, stats: StatsSave = loadStats()): BuyResult => buyItem(carId, partBuyable(part, carId), stats);
+
+/** Buys a part or a feature (economy.ts `partBuyable`, `featureBuyable`) for a car, the same checks as `buy`. */
+export function buyItem(carId: string, item: Buyable, stats: StatsSave = loadStats()): BuyResult {
   const saved = loadPurchases();
-  if (owns(carId, part.id, saved)) return 'owned';
-  if (!isUnlocked(part, stats)) return 'locked';
-  if (!spendPoints(priceOf(part, carId))) return 'short';
-  saveJson(PURCHASES_KEY, mergePurchases(saved, { [carId]: [part.id] }));
+  if (owns(carId, item.id, saved)) return 'owned';
+  if (racesForUnlocks(stats) < item.unlock) return 'locked';
+  if (!spendPoints(item.price)) return 'short';
+  saveJson(PURCHASES_KEY, mergePurchases(saved, { [carId]: [item.id] }));
   return 'bought';
 }

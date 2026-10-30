@@ -15,10 +15,11 @@
  */
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partById, partsFor } from '../render/car/carAssets';
-import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS, type PartEntry } from '../shared/parts';
-import { loadPurchases, owns, stripParts, unownedParts } from '../shared/purchases';
+import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
+import { loadPurchases, owns, ownsFeature, stripParts, unownedParts } from '../shared/purchases';
+import { featureBuyable, partBuyable, type Buyable } from '../shared/economy';
 import { loadStats } from '../shared/stats';
-import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, BANNER_HEIGHTS, BODY_FEATURES, BodyFeature, CarBuild, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
+import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, BANNER_HEIGHTS, BODY_FEATURES, BodyFeature, CarBuild, FEATURE_LABELS, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning, type CarTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
@@ -27,7 +28,7 @@ import { cycler, h, multiSelect, onOffSwitch, segmented, toast } from '../ui/kit
 import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, ListFilter, Paintbrush, Sparkles, Zap, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { GaragePrefs, StanceLink, saveGaragePrefs } from './storage';
-import { capital, choiceList, cm, colorPicker, field, matchBody, mm, note, paintPicker, partTag, partTagEl, percent, revealable, rowName, section, sectionWith, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
+import { capital, choiceList, cm, colorPicker, field, matchBody, mm, note, paintPicker, featureTag, partTag, partTagEl, percent, revealable, rowName, section, sectionWith, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
 import { renderVinyls } from './garageVinyls';
 import { setupSlider } from './setupSliders';
 import { wheelPicker } from './wheelPicker';
@@ -107,10 +108,10 @@ export interface TabHost {
   changed(rerender?: boolean): Promise<unknown>;
   renderTab(): void;
   /**
-   * A part the car does not own was just put on to preview: offer it (the buy dialog, or the races still to finish
+   * A part or feature the car does not own was just put on to preview: offer it (the buy dialog, or the races still to finish
    * when it is locked). Bought, it stays on; declined, `revert` takes the pick back and the tab re-renders.
    */
-  offer(part: PartEntry, revert: () => void): void;
+  offer(item: Buyable, revert: () => void): void;
   /** Ask before an edit that loses something: `go` on yes, `cancel` on no (the dialog closed). */
   confirm(ico: IconNode, title: string, text: string, yes: string, go: () => void, cancel: () => void): void;
   /** Frame the open tab's shot again (the Body tab's slot or the Paint tab's surface changed). */
@@ -215,7 +216,7 @@ export function renderTabContent(host: TabHost): void {
           };
           if (!lost.length) return go();
           const name = manifestCar(id).displayName;
-          host.confirm(Car, `Switch to the ${name}?`, `Switching to the ${name} resets these parts to stock: ${lost.map((p) => p.name).join(', ')}. Parts are bought per car.`, 'Switch', go, () => host.renderTab());
+          host.confirm(Car, `Switch to the ${name}?`, `Switching to the ${name} resets these parts to stock: ${lost.map((p) => p.name).join(', ')}. Parts and features are bought per car.`, 'Switch', go, () => host.renderTab());
         },
       );
       // The makers filter, as the Wheels tab's: it hides the other makers' tiles in place, so its menu stays open
@@ -314,7 +315,7 @@ export function renderTabContent(host: TabHost): void {
             // A wheel this car does not own is a preview until it is bought.
             const part = partsFor(b.carId, 'wheels').find((p) => p.id === id);
             if (part && !owns(b.carId, id))
-              host.offer(part, () => {
+              host.offer(partBuyable(part, b.carId), () => {
                 if (was.front === undefined) delete v.parts.wheels;
                 else v.parts.wheels = was.front;
                 w.rearPart = was.rear;
@@ -549,12 +550,13 @@ export function renderTabContent(host: TabHost): void {
                 // A part this car does not own is a preview until it is bought.
                 const part = id ? parts.find((p) => p.id === id) : undefined;
                 if (part && !owns(b.carId, part.id))
-                  host.offer(part, () => {
+                  host.offer(partBuyable(part, b.carId), () => {
                     if (was === undefined) delete v.parts[slot];
                     else v.parts[slot] = was;
                   });
               })
             : note('No parts for this slot yet.'),
+          ...slotFeatures(b.carId, slot).map((f) => featureSwitch(host, f)),
         );
         group.dataset.slot = slot;
         host.body.append(
@@ -633,34 +635,46 @@ function renderPower(host: TabHost): void {
   );
 }
 
-/** The unique features' names, and which tab lists each: the shapes on Body, the paint on Paint. */
-const FEATURE_LABELS: Record<BodyFeature, string> = {
-  euroMirrors: 'Euro mirrors',
-  shavedHatch: 'Shaved hatch',
-  shavedRubstrip: 'Shaved rubstrip',
-  halfCupHandles: 'Half cup handles',
-  blackGrille: 'Black grille',
-};
+/** Which tab lists each unique feature: the shapes on Body, the paint on Paint. A feature that dresses a part slot sits in that slot's section instead (`SLOT_FEATURES`). */
 const BODY_SHAPE_FEATURES: readonly BodyFeature[] = ['euroMirrors', 'shavedHatch', 'shavedRubstrip', 'halfCupHandles'];
 const PAINT_FEATURES: readonly BodyFeature[] = ['blackGrille'];
+/** The body part slot a feature belongs to: its switch sits under that slot's part list. */
+const SLOT_FEATURES: Partial<Record<BodyFeature, PartSlot>> = { fogLights: 'frontBumper', shavedMarkers: 'fenders' };
+
+/**
+ * A feature's switch row, with its tag (owned, price or locked). Switching on one the car does not own previews it
+ * and offers it (TabHost.offer); anything but Buy switches it back off.
+ */
+function featureSwitch(host: TabHost, f: BodyFeature): HTMLElement {
+  const v = host.build.visual;
+  const { carId } = host.build;
+  const tag = partTagEl(featureTag(carId, f, loadPurchases(), loadStats()));
+  const set = (f: BodyFeature, on: boolean) => {
+    v.features = BODY_FEATURES.filter((x) => (x === f ? on : v.features.includes(x)));
+  };
+  const row = field(
+    FEATURE_LABELS[f],
+    onOffSwitch(v.features.includes(f), (on) => {
+      set(f, on);
+      host.changed();
+      if (on && !ownsFeature(carId, f)) host.offer(featureBuyable(f, FEATURE_LABELS[f]), () => set(f, false));
+    }, FEATURE_LABELS[f]),
+  );
+  if (tag) row.firstElementChild?.append(tag);
+  return row;
+}
+
+/** The features of `slot` the car's manifest offers. */
+const slotFeatures = (carId: string, slot: PartSlot): BodyFeature[] => BODY_FEATURES.filter((f) => SLOT_FEATURES[f] === slot && manifestCar(carId).bodyFeatures?.[f]);
 
 /** A tab's Unique features panel: a switch for each of `features` the car's manifest offers (bodyFeatures), or nothing when it offers none. */
 function featureSection(host: TabHost, features: readonly BodyFeature[]): HTMLElement[] {
-  const v = host.build.visual;
   const offered = features.filter((f) => manifestCar(host.build.carId).bodyFeatures?.[f]);
   if (!offered.length) return [];
   return [
     section(
       'Unique features',
-      ...offered.map((f) =>
-        field(
-          FEATURE_LABELS[f],
-          onOffSwitch(v.features.includes(f), (on) => {
-            v.features = BODY_FEATURES.filter((x) => (x === f ? on : v.features.includes(x)));
-            host.changed();
-          }, FEATURE_LABELS[f]),
-        ),
-      ),
+      ...offered.map((f) => featureSwitch(host, f)),
     ),
   ];
 }
