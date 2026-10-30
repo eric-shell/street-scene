@@ -61,6 +61,11 @@ DEFAULT_HIDES = {
     "roof": ["Roof"],
     "body": ["Body"],
     "spoiler": [],
+    "splitter": ["Splitter"],
+    "diffuser": ["Diffuser"],
+    "canards": [],
+    "exhaust": ["Exhaust"],
+    "mirrors": ["Mirrors"],
 }
 
 

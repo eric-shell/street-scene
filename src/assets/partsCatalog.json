@@ -3355,6 +3355,902 @@
       ],
       "tris": 9599,
       "generated": true
+    },
+    {
+      "id": "tachibanaZenith_frontBumper_shippu",
+      "displayName": "Shippu",
+      "carId": "tachibanaZenith",
+      "slot": "frontBumper",
+      "file": "parts/tachibanaZenith_frontBumper_shippu.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Lens",
+        "Light",
+        "Chrome"
+      ],
+      "tris": 4504,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_frontBumper_jinrai",
+      "displayName": "Jinrai",
+      "carId": "tachibanaZenith",
+      "slot": "frontBumper",
+      "file": "parts/tachibanaZenith_frontBumper_jinrai.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Lens",
+        "Chrome",
+        "Light"
+      ],
+      "tris": 4908,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_frontBumper_akagi",
+      "displayName": "Akagi",
+      "carId": "tachibanaZenith",
+      "slot": "frontBumper",
+      "file": "parts/tachibanaZenith_frontBumper_akagi.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Black",
+        "Lens",
+        "Light",
+        "Chrome",
+        "Paint"
+      ],
+      "tris": 4231,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_splitter_flatlip",
+      "displayName": "Flat Lip",
+      "carId": "tachibanaZenith",
+      "slot": "splitter",
+      "file": "parts/tachibanaZenith_splitter_flatlip.glb",
+      "hides": [
+        "Splitter"
+      ],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 396,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_splitter_cornerplates",
+      "displayName": "Corner Plates",
+      "carId": "tachibanaZenith",
+      "slot": "splitter",
+      "file": "parts/tachibanaZenith_splitter_cornerplates.glb",
+      "hides": [
+        "Splitter"
+      ],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 280,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_splitter_oval",
+      "displayName": "Oval",
+      "carId": "tachibanaZenith",
+      "slot": "splitter",
+      "file": "parts/tachibanaZenith_splitter_oval.glb",
+      "hides": [
+        "Splitter"
+      ],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 432,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_splitter_blade",
+      "displayName": "Blade",
+      "carId": "tachibanaZenith",
+      "slot": "splitter",
+      "file": "parts/tachibanaZenith_splitter_blade.glb",
+      "hides": [
+        "Splitter"
+      ],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 442,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_splitter_kaido",
+      "displayName": "Kaido",
+      "carId": "tachibanaZenith",
+      "slot": "splitter",
+      "file": "parts/tachibanaZenith_splitter_kaido.glb",
+      "hides": [
+        "Splitter"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 1294,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_splitter_shippu",
+      "displayName": "Shippu",
+      "carId": "tachibanaZenith",
+      "slot": "splitter",
+      "file": "parts/tachibanaZenith_splitter_shippu.glb",
+      "hides": [
+        "Splitter"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 919,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_splitter_jinrai",
+      "displayName": "Jinrai",
+      "carId": "tachibanaZenith",
+      "slot": "splitter",
+      "file": "parts/tachibanaZenith_splitter_jinrai.glb",
+      "hides": [
+        "Splitter"
+      ],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 580,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_splitter_ducted",
+      "displayName": "Ducted",
+      "carId": "tachibanaZenith",
+      "slot": "splitter",
+      "file": "parts/tachibanaZenith_splitter_ducted.glb",
+      "hides": [
+        "Splitter"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 1736,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_splitter_akagi",
+      "displayName": "Akagi",
+      "carId": "tachibanaZenith",
+      "slot": "splitter",
+      "file": "parts/tachibanaZenith_splitter_akagi.glb",
+      "hides": [
+        "Splitter"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 1708,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_canards_singledive",
+      "displayName": "Single Dive",
+      "carId": "tachibanaZenith",
+      "slot": "canards",
+      "file": "parts/tachibanaZenith_canards_singledive.glb",
+      "hides": [],
+      "materialSlots": [
+        "Chrome",
+        "Black"
+      ],
+      "tris": 908,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_canards_twindive",
+      "displayName": "Twin Dive",
+      "carId": "tachibanaZenith",
+      "slot": "canards",
+      "file": "parts/tachibanaZenith_canards_twindive.glb",
+      "hides": [],
+      "materialSlots": [
+        "Chrome",
+        "Black"
+      ],
+      "tris": 776,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_canards_jinrai",
+      "displayName": "Jinrai",
+      "carId": "tachibanaZenith",
+      "slot": "canards",
+      "file": "parts/tachibanaZenith_canards_jinrai.glb",
+      "hides": [],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 1180,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_canards_shippu",
+      "displayName": "Shippu",
+      "carId": "tachibanaZenith",
+      "slot": "canards",
+      "file": "parts/tachibanaZenith_canards_shippu.glb",
+      "hides": [],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 1324,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_fenders_jinrai",
+      "displayName": "Jinrai",
+      "carId": "tachibanaZenith",
+      "slot": "fenders",
+      "file": "parts/tachibanaZenith_fenders_jinrai.glb",
+      "hides": [
+        "Fenders"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Lens",
+        "Chrome",
+        "TailLight"
+      ],
+      "tris": 6000,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_fenders_shippu",
+      "displayName": "Shippu",
+      "carId": "tachibanaZenith",
+      "slot": "fenders",
+      "file": "parts/tachibanaZenith_fenders_shippu.glb",
+      "hides": [
+        "Fenders"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Lens",
+        "Chrome"
+      ],
+      "tris": 5849,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_fenders_kaido",
+      "displayName": "Kaido",
+      "carId": "tachibanaZenith",
+      "slot": "fenders",
+      "file": "parts/tachibanaZenith_fenders_kaido.glb",
+      "hides": [
+        "Fenders"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Lens",
+        "Chrome"
+      ],
+      "tris": 6000,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_sideSkirts_jinrai",
+      "displayName": "Jinrai",
+      "carId": "tachibanaZenith",
+      "slot": "sideSkirts",
+      "file": "parts/tachibanaZenith_sideSkirts_jinrai.glb",
+      "hides": [
+        "Skirts"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 2202,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_sideSkirts_shippu",
+      "displayName": "Shippu",
+      "carId": "tachibanaZenith",
+      "slot": "sideSkirts",
+      "file": "parts/tachibanaZenith_sideSkirts_shippu.glb",
+      "hides": [
+        "Skirts"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 2999,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_rearBumper_jinrai",
+      "displayName": "Jinrai",
+      "carId": "tachibanaZenith",
+      "slot": "rearBumper",
+      "file": "parts/tachibanaZenith_rearBumper_jinrai.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Lens",
+        "Chrome"
+      ],
+      "tris": 2662,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_rearBumper_shippu",
+      "displayName": "Shippu",
+      "carId": "tachibanaZenith",
+      "slot": "rearBumper",
+      "file": "parts/tachibanaZenith_rearBumper_shippu.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Lens",
+        "Chrome"
+      ],
+      "tris": 3106,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_diffuser_strake",
+      "displayName": "Strake",
+      "carId": "tachibanaZenith",
+      "slot": "diffuser",
+      "file": "parts/tachibanaZenith_diffuser_strake.glb",
+      "hides": [
+        "Diffuser"
+      ],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 680,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_diffuser_twinstrake",
+      "displayName": "Twin Strake",
+      "carId": "tachibanaZenith",
+      "slot": "diffuser",
+      "file": "parts/tachibanaZenith_diffuser_twinstrake.glb",
+      "hides": [
+        "Diffuser"
+      ],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 1094,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_diffuser_strakewings",
+      "displayName": "Strake Wings",
+      "carId": "tachibanaZenith",
+      "slot": "diffuser",
+      "file": "parts/tachibanaZenith_diffuser_strakewings.glb",
+      "hides": [
+        "Diffuser"
+      ],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 1845,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_diffuser_splinedwings",
+      "displayName": "Splined Wings",
+      "carId": "tachibanaZenith",
+      "slot": "diffuser",
+      "file": "parts/tachibanaZenith_diffuser_splinedwings.glb",
+      "hides": [
+        "Diffuser"
+      ],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 2259,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_diffuser_widestrake",
+      "displayName": "Wide Strake",
+      "carId": "tachibanaZenith",
+      "slot": "diffuser",
+      "file": "parts/tachibanaZenith_diffuser_widestrake.glb",
+      "hides": [
+        "Diffuser"
+      ],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 1454,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_diffuser_widetwinstrake",
+      "displayName": "Wide Twin Strake",
+      "carId": "tachibanaZenith",
+      "slot": "diffuser",
+      "file": "parts/tachibanaZenith_diffuser_widetwinstrake.glb",
+      "hides": [
+        "Diffuser"
+      ],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 1778,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_diffuser_widewings",
+      "displayName": "Wide Wings",
+      "carId": "tachibanaZenith",
+      "slot": "diffuser",
+      "file": "parts/tachibanaZenith_diffuser_widewings.glb",
+      "hides": [
+        "Diffuser"
+      ],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 2306,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_diffuser_widesplined",
+      "displayName": "Wide Splined",
+      "carId": "tachibanaZenith",
+      "slot": "diffuser",
+      "file": "parts/tachibanaZenith_diffuser_widesplined.glb",
+      "hides": [
+        "Diffuser"
+      ],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 2630,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_diffuser_jinrai",
+      "displayName": "Jinrai",
+      "carId": "tachibanaZenith",
+      "slot": "diffuser",
+      "file": "parts/tachibanaZenith_diffuser_jinrai.glb",
+      "hides": [
+        "Diffuser"
+      ],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 2617,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_exhaust_turndown",
+      "displayName": "Turndown",
+      "carId": "tachibanaZenith",
+      "slot": "exhaust",
+      "file": "parts/tachibanaZenith_exhaust_turndown.glb",
+      "hides": [
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.562,
+          0.351,
+          -2.275
+        ]
+      ],
+      "materialSlots": [
+        "Chrome"
+      ],
+      "tris": 678,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_exhaust_curved",
+      "displayName": "Curved",
+      "carId": "tachibanaZenith",
+      "slot": "exhaust",
+      "file": "parts/tachibanaZenith_exhaust_curved.glb",
+      "hides": [
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.553,
+          0.348,
+          -2.24
+        ]
+      ],
+      "materialSlots": [
+        "Chrome"
+      ],
+      "tris": 638,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_exhaust_threeinch",
+      "displayName": "Three Inch",
+      "carId": "tachibanaZenith",
+      "slot": "exhaust",
+      "file": "parts/tachibanaZenith_exhaust_threeinch.glb",
+      "hides": [
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.553,
+          0.338,
+          -2.253
+        ]
+      ],
+      "materialSlots": [
+        "Chrome"
+      ],
+      "tris": 678,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_exhaust_carbontip",
+      "displayName": "Carbon Tip",
+      "carId": "tachibanaZenith",
+      "slot": "exhaust",
+      "file": "parts/tachibanaZenith_exhaust_carbontip.glb",
+      "hides": [
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.55,
+          0.333,
+          -2.224
+        ]
+      ],
+      "materialSlots": [
+        "Chrome",
+        "Black"
+      ],
+      "tris": 852,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_exhaust_straighttwin",
+      "displayName": "Straight Twin",
+      "carId": "tachibanaZenith",
+      "slot": "exhaust",
+      "file": "parts/tachibanaZenith_exhaust_straighttwin.glb",
+      "hides": [
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.557,
+          0.379,
+          -2.357
+        ]
+      ],
+      "materialSlots": [
+        "Chrome"
+      ],
+      "tris": 1241,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_exhaust_curvedtwin",
+      "displayName": "Curved Twin",
+      "carId": "tachibanaZenith",
+      "slot": "exhaust",
+      "file": "parts/tachibanaZenith_exhaust_curvedtwin.glb",
+      "hides": [
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.561,
+          0.379,
+          -2.251
+        ]
+      ],
+      "materialSlots": [
+        "Chrome"
+      ],
+      "tris": 1859,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_exhaust_bosozoku",
+      "displayName": "Bosozoku",
+      "carId": "tachibanaZenith",
+      "slot": "exhaust",
+      "file": "parts/tachibanaZenith_exhaust_bosozoku.glb",
+      "hides": [
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.558,
+          0.458,
+          -2.419
+        ]
+      ],
+      "materialSlots": [
+        "Chrome"
+      ],
+      "tris": 737,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_exhaust_takeyari",
+      "displayName": "Takeyari",
+      "carId": "tachibanaZenith",
+      "slot": "exhaust",
+      "file": "parts/tachibanaZenith_exhaust_takeyari.glb",
+      "hides": [
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.564,
+          0.511,
+          -2.524
+        ]
+      ],
+      "materialSlots": [
+        "Chrome"
+      ],
+      "tris": 1685,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_exhaust_shippu",
+      "displayName": "Shippu",
+      "carId": "tachibanaZenith",
+      "slot": "exhaust",
+      "file": "parts/tachibanaZenith_exhaust_shippu.glb",
+      "hides": [
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.572,
+          0.331,
+          -2.259
+        ]
+      ],
+      "materialSlots": [
+        "Chrome"
+      ],
+      "tris": 995,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_exhaust_jinrai",
+      "displayName": "Jinrai",
+      "carId": "tachibanaZenith",
+      "slot": "exhaust",
+      "file": "parts/tachibanaZenith_exhaust_jinrai.glb",
+      "hides": [
+        "Exhaust"
+      ],
+      "exhaustTips": [
+        [
+          0.577,
+          0.332,
+          -2.23
+        ]
+      ],
+      "materialSlots": [
+        "Chrome"
+      ],
+      "tris": 470,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_hood_kaido",
+      "displayName": "Kaido",
+      "carId": "tachibanaZenith",
+      "slot": "hood",
+      "file": "parts/tachibanaZenith_hood_kaido.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 2368,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_hood_shippu",
+      "displayName": "Shippu",
+      "carId": "tachibanaZenith",
+      "slot": "hood",
+      "file": "parts/tachibanaZenith_hood_shippu.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 2200,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_hood_jinrai",
+      "displayName": "Jinrai",
+      "carId": "tachibanaZenith",
+      "slot": "hood",
+      "file": "parts/tachibanaZenith_hood_jinrai.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 1961,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_mirrors_shippu",
+      "displayName": "Shippu",
+      "carId": "tachibanaZenith",
+      "slot": "mirrors",
+      "file": "parts/tachibanaZenith_mirrors_shippu.glb",
+      "hides": [
+        "Mirrors"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Chrome"
+      ],
+      "tris": 2200,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_spoiler_takane",
+      "displayName": "Takane",
+      "carId": "tachibanaZenith",
+      "slot": "spoiler",
+      "file": "parts/tachibanaZenith_spoiler_takane.glb",
+      "hides": [
+        "Spoiler"
+      ],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 2444,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_spoiler_jinrai",
+      "displayName": "Jinrai",
+      "carId": "tachibanaZenith",
+      "slot": "spoiler",
+      "file": "parts/tachibanaZenith_spoiler_jinrai.glb",
+      "hides": [
+        "Spoiler"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 2944,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_spoiler_shippu",
+      "displayName": "Shippu",
+      "carId": "tachibanaZenith",
+      "slot": "spoiler",
+      "file": "parts/tachibanaZenith_spoiler_shippu.glb",
+      "hides": [
+        "Spoiler"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 2999,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_spoiler_arashishort",
+      "displayName": "Arashi Short",
+      "carId": "tachibanaZenith",
+      "slot": "spoiler",
+      "file": "parts/tachibanaZenith_spoiler_arashishort.glb",
+      "hides": [
+        "Spoiler"
+      ],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 1306,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_spoiler_arashimid",
+      "displayName": "Arashi Mid",
+      "carId": "tachibanaZenith",
+      "slot": "spoiler",
+      "file": "parts/tachibanaZenith_spoiler_arashimid.glb",
+      "hides": [
+        "Spoiler"
+      ],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 2662,
+      "generated": true
+    },
+    {
+      "id": "tachibanaZenith_spoiler_arashitall",
+      "displayName": "Arashi Tall",
+      "carId": "tachibanaZenith",
+      "slot": "spoiler",
+      "file": "parts/tachibanaZenith_spoiler_arashitall.glb",
+      "hides": [
+        "Spoiler"
+      ],
+      "materialSlots": [
+        "Black",
+        "Chrome"
+      ],
+      "tris": 2573,
+      "generated": true
     }
   ]
 }

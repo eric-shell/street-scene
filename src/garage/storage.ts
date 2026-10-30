@@ -139,17 +139,30 @@ export type Presentation = 'garage' | 'dyno' | 'street';
 export interface GaragePrefs {
   /** Turntable showroom, the car strapped to the workshop's dyno, or the car cruising the street. */
   presentation: Presentation;
-  /** Front and rear fitment moves together (the Stance tab's link: ride height, camber, offset, wheel size and tire). */
-  linkAxles: boolean;
+  /** Per Stance panel: front and rear move together while that panel's link is on. */
+  linkAxles: Record<StanceLink, boolean>;
   /** Front and rear wear the same wheel and wheel paint (the Wheels and Paint tabs' link). */
   linkWheels: boolean;
 }
+
+/** The Stance tab's panels, each with its own front / rear link. */
+export type StanceLink = 'rideHeight' | 'camber' | 'offset' | 'wheelSize' | 'wheelWidth' | 'tire';
+
+/** Every panel starts linked but the width: a staggered fitment is the point of it. */
+const STANCE_LINKS: Record<StanceLink, boolean> = { rideHeight: true, camber: true, offset: true, wheelSize: true, wheelWidth: false, tire: true };
 
 const PREFS_KEY = 'garage.prefs.v1';
 
 export function loadGaragePrefs(): GaragePrefs {
   const o = loadJson<Partial<GaragePrefs> | null>(PREFS_KEY, null) ?? {};
-  return { presentation: o.presentation === 'street' || o.presentation === 'dyno' ? o.presentation : 'garage', linkAxles: o.linkAxles !== false, linkWheels: o.linkWheels !== false };
+  // Older prefs held one link for the whole tab: it stands for every panel it covered.
+  const raw: unknown = o.linkAxles;
+  const linkAxles = { ...STANCE_LINKS };
+  for (const k of Object.keys(linkAxles) as StanceLink[]) {
+    if (typeof raw === 'boolean') linkAxles[k] = k === 'wheelWidth' ? false : raw;
+    else if (raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>)[k] === 'boolean') linkAxles[k] = (raw as Record<string, boolean>)[k];
+  }
+  return { presentation: o.presentation === 'street' || o.presentation === 'dyno' ? o.presentation : 'garage', linkAxles, linkWheels: o.linkWheels !== false };
 }
 
 /** Private mode or a full store: the preferences just do not persist. */
@@ -247,6 +260,9 @@ const SHORT: Record<string, string> = {
   fenders: 'fd',
   sideSkirts: 'ss',
   spoiler: 'sp',
+  splitter: 'spl',
+  canards: 'cn',
+  diffuser: 'dfu',
   hood: 'hd',
   // Also the roof's paint (visual.roof): the two never share an object, so one key reads both.
   roof: 'rf',

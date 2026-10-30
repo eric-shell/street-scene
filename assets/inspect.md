@@ -13,8 +13,8 @@ Authored cars: albrechtKombi, daltonFiend, kazamaRotor, nakayaHorizon, tachibana
 | kazamaRotor | 267.6 KB |
 | nakayaHorizon | 222.1 KB |
 | tachibanaRunabout | 141.7 KB |
-| tachibanaZenith | 261.9 KB |
-| wendtStrom | 2059.9 KB |
+| tachibanaZenith | 1887.7 KB |
+| wendtStrom | 2087.4 KB |
 
 ## Material vocabulary
 
@@ -106,11 +106,11 @@ Source: `assets/source/eshell/tachibanaRunabout/tachibanaRunabout.blend` (author
 
 Source: `assets/source/eshell/tachibanaZenith/tachibanaZenith.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/tachibanaZenith.glb`: 261.9 KB, 18506 tris, nodes `Body`.
-- Parts: .
+- Base car `public/cars/tachibanaZenith.glb`: 518.8 KB, 38543 tris, nodes `Body`, `Exhaust`, `Fenders`, `Bumper_Front`, `Hood`, `Mirrors`, `Bumper_Rear`, `Skirts`, `Splitter`, `Spoiler`.
+- Parts: frontBumper shippu, frontBumper jinrai, frontBumper akagi, splitter flatlip, splitter cornerplates, splitter oval, splitter blade, splitter kaido, splitter shippu, splitter jinrai, splitter ducted, splitter akagi, canards singledive, canards twindive, canards jinrai, canards shippu, fenders jinrai, fenders shippu, fenders kaido, sideSkirts jinrai, sideSkirts shippu, rearBumper jinrai, rearBumper shippu, diffuser strake, diffuser twinstrake, diffuser strakewings, diffuser splinedwings, diffuser widestrake, diffuser widetwinstrake, diffuser widewings, diffuser widesplined, diffuser jinrai, exhaust turndown, exhaust curved, exhaust threeinch, exhaust carbontip, exhaust straighttwin, exhaust curvedtwin, exhaust bosozoku, exhaust takeyari, exhaust shippu, exhaust jinrai, hood kaido, hood shippu, hood jinrai, mirrors shippu, spoiler takane, spoiler jinrai, spoiler shippu, spoiler arashishort, spoiler arashimid, spoiler arashitall.
 - WARNING: wheel radius 0.335 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.335 m, width 0.24 m, wheelbase 2.55 m, track 1.496 m.
-- Car dimensions 4.53 x 1.97 x 1.12 m.
+- Car dimensions 4.48 x 1.95 x 1.13 m.
 
 ## wendtStrom
 

@@ -17,7 +17,7 @@ import { specBadges } from '../shared/carSpec';
 import { cycler, h, multiSelect, onOffSwitch, segmented, toast } from '../ui/kit/dom';
 import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, ListFilter, Paintbrush, Sparkles, Zap, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
-import { GaragePrefs, saveGaragePrefs } from './storage';
+import { GaragePrefs, StanceLink, saveGaragePrefs } from './storage';
 import { capital, choiceList, cm, colorPicker, field, matchBody, mm, note, paintPicker, percent, revealable, rowName, section, sectionWith, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
 import { renderVinyls } from './garageVinyls';
 import { setupSlider } from './setupSliders';
@@ -51,6 +51,9 @@ export const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan',
  * body or a contrast), the mirror caps (only on a car whose manifest boxes them, chrome too), the calipers, the wheels (the face, the lip and the center cap) and the hardware (the lug nuts
  * and the bolts). The one last touched frames the camera.
  */
+/** Body slots with no "No parts for this slot yet" line: a car without parts for them does not list them. */
+const HIDE_WHEN_EMPTY: PartSlot[] = ['splitter', 'canards', 'diffuser', 'exhaust', 'mirrors'];
+
 export const PAINT_SURFACES = ['body', 'roof', 'mirrors', 'calipers', 'wheels', 'hardware'] as const;
 export type PaintSurface = (typeof PAINT_SURFACES)[number];
 
@@ -120,9 +123,10 @@ export function renderTabContent(host: TabHost): void {
   // slider converts both ways (the inches a factor gives depend on the car and the wheel model).
   const car = host.scene.car?.wheelsReady ? host.scene.car : null;
   const id = (x: number) => x;
-  // Per axle sliders. While front and rear are linked (the Stance tab's link), moving one moves its partner too.
+  // Per axle sliders. While the panel's front and rear are linked (its Link), moving one moves its partner too.
   const partners = new Map<string, { el: HTMLInputElement; out: HTMLElement; fmt: (x: number) => string; toUi: (x: number) => number }>();
-  const axleSlider = (axle: Axle, key: keyof AxleStance, link = host.prefs.linkAxles) => {
+  const axleSlider = (axle: Axle, key: keyof AxleStance) => {
+    const link = host.prefs.linkAxles[key];
     const L = STANCE_LIMITS[key];
     const spec = {
       rideHeight: { min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
@@ -215,9 +219,9 @@ export function renderTabContent(host: TabHost): void {
     }
     case 'stance': {
       // Everything about how the car sits on its wheels, front and rear side by side: the body's height and
-      // the wheels' angle, track, size, width and tire. One link moves both axles together.
+      // the wheels' angle, track, size, width and tire. Each panel links its own front and rear.
       const w = v.wheels;
-      const linked = host.prefs.linkAxles;
+      const linked = host.prefs.linkAxles.tire;
       // Linked, one stretch sets both tires; unlinked, each axle picks its own.
       const stretchPick = (axle: Axle | null) =>
         cycler(STRETCH_CHOICES, axle === 'rear' ? w.rearTire : w.tire, (t) => {
@@ -225,15 +229,16 @@ export function renderTabContent(host: TabHost): void {
           if (axle !== 'front') w.rearTire = t;
           host.changed();
         });
+      const axlePanel = (label: string, key: keyof AxleStance, ...notes: HTMLElement[]) => sectionWith(label, [linkToggle(host, key)], ...AXLES.map((a) => axleSlider(a, key)), ...notes);
       host.body.append(
-        sectionWith('Ride height', [linkToggle(host)], ...AXLES.map((a) => axleSlider(a, 'rideHeight')), note('Visual only. Front and rear apart rake the car.')),
-        section('Camber', ...AXLES.map((a) => axleSlider(a, 'camber'))),
-        section('Wheel spacing', ...AXLES.map((a) => axleSlider(a, 'offset'))),
-        section('Wheel size', ...AXLES.map((a) => axleSlider(a, 'wheelSize')), note('Bigger wheels, thinner sidewalls.')),
-        // Width is always set per axle, linked or not: a staggered fitment is the point of it.
-        section('Wheel width', ...AXLES.map((a) => axleSlider(a, 'wheelWidth', false)), note('Wider wheels grow inward; the face and spokes keep their shape. Never linked.')),
-        section(
+        axlePanel('Ride height', 'rideHeight', note('Visual only. Front and rear apart rake the car.')),
+        axlePanel('Camber', 'camber'),
+        axlePanel('Spacing', 'offset'),
+        axlePanel('Wheel size', 'wheelSize', note('Bigger wheels, thinner sidewalls.')),
+        axlePanel('Wheel width', 'wheelWidth', note('Wider wheels grow inward; the face and spokes keep their shape.')),
+        sectionWith(
           'Tires',
+          [linkToggle(host, 'tire')],
           ...(linked ? [revealable(field('Stretch', stretchPick(null)), 'stretch')] : AXLES.map((a) => revealable(field(`${capital(a)} stretch`, stretchPick(a)), `stretch-${a}`))),
           // Per build, not per axle: the brand's raised lettering on every tire's outer sidewall.
           field(
@@ -312,7 +317,7 @@ export function renderTabContent(host: TabHost): void {
         // A contrast roof is real paint or a wrap, so the body's finishes; only cars with a roof piece list it.
         ...(roofShown ? [surface('roof', section('Roof', paintPicker(v.roof, PAINT_FINISHES, () => host.changed(), [matchBody(v.roof, v.paint)]), note('The roof panel only: the pillars keep the body paint.')))] : []),
         // Mirror caps take chrome too, like a factory brightwork option; only cars with boxed caps list them.
-        ...(manifestCar(b.carId).mirrorCaps ? [surface('mirrors', section('Mirror caps', paintPicker(v.mirrors, ACCENT_FINISHES, () => host.changed(), [matchBody(v.mirrors, v.paint)]), note('The mirror housings and their stalks.')))] : []),
+        ...(manifestCar(b.carId).mirrorCaps || partsFor(b.carId, 'mirrors').length ? [surface('mirrors', section('Mirror caps', paintPicker(v.mirrors, ACCENT_FINISHES, () => host.changed(), [matchBody(v.mirrors, v.paint)]), note('The mirror housings and their stalks.')))] : []),
         // One caliper paint for all four corners, whatever the axle switch says.
         surface('calipers', section('Calipers', paintPicker(v.calipers, ACCENT_FINISHES, () => host.changed(), [matchBody(v.calipers, v.paint)]), note('One paint for all four corners.'))),
         surface(
@@ -490,6 +495,8 @@ export function renderTabContent(host: TabHost): void {
       for (const slot of BODY_PART_SLOTS) {
         const parts = partsFor(b.carId, slot);
         const optional = OPTIONAL_SLOTS.includes(slot);
+        // The aero and trim slots exist only for cars that ship parts for them: no menu at all otherwise.
+        if (!parts.length && HIDE_WHEN_EMPTY.includes(slot) && ![...host.assets.devParts.values()].some((d) => d.slot === slot)) continue;
         const items: { value: string | null; label: string; sub?: string }[] = [{ value: null, label: optional ? 'None' : 'Stock' }, ...parts.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` }))];
         const dev = [...host.assets.devParts.entries()].filter(([, d]) => d.slot === slot).map(([id, d]) => ({ value: id, label: d.name, sub: 'Dev preview' }));
         items.push(...dev);
@@ -511,10 +518,10 @@ export function renderTabContent(host: TabHost): void {
           }),
         );
       }
-      // A slot picked from elsewhere (the dev part drop) scrolls into view; one already in view stays put.
-      if (host.bodySlot !== BODY_PART_SLOTS[0]) requestAnimationFrame(() => host.body.querySelector(`[data-slot='${host.bodySlot}']`)?.scrollIntoView({ block: 'nearest' }));
       // Last, the shape switches only this car has.
       host.body.append(...featureSection(host, BODY_SHAPE_FEATURES));
+      // A slot picked from elsewhere (the dev part drop) scrolls into view; one already in view stays put.
+      if (host.bodySlot !== BODY_PART_SLOTS[0]) requestAnimationFrame(() => host.body.querySelector(`[data-slot='${host.bodySlot}']`)?.scrollIntoView({ block: 'nearest' }));
       break;
     }
     case 'power':
@@ -611,24 +618,22 @@ function featureSection(host: TabHost, features: readonly BodyFeature[]): HTMLEl
   ];
 }
 
-/** The Stance tab's link: linked, front and rear sit the same (height, camber, offset, wheel size and tire); unlinked, each axle has its own. */
-function linkToggle(host: TabHost): HTMLElement {
-  const linked = host.prefs.linkAxles;
+/** A Stance panel's link: linked, front and rear of that panel sit the same; unlinked, each axle has its own. */
+function linkToggle(host: TabHost, key: StanceLink): HTMLElement {
+  const linked = host.prefs.linkAxles[key];
   return toggle(
     linked ? Link2 : Link2Off,
     'Link',
     linked,
     linked ? 'Front and rear linked' : 'Front and rear separate',
     () => {
-      host.prefs.linkAxles = !linked;
+      host.prefs.linkAxles[key] = !linked;
       saveGaragePrefs(host.prefs);
-      if (host.prefs.linkAxles) {
-        // Linking starts from matching axles: the rear takes the front's settings and tire.
-        const s = host.build.visual.stance;
-        const w = host.build.visual.wheels;
-        // Wheel width stays per axle: a staggered fitment survives the link.
-        s.rear = { ...s.front, wheelWidth: s.rear.wheelWidth };
-        w.rearTire = w.tire;
+      if (!linked) {
+        // Linking starts from matching axles: the rear takes the front's setting.
+        const v = host.build.visual;
+        if (key === 'tire') v.wheels.rearTire = v.wheels.tire;
+        else v.stance.rear[key] = v.stance.front[key];
         host.changed();
         toast('Rear now matches front', Link2);
       }

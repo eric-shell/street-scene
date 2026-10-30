@@ -161,6 +161,8 @@ export class GarageScreen implements TabHost {
   /** The build card on the Builds step and the slots under it, refilled in place as the garage changes. */
   private readonly carCard = h('section', { class: 'car-card', 'aria-label': 'Build', 'aria-live': 'polite' });
   private readonly slotsEl = h('div', { class: 'garage-list', role: 'radiogroup', 'aria-label': 'Builds' });
+  /** The slot whose row is being dragged to a new place, or -1. */
+  private dragFrom = -1;
   /** The garage's keys and tips behind the ? in the corner (the rev, C and Save are buttons there too, for touch screens). */
   private readonly help = new Help({
     title: 'Garage',
@@ -562,12 +564,84 @@ export class GarageScreen implements TabHost {
             h('span', { class: 'garage-item__sub muted' }, `${MAX_SLOTS - g.slots.length} free`),
             sheen(),
           );
-      tile.addEventListener('click', () => (s ? this.pickSlot(i) : this.addBuild(() => randomBuild(`Build ${g.slots.length + 1}`))));
+      tile.addEventListener('click', () => (s ? this.pickSlot(i) : this.addBuild(() => randomBuild(`Build ${g.slots.length + 1}`), true)));
+      if (!s || g.slots.length <= 1) {
+        this.slotsEl.append(tile);
+        continue;
+      }
       // The X sits beside the row's button, not in it: a button inside a button is not one a keyboard can reach.
-      this.slotsEl.append(s && g.slots.length > 1 ? h('div', { class: 'garage-slot' }, tile, iconBtn(X, `Delete "${s.name}"`, () => this.confirmDelete(i), '--small --ghost garage-slot__delete')) : tile);
+      const row = h('div', { class: 'garage-slot', draggable: 'true' }, tile, iconBtn(X, `Delete "${s.name}"`, () => this.confirmDelete(i), '--small --ghost garage-slot__delete'));
+      this.dragSlot(row, i);
+      this.slotsEl.append(row);
     }
     const title = this.slotsEl.parentElement?.querySelector('.section-title');
     if (title) title.textContent = `Builds · ${g.slots.length} of ${MAX_SLOTS}`;
+  }
+
+  /**
+   * Drag a build's row onto another to move it there: the rows between close up, a line marks the side it lands
+   * on (below a row further down, above one further up). Drops stop here so the dev mode's GLB drop never sees them.
+   */
+  private dragSlot(row: HTMLElement, i: number): void {
+    const clear = () => this.slotsEl.querySelectorAll('.garage-slot.is-drop-before, .garage-slot.is-drop-after').forEach((r) => r.classList.remove('is-drop-before', 'is-drop-after'));
+    row.addEventListener('dragstart', (e) => {
+      this.dragFrom = i;
+      e.dataTransfer?.setData('text/plain', String(i));
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      row.classList.add('is-dragging');
+    });
+    row.addEventListener('dragend', () => {
+      this.dragFrom = -1;
+      row.classList.remove('is-dragging');
+      clear();
+    });
+    row.addEventListener('dragover', (e) => {
+      if (this.dragFrom < 0 || this.dragFrom === i) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      clear();
+      row.classList.add(this.dragFrom < i ? 'is-drop-after' : 'is-drop-before');
+    });
+    row.addEventListener('dragleave', (e) => {
+      if (!row.contains(e.relatedTarget as Node | null)) row.classList.remove('is-drop-before', 'is-drop-after');
+    });
+    row.addEventListener('drop', (e) => {
+      if (this.dragFrom < 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const from = this.dragFrom;
+      this.dragFrom = -1;
+      clear();
+      this.moveSlot(from, i);
+    });
+  }
+
+  /** Move the build in slot `from` to slot `to`; the build in use stays in use under its new number, its draft kept. */
+  private moveSlot(from: number, to: number): void {
+    const g = this.garage;
+    if (from === to) return;
+    const live = g.slots[g.current];
+    g.slots.splice(to, 0, ...g.slots.splice(from, 1));
+    g.current = g.slots.indexOf(live);
+    this.storeKeepingDraft();
+    uiWhoosh(to < from);
+  }
+
+  /**
+   * Store the garage with the build in use as last saved (its draft is not the player's to keep yet) after its
+   * slot number changed, and show the renumbering: the card is not dealt in again, the Save button's title renumbers.
+   */
+  private storeKeepingDraft(): void {
+    const g = this.garage;
+    const live = g.slots[g.current];
+    g.slots[g.current] = JSON.parse(this.savedJson) as CarBuild;
+    this.cb.onChange(g);
+    g.slots[g.current] = live;
+    this.cardKey = `${g.current}:${live.carId}`;
+    this.shownDirty = null;
+    this.updateCarCard();
+    this.updateSlots();
+    this.updateSaveState();
   }
 
   private nextCamera(): void {
@@ -792,13 +866,17 @@ export class GarageScreen implements TabHost {
     });
   }
 
-  /** Add a build in the next empty slot and switch to it; with every slot taken nothing changes but the toast. */
-  private addBuild(make: () => CarBuild): void {
+  /**
+   * Add a build in the next empty slot and switch to it, straight on to Customize with `customize` (a new build
+   * from the New build row: picking it is the first thing to do); with every slot taken nothing changes but the toast.
+   */
+  private addBuild(make: () => CarBuild, customize = false): void {
     this.whenSaved(() => {
       if (!addSlot(this.garage, make())) return toast(`Up to ${MAX_SLOTS} builds`, Save);
       this.selectedDecal = -1;
       this.persist();
       void this.changed(true);
+      if (customize) this.go('build');
     });
   }
 
@@ -831,17 +909,7 @@ export class GarageScreen implements TabHost {
         void this.changed(true).then(() => this.scene.blip());
       } else {
         if (i < g.current) g.current--;
-        // Store the build in use as last saved: its draft is not the player's to keep yet.
-        const live = g.slots[g.current];
-        g.slots[g.current] = JSON.parse(this.savedJson) as CarBuild;
-        this.cb.onChange(g);
-        g.slots[g.current] = live;
-        // The same build under a new slot number: the card is not dealt in again, the Save button's title renumbers.
-        this.cardKey = `${g.current}:${live.carId}`;
-        this.shownDirty = null;
-        this.updateCarCard();
-        this.updateSlots();
-        this.updateSaveState();
+        this.storeKeepingDraft();
       }
       toast(`Deleted "${name}"`, Trash2);
     }, '--primary');

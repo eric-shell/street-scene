@@ -535,7 +535,7 @@ export class CarView {
         if (!obj && this.placeholder) obj = buildPlaceholderPart(this.car, slot, wanted);
         if (obj) {
           obj.userData.partId = wanted;
-          this.bindMaterials(obj, slot === 'roof');
+          this.bindMaterials(obj, slot === 'roof', slot === 'mirrors');
         }
       }
       if (current) {
@@ -608,6 +608,10 @@ export class CarView {
       const own = partById(obj.userData.partId as string)?.exhaustTips;
       if (own && own.length === this.baseTips.length) tips = own.slice().sort((a, b) => b[0] - a[0]);
     }
+    // The exhaust slot's tips win over a bumper's (and any other part's).
+    const pipes = this.slotObjects.get('exhaust');
+    const own = pipes && partById(pipes.userData.partId as string)?.exhaustTips;
+    if (own && own.length === this.baseTips.length) tips = own.slice().sort((a, b) => b[0] - a[0]);
     for (const [i, [x, y, z]] of tips.entries()) {
       this.tips[i] = [x, y, z];
       this.flames[i]?.position.set(x, y, z);
@@ -1028,10 +1032,10 @@ export class CarView {
 
   /**
    * Assign shared runtime materials by source material name. The Paint faces of the stock Roof node and of a
-   * roof part (`roofPart`) take the roof's own paint material instead of the body's; the windshield and its banner,
+   * roof part (`roofPart`) take the roof's own paint material instead of the body's, and a mirrors part's (`mirrorPart`) the mirror paint; the windshield and its banner,
    * split from the glass at load, and the mirror caps, split from the paint, name theirs (windshield.ts, mirrorCaps.ts).
    */
-  bindMaterials(obj: THREE.Object3D, roofPart = false): void {
+  bindMaterials(obj: THREE.Object3D, roofPart = false, mirrorPart = false): void {
     obj.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -1043,7 +1047,7 @@ export class CarView {
         const name = (m.userData.sourceName as string) ?? m.name;
         const resolved = resolveMaterialName(name, this.car.materialMap);
         if (!resolved) return m;
-        const shared = this.materials[roof && resolved === 'Paint' ? 'RoofPaint' : resolved];
+        const shared = this.materials[resolved === 'Paint' ? (roof ? 'RoofPaint' : mirrorPart ? 'MirrorPaint' : 'Paint') : resolved];
         shared.userData.sourceName = resolved;
         return shared;
       };

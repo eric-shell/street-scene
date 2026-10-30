@@ -26,6 +26,14 @@ const SLIDER_CARS: [string, CarTuning][] = [
 const LEGACY_TIERS = { engine: 2, turbo: 2, exhaust: 2, transmission: 2, tires: 2, suspension: 2, brakes: 2, weight: 2, nitrous: 2 };
 
 describe('engine swaps', () => {
+  it('round-trips the aero, exhaust and mirror slots through a share code, and old codes decode to none', async () => {
+    const b = defaultBuild('wendtStrom');
+    b.visual.parts = { splitter: 'wendtStrom_splitter_a', canards: 'wendtStrom_canards_a', diffuser: 'wendtStrom_diffuser_a', exhaust: 'wendtStrom_exhaust_a', mirrors: 'wendtStrom_mirrors_a' };
+    const back = await decodeShareCode(await encodeShareCode(b));
+    expect(back?.visual.parts).toMatchObject(b.visual.parts);
+    expect(defaultBuild('wendtStrom').visual.parts.splitter ?? null).toBeNull();
+  });
+
   it('lay the swap over the car before the setup, keep the stock car bit for bit, and drop a swap the car does not offer', async () => {
     const stock = tuningForBuild('wendtStrom', stockPerformance('wendtStrom'));
     expect(JSON.stringify(tuningForBuild('wendtStrom', { ...stockPerformance('wendtStrom'), swap: undefined }))).toBe(JSON.stringify(stock));

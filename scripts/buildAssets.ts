@@ -1,5 +1,7 @@
 /**
- * Asset pipeline: `npm run assets`
+ * Asset pipeline: `npm run assets` (every car and the wheel set), or `npm run assets -- <target ...>`
+ * for some of them (a car id, `cars`, `wheels`, `traffic`, `plant`, `music`; `--list` names them,
+ * `--force` re-exports up-to-date .blend files). See section 0.
  *
  *  1. Authored cars: export every assets/source/eshell/<carId>/<carId>.blend
  *     with scripts/blender/exportCar.py (Blender in background mode). These
@@ -48,6 +50,93 @@ const config = JSON.parse(readFileSync(join(ROOT, 'scripts/assetConfig.json'), '
   standardWheel: { radius: number; width: number };
   materialMap: Record<string, string>;
 };
+
+// ---------------------------------------------------------------------------
+// 0. Targets: `npm run assets -- <target ...>`
+// ---------------------------------------------------------------------------
+// Targets are discovered from the sources, never listed here, so a new car is a target as soon as its .blend
+// (or its assetConfig.json entry and FBX folder) exists. No target builds what the plain `npm run assets`
+// always built: every car and the wheel set. A partial run rewrites only its targets' files, catalog entries,
+// manifest entries and inspect.md sections; everything else stays as the last full run left it.
+
+/** Builders with a script of their own (sources outside assets/source/eshell and icemaan, external tools); a target runs it. */
+const TOOLS: Record<string, { script: string; about: string }> = {
+  traffic: { script: 'scripts/buildTraffic.ts', about: 'ambient traffic cars from the Comrade1280 packs (Blender)' },
+  plant: { script: 'scripts/buildPlant.ts', about: 'roadworks plant, the excavator (Blender)' },
+  music: { script: 'scripts/importMusic.ts', about: 'the music catalog (ffmpeg)' },
+};
+
+/** Authored cars: every assets/source/eshell/<id>/<id>.blend but the wheel set. */
+const authoredCars = (): string[] => (existsSync(AUTHORED) ? readdirSync(AUTHORED).filter((d) => d !== WHEEL_SET && existsSync(join(AUTHORED, d, `${d}.blend`))) : []);
+
+interface Selection {
+  /** Car ids to build (authored or FBX). */
+  cars: Set<string>;
+  /** Build the shared wheel set. */
+  wheels: boolean;
+  /** TOOLS keys to run. */
+  tools: string[];
+  /** Every car and the wheel set: the catalog and inspect.md are rewritten whole. */
+  full: boolean;
+  /** Export even when the export is newer than its .blend. */
+  force: boolean;
+}
+
+function selection(argv: string[]): Selection {
+  const cars = [...authoredCars(), ...Object.keys(config.cars)];
+  const w = Math.max(10, ...cars.map((c) => c.length)) + 2;
+  const list = () =>
+    [
+      'npm run assets -- [target ...] [--force]   (no target: every car and the wheel set)',
+      '',
+      `  ${'cars'.padEnd(w)}every car below`,
+      ...cars.map((c) => `  ${c.padEnd(w)}${authoredCars().includes(c) ? 'authored .blend' : 'FBX (assetConfig.json)'}`),
+      `  ${'wheels'.padEnd(w)}the shared wheel set (${WHEEL_SET}/${WHEEL_SET}.blend)`,
+      ...Object.entries(TOOLS).map(([k, t]) => `  ${k.padEnd(w)}${t.about}`),
+    ].join('\n');
+  const names = argv.filter((a) => !a.startsWith('--'));
+  if (argv.includes('--list') || argv.includes('--help')) {
+    console.log(list());
+    process.exit(0);
+  }
+  const unknown = names.filter((n) => n !== 'cars' && n !== 'wheels' && !cars.includes(n) && !TOOLS[n]);
+  if (unknown.length) throw new Error(`unknown target ${unknown.join(', ')}\n\n${list()}`);
+  const all = !names.length;
+  const sel: Selection = {
+    cars: new Set(all || names.includes('cars') ? cars : names.filter((n) => cars.includes(n))),
+    wheels: all || names.includes('wheels'),
+    tools: names.filter((n) => TOOLS[n]),
+    full: false,
+    force: argv.includes('--force'),
+  };
+  sel.full = sel.wheels && cars.every((c) => sel.cars.has(c));
+  return sel;
+}
+
+/** The build a generated catalog entry came from: its car, or for a universal wheel the car it was cut from (`wheel_<carId>_<n>`), else the wheel set. */
+function scopeOf(p: PartEntry, cars: string[]): string {
+  if (p.carId !== 'universal') return p.carId;
+  return cars.find((c) => p.id.startsWith(`wheel_${c}_`)) ?? WHEEL_SET;
+}
+
+/** inspect.md with the rebuilt sections swapped in (by their `## ` heading) and their rows of the size table replaced. */
+function mergeInspect(old: string, sections: string[], sizeRows: string[]): string {
+  const parts = old.split(/^(?=## )/m);
+  const heading = (s: string) => s.split('\n', 1)[0];
+  const fresh = new Map(sections.map((s) => [heading(s), s]));
+  const merged = parts.map((s) => {
+    const f = fresh.get(heading(s));
+    if (f) fresh.delete(heading(s));
+    return f ? f.replace(/\n*$/, '\n\n') : s;
+  });
+  let out = merged.join('') + [...fresh.values()].join('\n');
+  for (const row of sizeRows) {
+    const key = row.split('|')[1];
+    const re = new RegExp(`^\\|${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\|.*$`, 'm');
+    out = re.test(out) ? out.replace(re, row) : out.replace(/(\| Car \| Size \|\n\|---\|---\|\n)/, `$1${row}\n`);
+  }
+  return out;
+}
 
 const report: string[] = [];
 const log = (s: string) => {
@@ -356,6 +445,13 @@ interface ManifestCar {
 }
 
 async function main(): Promise<void> {
+  const sel = selection(process.argv.slice(2));
+  for (const t of sel.tools) {
+    log(`\n== ${t} (${TOOLS[t].script})`);
+    const r = spawnSync('npx', ['tsx', TOOLS[t].script], { stdio: 'inherit', cwd: ROOT });
+    if (r.status !== 0) throw new Error(`${t}: ${TOOLS[t].script} failed`);
+  }
+  if (!sel.cars.size && !sel.wheels) return;
   const io = await createIO();
   const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as { version: number; notes: string; cars: ManifestCar[] };
   const catalog = JSON.parse(readFileSync(CATALOG_PATH, 'utf8')) as PartsCatalog;
@@ -367,7 +463,7 @@ async function main(): Promise<void> {
 
   // ----- Authored cars (assets/source/eshell) -----
   // `wheels/wheels.blend` is the shared wheel set, not a car (below).
-  const authored = existsSync(AUTHORED) ? readdirSync(AUTHORED).filter((d) => d !== WHEEL_SET && existsSync(join(AUTHORED, d, `${d}.blend`))) : [];
+  const authored = authoredCars().filter((c) => sel.cars.has(c));
   const blender = authored.length ? findBlender() : null;
   if (authored.length && !blender) throw new Error('Authored .blend cars found but Blender is not available. Install Blender or set BLENDER=/path/to/blender.');
   for (const carId of authored) {
@@ -377,7 +473,7 @@ async function main(): Promise<void> {
     const out = join(CONVERTED, carId);
     const metaPath = join(out, 'car.json');
     const exporter = join(ROOT, 'scripts/blender/exportCar.py');
-    const stale = !existsSync(metaPath) || statSync(metaPath).mtimeMs < Math.max(statSync(blend).mtimeMs, statSync(exporter).mtimeMs);
+    const stale = sel.force || !existsSync(metaPath) || statSync(metaPath).mtimeMs < Math.max(statSync(blend).mtimeMs, statSync(exporter).mtimeMs);
     // --python-exit-code: Blender exits 0 when the script raises, so a failed export (an object left in Edit Mode
     // in the saved file) would otherwise ship the previous export silently.
     if (stale) execFileSync(blender as string, ['--background', blend, '--python-exit-code', '1', '--python', exporter, '--', out], { stdio: 'pipe' });
@@ -446,6 +542,7 @@ async function main(): Promise<void> {
   const present: string[] = [];
   const missing: string[] = [];
   for (const [carId, cfg] of Object.entries(config.cars)) {
+    if (!sel.cars.has(carId)) continue;
     const folder = cfg.folders.map((f) => join(SRC, f)).find((p) => existsSync(p));
     if (!folder) {
       missing.push(carId);
@@ -573,13 +670,13 @@ async function main(): Promise<void> {
   // ----- The shared wheel set (assets/source/eshell/wheels/wheels.blend, docs/carWheels.md) -----
   // Universal wheels from donor wheels on the house tire; ids are wheel_<name>.
   const wheelBlend = join(AUTHORED, WHEEL_SET, `${WHEEL_SET}.blend`);
-  if (existsSync(wheelBlend)) {
+  if (sel.wheels && existsSync(wheelBlend)) {
     const blenderW = findBlender();
     if (!blenderW) throw new Error('The wheel set needs Blender. Install Blender or set BLENDER=/path/to/blender.');
     const out = join(CONVERTED, WHEEL_SET);
     const metaPath = join(out, 'car.json');
     const exporter = join(ROOT, 'scripts/blender/exportCar.py');
-    const stale = !existsSync(metaPath) || statSync(metaPath).mtimeMs < Math.max(statSync(wheelBlend).mtimeMs, statSync(exporter).mtimeMs);
+    const stale = sel.force || !existsSync(metaPath) || statSync(metaPath).mtimeMs < Math.max(statSync(wheelBlend).mtimeMs, statSync(exporter).mtimeMs);
     if (stale) execFileSync(blenderW, ['--background', wheelBlend, '--python-exit-code', '1', '--python', exporter, '--', out], { stdio: 'pipe' });
     const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { wheels: { name: string; displayName: string; group?: string; construction?: string; offset?: number | null; offsetBias?: number | null; lip?: string; lugs?: WheelLugs | null }[] };
     const section: string[] = ['## Wheel set', '', `Source: \`${relative(ROOT, wheelBlend)}\` (scripts/blender/carWheels.py).`, ''];
@@ -604,7 +701,28 @@ async function main(): Promise<void> {
 
   // ----- Catalog and manifest -----
   const generatedIds = new Set(generated.map((g) => g.id));
-  catalog.parts = [...handAuthored.filter((p) => !generatedIds.has(p.id)), ...generated];
+  if (sel.full) catalog.parts = [...handAuthored.filter((p) => !generatedIds.has(p.id)), ...generated];
+  else {
+    // A partial run swaps its targets' generated entries in where they stood, so the catalog keeps its order.
+    const cars = [...authoredCars(), ...Object.keys(config.cars)];
+    const scopes = new Set([...sel.cars, ...(sel.wheels ? [WHEEL_SET] : [])]);
+    const byScope = new Map<string, PartEntry[]>();
+    for (const g of generated) byScope.set(scopeOf(g, cars), [...(byScope.get(scopeOf(g, cars)) ?? []), g]);
+    const parts: PartEntry[] = [];
+    for (const p of catalog.parts) {
+      const gen = (p as PartEntry & { generated?: boolean }).generated;
+      const scope = scopeOf(p, cars);
+      if (!gen) {
+        if (!generatedIds.has(p.id)) parts.push(p);
+      } else if (!scopes.has(scope)) parts.push(p);
+      else if (byScope.has(scope)) {
+        parts.push(...byScope.get(scope)!);
+        byScope.delete(scope);
+      }
+    }
+    for (const rest of byScope.values()) parts.push(...rest);
+    catalog.parts = parts;
+  }
   writeFileSync(CATALOG_PATH, JSON.stringify(catalog, null, 2) + '\n');
   writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + '\n');
   log(`\ncatalog: ${catalog.parts.length} parts, manifest: ${manifest.cars.length} cars`);
@@ -649,7 +767,8 @@ async function main(): Promise<void> {
     );
   }
   md.push(...inspectSections);
-  writeFileSync(join(ROOT, 'assets/inspect.md'), md.join('\n'));
+  const inspectPath = join(ROOT, 'assets/inspect.md');
+  writeFileSync(inspectPath, sel.full || !existsSync(inspectPath) ? md.join('\n') : mergeInspect(readFileSync(inspectPath, 'utf8'), inspectSections, sizeReport));
   log('wrote assets/inspect.md');
 
   // ----- validation -----

@@ -2,6 +2,26 @@
    button rather than in it, and the row makes room for it. Always shown, muted until it is hovered or focused. */
 .garage-slot {
   position: relative;
+  /* Dragged to a new place (garageUi.ts dragSlot): the row in hand dims, a line in the accent marks where it lands. */
+  &.is-dragging {
+    opacity: 0.4;
+  }
+  &.is-drop-before::before,
+  &.is-drop-after::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    pointer-events: none;
+  }
+  &.is-drop-before::before {
+    top: -3px;
+  }
+  &.is-drop-after::after {
+    bottom: -3px;
+  }
   > .garage-item {
     width: 100%;
     padding-right: 44px;

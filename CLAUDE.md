@@ -19,7 +19,7 @@ Street Scene is a browser street racer (TypeScript, three.js, Vite, Vitest, SCSS
 | Screenshot the analytics dashboard against stubbed data at five widths (overflow, gutter, pager; writes nothing) | `npm run check:dashboard -- http://localhost:5175 <outDir>` |
 | Inspect a GLB (nodes, materials, triangles) | `npm run inspect -- public/cars/wendtStrom.glb` |
 | Audit a shipped car against its reference spec (proportions, pillars, mirrors, handles, lamps) | `npm run audit -- wendtStrom` |
-| Rebuild car assets from the authored .blend cars and FBX imports (needs Blender, rewrites generated files) | `npm run assets` |
+| Rebuild car assets from the authored .blend cars and FBX imports (needs Blender, rewrites generated files); targets narrow it to one car, `cars`, `wheels`, `traffic`, `plant` or `music` (`--list` names them, discovered from the sources; `--force` re-exports) | `npm run assets -- tachibanaZenith` |
 | Import music / rebuild the music catalog (needs ffmpeg) | `npm run music` |
 | Rebuild the traffic vehicles from the Comrade1280 packs (needs Blender, rewrites generated files) | `npm run traffic` |
 

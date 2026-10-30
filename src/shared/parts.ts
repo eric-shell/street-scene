@@ -4,14 +4,14 @@
  */
 
 /** Every swappable visible piece lives in one of these slots. Add new slots here. */
-export const PART_SLOTS = ['body', 'frontBumper', 'rearBumper', 'fenders', 'sideSkirts', 'spoiler', 'hood', 'roof', 'wheels'] as const;
+export const PART_SLOTS = ['body', 'frontBumper', 'rearBumper', 'fenders', 'sideSkirts', 'spoiler', 'hood', 'roof', 'wheels', 'splitter', 'canards', 'diffuser', 'exhaust', 'mirrors'] as const;
 export type PartSlot = (typeof PART_SLOTS)[number];
 
 /** Slots shown as body part menus in the garage (body and wheels have their own menus). */
-export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'fenders', 'sideSkirts', 'rearBumper', 'hood', 'spoiler', 'roof'];
+export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'splitter', 'canards', 'fenders', 'sideSkirts', 'rearBumper', 'diffuser', 'exhaust', 'hood', 'mirrors', 'spoiler', 'roof'];
 
 /** Slots where "none" is a valid choice (nothing rendered, base meshes still visible unless hidden). */
-export const OPTIONAL_SLOTS: PartSlot[] = ['spoiler'];
+export const OPTIONAL_SLOTS: PartSlot[] = ['spoiler', 'splitter', 'canards', 'diffuser', 'exhaust', 'mirrors'];
 
 export const SLOT_LABELS: Record<PartSlot, string> = {
   body: 'Body kit',
@@ -23,6 +23,11 @@ export const SLOT_LABELS: Record<PartSlot, string> = {
   hood: 'Hood',
   roof: 'Roof',
   wheels: 'Wheels',
+  splitter: 'Splitter',
+  canards: 'Canards',
+  diffuser: 'Diffuser',
+  exhaust: 'Exhaust',
+  mirrors: 'Mirrors',
 };
 
 /**
@@ -52,13 +57,22 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   rearBumper: 6500,
   // Both front wings in one piece, cut from a donor shell along its shut lines (the Wendt Strom's: 1,122), and a
   // part may add bolt-on flares round all four arches (its Voomeran Overs, with a shut line where each crosses a
-  // bumper's joint: 3,754).
-  fenders: 4000,
-  sideSkirts: 2000,
+  // bumper's joint: 3,754). The Tachibana Zenith's kit fenders are front wings and rear quarters together, the
+  // quarters carrying the tail lamps' outer ends (its stock pair: 4,922; the widebody kits reduced to this).
+  fenders: 6000,
+  // A kit skirt with its own blade and vents (the Tachibana Zenith's, reduced to this).
+  sideSkirts: 3000,
+  // A GT wing on swan neck stands with end plates (the Tachibana Zenith's APR and kit wings: 1,300 to 3,000).
   spoiler: 3000,
-  hood: 2000,
+  hood: 2500,
   roof: 2000,
   wheels: 12000,
+  // Bolt-on aero and trim pieces cut from a donor's aftermarket set; each slot is optional and a car lists it only once it has parts.
+  splitter: 2500,
+  canards: 1500,
+  diffuser: 3000,
+  exhaust: 2500,
+  mirrors: 2500,
 };
 
 /** The lug circle of a wheel GLB, in the GLB's own space (glTF frame, meters, axle along X, face toward +X); render/car/lugNuts.ts seats the house nuts on it. */
