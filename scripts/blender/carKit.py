@@ -1405,7 +1405,7 @@ def side_lip(body, target, y0, y1, top, thick=0.013, proud=0.02, tuck=0.04, cham
 
 
 def ditch_fin(surfaces, target, y0, y1, x_guess, heights=(0.012, 0.017), ramp=0.08, root=0.005, tip=0.003,
-              stations=26, ramp_stations=6, scan=0.02, smooth=3, sink=0.001, ditch='Black', material='Black'):
+              stations=26, ramp_stations=6, tail=0.0, tail_stations=6, scan=0.02, smooth=3, sink=0.001, ditch='Black', material='Black'):
     """Wind splits on the roof's drip rails, both sides: a rubber blade standing up out of each roof
     ditch from y0 (the windshield's top edge) to y1 (the spoiler's front), after the BMW 3.0 CSL's fender
     fins (the Wendt Strom's Wind splits). The ditch is read per station by downward rays over
@@ -1414,7 +1414,8 @@ def ditch_fin(surfaces, target, y0, y1, x_guess, heights=(0.012, 0.017), ramp=0.
     ditch from `sink` below its bottom up to the lip, then a blade tapering from `root` to `tip` thick
     with a rounded top, `heights` m over the lip at y0 and y1 (linear between: short, a little taller at
     the back; or a callable of y), its front rising from the lip over `ramp` m (a swept leading edge) and its back square
-    against whatever follows. Centre, bottom and lip are smoothed along the car (`smooth` passes) so the
+    against whatever follows, its top corner rounded to a quarter circle of radius `tail` m when given (over
+    `tail_stations`; square, the Wendt Strom's first build read as ending abruptly). Centre, bottom and lip are smoothed along the car (`smooth` passes) so the
     donor's facets do not wobble the line. Built on +x and mirrored. Returns the +x sections."""
     from mathutils.bvhtree import BVHTree
     dg = bpy.context.evaluated_depsgraph_get()
@@ -1432,6 +1433,9 @@ def ditch_fin(surfaces, target, y0, y1, x_guess, heights=(0.012, 0.017), ramp=0.
     # `ramp_stations` over the front ramp, where the height changes fastest, the rest evenly behind it.
     m = ramp_stations
     ys = [y0 + ramp * k / (m - 1) for k in range(m - 1)] + [y0 + ramp + (y1 - y0 - ramp) * k / (stations - m) for k in range(stations - m + 1)]
+    if tail > 0:
+        # The rounded back on its own stations, crowded toward the end where the arc turns down fastest.
+        ys = [y for y in ys if y < y1 - tail] + [y1 - tail * (1 - math.sin(math.pi / 2 * k / tail_stations)) for k in range(tail_stations + 1)]
     for y in ys:
         xs = [x_guess(y) - scan + 0.001 * j for j in range(int(2 * scan / 0.001) + 1)]
         hits = [(x, down(x, y)) for x in xs]
@@ -1450,6 +1454,9 @@ def ditch_fin(surfaces, target, y0, y1, x_guess, heights=(0.012, 0.017), ramp=0.
     for y, xc, half, zb, lip in raw:
         u = (y - y0) / (y1 - y0)
         h = heights(y) if callable(heights) else heights[0] + (heights[1] - heights[0]) * u
+        if tail > 0 and y > y1 - tail:
+            d = (y - (y1 - tail)) / tail
+            h -= tail * (1 - math.sqrt(max(0.0, 1 - d * d)))
         h = max(h * _sstep((y - y0) / ramp), 0.0015)
         top = lip + h
         r, t = root / 2, tip / 2
