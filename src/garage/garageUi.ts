@@ -597,7 +597,7 @@ export class GarageScreen implements TabHost {
     const b = this.build;
     const car = manifestCar(b.carId);
     const go = btn(Paintbrush, 'Customize', () => this.go('build'), '--large --primary --cta car-card__go');
-    go.title = 'Body, paint, wheels, stance, neon and tuning';
+    go.title = 'Body, paint, wheels, stance, lights and tuning';
     go.append(icon(ChevronRight, { size: 20 }));
     const del = iconBtn(Trash2, 'Delete this build', () => this.confirmDelete(), '--small --ghost');
     del.disabled = this.garage.slots.length <= 1;

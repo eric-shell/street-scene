@@ -1,5 +1,5 @@
 /**
- * What each Customize tab shows (Model, Power, Tune, Stance, Wheels, Body, Paint, Neon
+ * What each Customize tab shows (Model, Power, Tune, Stance, Wheels, Body, Paint, Lights
  * and Tint; Vinyls is garageVinyls.ts): the tab list, and one builder that fills
  * the body for the open tab from the build. The builders reach the screen only
  * through TabHost, so garageUi.ts keeps the steps, saving and dialogs and this
@@ -36,7 +36,7 @@ import type { WheelThumbs } from './wheelThumbs';
 
 export type Tab = 'model' | 'power' | 'stance' | 'wheels' | 'paint' | 'vinyl' | 'tune' | 'body' | 'tint' | 'neon';
 
-/** The tabs in order: the car, its engine and its setup first, then how it sits, its parts, its look, and the night look (Neon, Tint) last. */
+/** The tabs in order: the car, its engine and its setup first, then how it sits, its parts, its look, and the night look (Lights, Tint) last. */
 export const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'model', label: 'Model', icon: Car },
   { id: 'power', label: 'Power', icon: Zap },
@@ -46,7 +46,7 @@ export const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'body', label: 'Body', icon: Hammer },
   { id: 'paint', label: 'Paint', icon: Paintbrush },
   ...(FEATURES.vinyls ? [{ id: 'vinyl' as Tab, label: 'Vinyls', icon: Layers }] : []),
-  { id: 'neon', label: 'Neon', icon: Sparkles },
+  { id: 'neon', label: 'Lights', icon: Sparkles },
   { id: 'tint', label: 'Tint', icon: Eye },
 ];
 
@@ -471,9 +471,11 @@ export function renderTabContent(host: TabHost): void {
       break;
     }
     case 'neon': {
-      // The underglow, shot low and wide so the glow reads on the floor.
+      // The car's lights: the lamps (still to come) and the underglow, shot low and wide so the glow reads on the floor.
       const g = v.underglow;
       host.body.append(
+        section('Headlights', note('Coming soon.')),
+        section('Taillights', note('Coming soon.')),
         section(
           'Underglow',
           field(
