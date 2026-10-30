@@ -3,7 +3,7 @@
  * material is named e.g. "Paint" gets the player's paint, so new parts pick up
  * paint and glass tint automatically. Lamp colors are fixed, not a build choice.
  * The body, the wheels and their trims and the calipers are all paints (a color and a finish, applyPaint).
- * The windshield is split from the glass at load (windshield.ts): it stays clear, with the banner's tint film under it or its vinyl over it.
+ * The windshield is split from the glass at load (windshield.ts): it stays clear, and gives way to the banner's band: the windows' tint as the same glass, or a vinyl.
  */
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
@@ -25,8 +25,6 @@ const PAINT_ENV = { Paint: 1.9, Trim: 1.3, Rim: 1.8, RimLip: 1.8, RimCap: 1.8, C
 const GLASS_ENV = 1.7;
 /** Untinted glass: the color a tint fades to as its darkness goes to 0, and the windshield's always. */
 const CLEAR_GLASS = new THREE.Color(0x8fa0b0);
-/** How far (m) a tint banner's film lies behind the windshield's surface, away from the camera. */
-const FILM_DEPTH = 0.004;
 /** The glass's surface: smooth, no coat; an unpainted banner wears it too. */
 const GLASS = { metalness: 0, roughness: 0.04, clearcoat: 0, clearcoatRoughness: 0, iridescence: 0, sheen: 0, specularIntensity: 1 } as const;
 
@@ -196,41 +194,28 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   m.RoofPaint = m.Paint.clone();
   // The mirror caps' Paint faces (mirrorCaps.ts), the same way: a matched cap is the body's look.
   m.MirrorPaint = m.Paint.clone();
-  // The windshield: the glass's look, never tinted. Over a tint banner's film it keeps its reflections and its
-  // see-through but drops its veil of color, which stands for clear glass over a dark cabin and would wash the band
-  // out; the film's opacity and color make up the rest (applyVisualToMaterials).
+  // The windshield: the glass's look, never tinted. It is not drawn in the banner's band (setBannerDepth): the
+  // band is the banner's, the side glass's own tinted pane for a tint, or a vinyl.
   m.Windshield = m.Glass.clone();
   m.Windshield.name = 'Windshield';
   tintGlass(m.Windshield as THREE.MeshPhysicalMaterial, CLEAR_GLASS, 0);
-  const film = { value: -1 };
-  m.Windshield.userData.film = film;
+  const cut = { value: -1 };
+  m.Windshield.userData.cut = cut;
   m.Windshield.onBeforeCompile = (shader) => {
-    shader.uniforms.bannerDepth = film;
+    shader.uniforms.bannerDepth = cut;
     withDrop(shader);
-    shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\nif (vBannerDrop <= bannerDepth) diffuseColor.rgb = vec3(0.0);');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', 'if (vBannerDrop <= bannerDepth) discard;\n#include <clipping_planes_fragment>');
   };
-  // The banner, on the windshield's own faces, clipped to the band along its top (setBannerDepth): a tint film set
-  // FILM_DEPTH behind the glass (shift, along the line of sight so it holds from every side) and drawn before the
-  // windshield (windshield.ts), or a vinyl over it, pulled forward by its polygon offset (applyVisualToMaterials).
-  m.Banner = new THREE.MeshPhysicalMaterial({ name: 'Banner', envMap, visible: false, polygonOffset: true });
+  // The banner, on the windshield's own faces, clipped to the band along its top (setBannerDepth), where the
+  // windshield gives way to it: for a tint, one pane of the side glass's material (applyVisualToMaterials), so the
+  // band is the same glass as the windows beside it; for a vinyl, an opaque paint.
+  m.Banner = new THREE.MeshPhysicalMaterial({ name: 'Banner', envMap, visible: false });
   const depth = { value: -1 };
-  const shift = { value: 0 };
-  const direct = { value: 1 };
   m.Banner.userData.depth = depth;
-  m.Banner.userData.shift = shift;
-  m.Banner.userData.direct = direct;
   m.Banner.onBeforeCompile = (shader) => {
     shader.uniforms.bannerDepth = depth;
-    shader.uniforms.bannerShift = shift;
-    shader.uniforms.bannerDirect = direct;
     withDrop(shader);
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float bannerShift;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\n  mvPosition.xyz += normalize(mvPosition.xyz) * bannerShift;\n  gl_Position = projectionMatrix * mvPosition;');
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float bannerDirect;')
-      .replace('#include <clipping_planes_fragment>', 'if (vBannerDrop > bannerDepth) discard;\n#include <clipping_planes_fragment>')
-      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n  reflectedLight.directDiffuse *= bannerDirect;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', 'if (vBannerDrop > bannerDepth) discard;\n#include <clipping_planes_fragment>');
   };
   return m;
 }
@@ -244,12 +229,12 @@ function withDrop(shader: THREE.WebGLProgramParametersWithUniforms): void {
 }
 
 /**
- * How far below the windshield's top edge the banner reaches (m, windshield.ts bannerDepth; below 0 there is none),
- * and whether it is the tint's film behind the glass (`film`), over which the windshield drops its veil.
+ * How far below the windshield's top edge the banner reaches (m, windshield.ts bannerDepth; below 0 there is none):
+ * the banner draws within it and the windshield outside it.
  */
-export function setBannerDepth(m: CarMaterialSet, depth: number, film: boolean): void {
+export function setBannerDepth(m: CarMaterialSet, depth: number): void {
   (m.Banner.userData.depth as { value: number }).value = depth;
-  (m.Windshield.userData.film as { value: number }).value = film ? depth : -1;
+  (m.Windshield.userData.cut as { value: number }).value = depth;
 }
 
 /** Tint glass: `darkness` (0..1) of the way from clear to the tint's color, and as much less see-through. */
@@ -342,23 +327,18 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
   applyPaint(m.Trim as THREE.MeshPhysicalMaterial, TRIM_PAINT, PAINT_ENV.Trim);
   // The side and rear glass; the windshield stays clear.
   tintGlass(m.Glass as THREE.MeshPhysicalMaterial, v.tint.color, v.tint.darkness);
-  // The banner: a vinyl over the glass, in its paint or the body's, pulled toward the camera so the windshield
-  // behind loses the depth test; or the windows' tint as a film behind the glass, which the clear windshield,
-  // drawn after it (windshield.ts), lies over.
+  // The banner: a vinyl in its paint or the body's, or the side glass's tinted pane itself, parameter for parameter,
+  // so the band and the windows beside it are one material.
   const b = v.banner;
   const banner = m.Banner as THREE.MeshPhysicalMaterial;
   banner.visible = b.enabled;
-  (banner.userData.shift as { value: number }).value = b.vinyl ? 0 : FILM_DEPTH;
-  (banner.userData.direct as { value: number }).value = b.vinyl ? 1 : 0;
   if (b.vinyl) {
     applyPaint(banner, accent(b.paint), PAINT_ENV.Paint);
-    banner.setValues({ transparent: false, opacity: 1, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    banner.setValues({ transparent: false, opacity: 1 });
   } else {
-    // The side glass's own color and opacity, so the band is the same tint seen through clear glass. The windshield
-    // over it brings the reflections, so the film has none; and it takes only the ambient light, not the lamps
-    // overhead the windshield faces and the side glass does not, so it reads as dark as the windows beside it.
-    banner.setValues({ ...GLASS, transparent: true, envMapIntensity: 0, specularIntensity: 0, polygonOffsetFactor: 0, polygonOffsetUnits: 0 });
-    tintGlass(banner, v.tint.color, v.tint.darkness);
+    const glass = m.Glass as THREE.MeshPhysicalMaterial;
+    banner.setValues({ ...GLASS, transparent: true, opacity: glass.opacity, envMapIntensity: glass.envMapIntensity, specularColor: glass.specularColor });
+    banner.color.copy(glass.color);
     banner.needsUpdate = true;
   }
   setTireLettering(m, v.wheels.lettering === true);
