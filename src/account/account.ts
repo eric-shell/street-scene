@@ -10,6 +10,7 @@
  * it. Edits upload a few seconds after the last change, and at once when the tab is hidden.
  */
 import { track } from '../analytics/telemetry';
+import { setOwnsAll } from '../shared/purchases';
 import { loadJson, saveJson } from '../shared/store';
 import { applySave, collectSave, joinLocalBuilds, mergeLocalPoints, watchSynced, type SaveBlob } from './cloudSave';
 
@@ -18,6 +19,8 @@ export interface Player {
   id: string;
   email: string;
   name: string;
+  /** On the server's `ADMIN_EMAILS`: the garage counts every part and feature as owned while signed in. */
+  admin?: boolean;
 }
 
 /** The account last signed in on this device, kept after signing out so the sign-in prompts can greet it. */
@@ -59,6 +62,7 @@ const BOOT_WAIT_MS = 3000;
 const PUSH_DELAY_MS = 3000;
 
 let meta: Meta = { player: null, owner: null, savedAt: null, dirty: false, last: null, ...loadJson<Partial<Meta>>(META_KEY, {}) };
+setOwnsAll(meta.player?.admin === true);
 let status: SyncStatus = 'synced';
 /** Counts edits, so an upload that finishes after a newer edit leaves the save dirty. */
 let edits = 0;
@@ -95,6 +99,7 @@ export function onAccountChange(fn: () => void): () => void {
 
 function changed(next: Partial<Meta> = {}, nextStatus = status): void {
   meta = { ...meta, ...next };
+  setOwnsAll(meta.player?.admin === true);
   status = nextStatus;
   saveJson(META_KEY, meta);
   for (const fn of listeners) fn();

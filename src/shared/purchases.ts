@@ -74,11 +74,20 @@ export function mergePurchases(a: unknown, b: unknown): PurchasesSave {
 /** How many parts are owned, every car added up (stock not counted). */
 export const ownedCount = (p: PurchasesSave = loadPurchases()): number => Object.values(p).reduce((n, ids) => n + ids.length, 0);
 
-/** Whether `carId` may wear `partId`: stock, free, a dev preview, or bought for that car. */
+/** An admin is signed in (account/account.ts, the server's `ADMIN_EMAILS`): every part and feature counts as owned. */
+let ownsAll = false;
+
+/** Owning everything on or off, from the signed-in account; the ledger is never written, so signing out takes it back. */
+export function setOwnsAll(on: boolean): void {
+  ownsAll = on;
+}
+
+/** Whether `carId` may wear `partId`: stock, free, a dev preview, owned by an admin, or bought for that car. */
 export function owns(carId: string, partId: string, saved: PurchasesSave = loadPurchases()): boolean {
   if (!FEATURES.economy || isStock(carId, partId)) return true;
   // A part dropped in with the dev tools lives only in this session; it is never priced.
   if (partId.startsWith('dev_')) return FEATURES.devTools;
+  if (ownsAll) return true;
   const part = catalogPart(partId);
   if (part && priceOf(part, carId) === 0) return true;
   return saved[carId]?.includes(partId) ?? false;

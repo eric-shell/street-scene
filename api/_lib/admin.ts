@@ -16,6 +16,9 @@ function adminEmails(): string[] {
   return (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 }
 
+/** Whether `email` is on `ADMIN_EMAILS` (case-insensitive). */
+export const isAdminEmail = (email: string): boolean => adminEmails().includes(email.toLowerCase());
+
 /** The signed-in admin, or the 401 (signed out) / 403 (not an admin) response to return as is. */
 export async function requireAdmin(req: Request): Promise<AdminIdentity | Response> {
   const sub = sessionSub(req);
@@ -23,6 +26,6 @@ export async function requireAdmin(req: Request): Promise<AdminIdentity | Respon
   const rows = (await sql()`select email, name from players where sub = ${sub}`) as AdminIdentity[];
   const player = rows[0];
   if (!player) return json({ error: 'Signed out' }, 401);
-  if (!adminEmails().includes(player.email.toLowerCase())) return json({ error: 'Not an admin' }, 403);
+  if (!isAdminEmail(player.email)) return json({ error: 'Not an admin' }, 403);
   return { email: player.email, name: player.name };
 }

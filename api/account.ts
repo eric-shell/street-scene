@@ -3,6 +3,10 @@
  * deployment at 12) and every request is at most one Neon query:
  *
  * - `GET`: who is signed in, with their synced save (also stamps `seen_at`). 401 when signed out.
+ *
+ * The player in a reply carries `admin` when their email is on `ADMIN_EMAILS` (api/_lib/admin.ts): the garage
+ * then counts every part and feature as owned (shared/purchases.ts `setOwnsAll`). Ownership is client side
+ * anyway (the ledger lives in the save), so the flag grants nothing the server guards.
  * - `POST { credential }`: sign in with a Google ID token; allowlisted emails only. Sets the session cookie.
  * - `PUT { save }`: replace the synced save (last writer wins; one player rarely plays two devices at once).
  * - `DELETE`: sign out. Not gated on a valid session, so a broken cookie can always be cleared.
@@ -10,6 +14,7 @@
  * Writes need a JSON body, which a cross-site form cannot send without a CORS preflight this never answers;
  * with the SameSite=Lax cookie that keeps another site from writing a player's save.
  */
+import { isAdminEmail } from './_lib/admin.js';
 import { sql } from './_lib/db.js';
 import { isAllowed, verifyGoogleToken } from './_lib/google.js';
 import { clearedCookies, json, sessionCookie, sessionSub } from './_lib/session.js';
@@ -27,7 +32,7 @@ interface PlayerRow {
 
 /** What the page gets back: the player, their save and its stamp (src/account/account.ts AccountReply). */
 function reply(row: PlayerRow) {
-  return { player: { id: row.sub, email: row.email, name: row.name }, save: row.save ?? null, savedAt: row.saved_at?.toISOString() ?? null };
+  return { player: { id: row.sub, email: row.email, name: row.name, admin: isAdminEmail(row.email) }, save: row.save ?? null, savedAt: row.saved_at?.toISOString() ?? null };
 }
 
 /** The request's JSON body, or null when it is missing, not JSON, or larger than `limit` bytes. */

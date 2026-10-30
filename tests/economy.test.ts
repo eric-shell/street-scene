@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { addRunPoints, balanceOf, loadPoints, mergePoints, pointsBalance, spendPoints, POINTS_KEY } from '../src/shared/points';
 import { cleanStats, mergeStats, recordRace, STATS_KEY } from '../src/shared/stats';
 import { ECONOMY, catalogPart, featureBuyable, featureId, featurePrice, featureRacesToUnlock, isUnlocked, priceOf, stockWheel } from '../src/shared/economy';
-import { buy, buyItem, cleanPurchases, enforceOwnership, grandfathered, hasLedger, loadPurchases, mergePurchases, owns, ownsFeature, startLedger, PURCHASES_KEY } from '../src/shared/purchases';
+import { buy, buyItem, cleanPurchases, enforceOwnership, grandfathered, hasLedger, loadPurchases, mergePurchases, owns, ownsFeature, setOwnsAll, startLedger, PURCHASES_KEY } from '../src/shared/purchases';
 import { defaultBuild, FEATURE_LABELS } from '../src/shared/carBuild';
 import catalog from '../src/assets/partsCatalog.json';
 import type { PartEntry } from '../src/shared/parts';
@@ -117,6 +117,19 @@ describe('purchases', () => {
     expect(b.visual.parts.spoiler).toBeUndefined();
     expect(b.visual.wheels.rearPart).toBeNull();
     expect(enforceOwnership(b)).toEqual([]);
+  });
+
+  it('owns everything for an admin without writing the ledger', () => {
+    startLedger([]);
+    const b = defaultBuild('wendtStrom');
+    b.visual.parts.wheels = otherWheel('wendtStrom').id;
+    b.visual.features = ['fogLights'];
+    setOwnsAll(true);
+    expect(enforceOwnership(b)).toEqual([]);
+    expect(buy('wendtStrom', catalogPart(b.visual.parts.wheels!)!)).toBe('owned');
+    expect(loadPurchases()).toEqual({});
+    setOwnsAll(false);
+    expect(enforceOwnership(b).length).toBe(2);
   });
 
   it('buys only unlocked, affordable parts, spending the price', () => {
