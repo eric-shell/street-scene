@@ -2433,6 +2433,187 @@ def snap_top_edge(o, front, z_top, margin=0.01):
     return moved
 
 
+class SourceShade:
+    """Ray casts onto chosen faces of an original (re-imported) source mesh, each hit with the source's
+    own corner normals interpolated there. The donor skin is processed (culled, welded) and can keep
+    pieces of what a cull took: the Wendt Strom's skin kept paint pieces of the badge surround in front
+    of the hood lip, which read as a bulge and were faired away. When a repair must match the car as
+    modelled, sample the source itself (re-imported with import_asset and placed like the donor; the
+    Wendt Strom's fit its skin to 0.06 mm) through this. `faces` are polygon indices of `o`, e.g. one
+    island (`island_at`)."""
+
+    def __init__(self, o, faces):
+        me = o.data
+        me.calc_loop_triangles()
+        cn = me.corner_normals
+        faces = set(faces)
+        self.v, self.n, polys = [], [], []
+        for lt in me.loop_triangles:
+            if lt.polygon_index not in faces:
+                continue
+            b = len(self.v)
+            self.v += [me.vertices[i].co.copy() for i in lt.vertices]
+            self.n.append([cn[l].vector.copy() for l in lt.loops])
+            polys.append((b, b + 1, b + 2))
+        self.t = BVHTree.FromPolygons(self.v, polys)
+
+    def ray(self, origin, direction, dist=1.0):
+        """(point, normal) of the first hit, or (None, None)."""
+        h = self.t.ray_cast(Vector(origin), Vector(direction), dist)
+        if h[0] is None:
+            return None, None
+        i = h[2]
+        w = barycentric(h[0], *self.v[3 * i:3 * i + 3])
+        return h[0], sum((n * k for n, k in zip(self.n[i], w)), Vector()).normalized()
+
+
+def island_at(o, p):
+    """The polygon indices of the island (faces joined by shared vertices) of `o` nearest point p."""
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    bm.faces.ensure_lookup_table()
+    f0 = bm.faces[BVHTree.FromBMesh(bm).find_nearest(Vector(p))[2]]
+    seen, stack = {f0.index}, [f0]
+    while stack:
+        for v in stack.pop().verts:
+            for h in v.link_faces:
+                if h.index not in seen:
+                    seen.add(h.index)
+                    stack.append(h)
+    bm.free()
+    return seen
+
+
+def even_fill(sample, x, xc, step=0.03):
+    """sample(x) -> (point, normal) carried across a notch in the source at |x| < xc (a badge's recess):
+    the point as c0 + c1 x^2 through the clean sections at xc and xc + step, the normal xc's with its x
+    part scaled by |x| / xc, so the fill is mirror symmetric and meets the source smoothly."""
+    p0, n0 = sample(xc)
+    p1, _ = sample(xc + step)
+    if p0 is None or p1 is None:
+        return None, None
+    p = p0 + (p1 - p0) / ((xc + step) ** 2 - xc ** 2) * (x * x - xc * xc)
+    p.x = x
+    s = abs(x) / xc
+    return p, Vector((math.copysign(n0.x * s, x) if x else 0.0, n0.y, n0.z)).normalized()
+
+
+def step_band(o, cut, sample, crease_z, top_z, x_max, step=0.03, below=(0.540, 0.5695), above=(0.577, 0.577)):
+    """Re-triangulate a bumper's top band where it steps (a sloped face, a crease, a short upright step,
+    the open top edge): the faces of cut(face) go and the hole is filled in (x, z) by a constrained
+    Delaunay through its own boundary, a crease row at crease_z every `step` m for |x| < x_max (a
+    constraint, so no triangle crosses it) and, on the open top edge, the same columns at top_z. New
+    vertices take y from sample(x, z) -> (point, normal), the reference surface. Every corner takes the
+    reference normal with z held inside `below` for faces under the crease and `above` for faces over it,
+    so the crease shades as one; the upright step takes one height for all its corners (its two rows
+    sampled apart zigzagged into a sawtooth highlight). The Wendt Strom's centre band (|x| < 0.36, z 0.537
+    to the top edge at 0.584) was a dozen long, lopsided triangles from mend_top_edge and the donor's
+    fans toward the headlamp corner, which could not carry the source's 1 cm upright step
+    (z 0.5715 to 0.582) and shaded up to 39 degrees off. Returns (faces removed, faces made)."""
+    import collections
+    from mathutils.geometry import delaunay_2d_cdt
+    stash_normals(o)
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    paint_i = names.index('Paint')
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector['src_normal']
+    bm.verts.ensure_lookup_table()
+    # BMesh wrappers neither hash nor compare by identity reliably (a walk comparing them with `is`
+    # bounced between two vertices forever and froze Blender): tag the faces, walk by vertex index
+    for f in bm.faces:
+        f.tag = f.material_index == paint_i and cut(f)
+    R = [f for f in bm.faces if f.tag]
+    # the hole's outline: edges with one face in R and the other outside it, or none (the open top edge)
+    out = [e for e in bm.edges if sum(f.tag for f in e.link_faces) == 1]
+    adj = collections.defaultdict(list)
+    for e in out:
+        a, b = (v.index for v in e.verts)
+        adj[a].append(b)
+        adj[b].append(a)
+    if any(len(n) != 2 for n in adj.values()):
+        raise RuntimeError('step_band: the outline is not one loop')
+    s = next(iter(adj))
+    idx, prev, cur = [s], -1, s
+    for _ in range(len(adj)):
+        nx = [w for w in adj[cur] if w != prev]
+        if not nx:
+            raise RuntimeError('step_band: the outline breaks off')
+        if nx[0] == s:
+            break
+        idx.append(nx[0])
+        prev, cur = cur, nx[0]
+    if len(idx) != len(adj):
+        raise RuntimeError(f'step_band: the outline is {len(adj)} vertices but the walk from one closes after {len(idx)}')
+    loop = [bm.verts[i] for i in idx]
+    n = int(round(2 * x_max / step))
+    cols = [-x_max + 2 * x_max * i / n for i in range(n + 1)]
+    crease = [Vector((x, crease_z)) for x in cols]
+    # top columns go into the outline: split each open top edge at the columns it spans
+    poly = []
+    for i, v in enumerate(loop):
+        w = loop[(i + 1) % len(loop)]
+        poly.append((Vector((v.co.x, v.co.z)), v))
+        e = bm.edges.get((v, w))
+        if e is not None and all(f.tag for f in e.link_faces) and abs(v.co.z - top_z) < 0.002 and abs(w.co.z - top_z) < 0.002:
+            lo, hi = sorted((v.co.x, w.co.x))
+            mids = [x for x in cols if lo + 0.006 < x < hi - 0.006]
+            mids.sort(reverse=v.co.x > w.co.x)
+            poly += [(Vector((x, top_z)), None) for x in mids]
+    P = [p for p, _ in poly] + crease
+    order = list(range(len(poly)))
+    if sum(P[i - 1].x * P[i].y - P[i].x * P[i - 1].y for i in order) < 0:
+        order.reverse()
+    cons = [[len(poly) + i, len(poly) + i + 1] for i in range(len(crease) - 1)]
+    # carry the crease on to an outline vertex already on it at each end (the donor's own crease vertex)
+    for end, sgn in ((len(poly), -1), (len(poly) + len(crease) - 1, 1)):
+        near = [i for i, (p, _) in enumerate(poly) if abs(p.y - crease_z) < 0.002 and sgn * p.x > x_max]
+        if near:
+            cons.append([end, min(near, key=lambda i: abs(poly[i][0].x - sgn * x_max))])
+    _, _, ofaces, orig_v, _, _ = delaunay_2d_cdt(P, cons, [order], 1, 1e-7)
+    bmv = []
+    for ov in orig_v:
+        i = ov[0]
+        if i < len(poly):
+            p2, v = poly[i]
+            if v is None:
+                p, _ = sample(p2.x, p2.y)
+                v = bm.verts.new((p2.x, p.y, p2.y))
+        else:
+            p2 = crease[i - len(poly)]
+            p, _ = sample(p2.x, p2.y)
+            v = bm.verts.new((p2.x, p.y, p2.y))
+        bmv.append(v)
+    # FACES_ONLY: the open top edge's vertices belong to cut faces alone and are reused
+    bmesh.ops.delete(bm, geom=R, context='FACES_ONLY')
+    made = 0
+    for fc in ofaces:
+        vs = [bmv[i] for i in fc]
+        zc = sum(v.co.z for v in vs) / len(vs)
+        lo, hi = above if zc > crease_z + 1e-5 else below
+        nrm = []
+        for v in vs:
+            n = sample(v.co.x, min(max(v.co.z, lo), hi))[1]
+            if n is None:   # off the reference (the outline's far corners): the normal it already has
+                n = sum((Vector(l[sn]) for l in v.link_loops), Vector())
+                n = n.normalized() if n.length > 1e-6 else Vector((0, -1, 0))
+            nrm.append(n)
+        if (vs[1].co - vs[0].co).cross(vs[2].co - vs[0].co).dot(sum(nrm, Vector())) < 0:
+            vs.reverse()
+            nrm.reverse()
+        f = bm.faces.new(vs)
+        f.material_index = paint_i
+        f.smooth = True
+        for l, nn in zip(f.loops, nrm):
+            l[sn] = nn
+        made += 1
+    bmesh.ops.delete(bm, geom=[e for e in bm.edges if not e.link_faces], context='EDGES')
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    bm.to_mesh(me)
+    bm.free()
+    restore_normals(o)
+    return len(R), made
 GRILLE_UV = 3.0   # m of car space per UV unit on Grille faces: the game's rib texture repeats against this
 
 
