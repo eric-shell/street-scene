@@ -28,7 +28,7 @@
  */
 import { CITY } from '../config';
 import type { RoadGraph } from '../roadGraph';
-import { chains, isBendNode, isRiverEdge } from '../roadGraph';
+import { chains, isBendNode, isChannelEdge } from '../roadGraph';
 import { computeMouths } from '../blocks';
 import { createTerrain } from '../terrain';
 import { homeOf } from '../regions';
@@ -127,7 +127,7 @@ function plan(ctx: PlanContext): void {
     if (c.nodes.some((n) => routeNodes.has(n) || ctx.claims.node.has(n) || !!g.nodes[n].ring)) continue;
     const ok = c.edges.every((id) => {
       const e = g.edges[id];
-      return kinds.has(e.kind) && !e.shortcut && !e.bridge && !isRiverEdge(e) && !ctx.claims.edge.has(id) && e.sidewalk >= CFG.minSidewalk && e.width / 2 >= CFG.stripHalf + CFG.laneRoom;
+      return kinds.has(e.kind) && !e.shortcut && !e.bridge && !isChannelEdge(e) && !ctx.claims.edge.has(id) && e.sidewalk >= CFG.minSidewalk && e.width / 2 >= CFG.stripHalf + CFG.laneRoom;
     });
     if (!ok) continue;
     const A = g.nodes[first];

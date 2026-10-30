@@ -3,9 +3,16 @@
  * build JSON with short keys, deflate-compressed and base64url encoded, so it
  * fits in a URL parameter (?build=...). Imported builds are always validated. A player with no saved garage
  * starts on a random street build (randomBuild), drawn again on every page load until they keep one.
+ *
+ * Ownership (shared/purchases.ts): loading the garage starts the parts ledger once (grandfathering what the
+ * builds wear) and then takes any part a build's car does not own off it, quietly, since a cloud save lands in
+ * storage before the load and a stale or tampered one must not equip what was never bought. An imported build
+ * is stripped the same way, and importBuild says what went so the caller can tell the player.
  */
 import { AXLES, CHROME_COLOR, CarBuild, DEFAULT_BUILD_NAME, GLOW_PATTERNS, defaultBuild, validateBuild, type AccentFinish, type AxleStance, type PaintFinish, type WheelTrim } from '../shared/carBuild';
 import { loadJson, saveJson } from '../shared/store';
+import { FEATURES } from '../shared/features';
+import { enforceOwnership, hasLedger, owns, startLedger, type WornPart } from '../shared/purchases';
 import { DEFAULT_CAR_ID } from '../sim/tuning';
 import { defaultLaunchRpm } from '../sim/build';
 import { manifestCar, partsFor } from '../render/car/carAssets';
@@ -64,7 +71,10 @@ export function randomBuild(name = DEFAULT_BUILD_NAME): CarBuild {
   const v = b.visual;
   const fit = STREET_FITS[carId];
   v.stance = { front: { ...fit.front }, rear: { ...fit.rear } };
-  v.parts.wheels = pick(partsFor(carId, 'wheels')).id;
+  // Once the parts ledger has started, the draw is among the wheels this car owns (its stock wheel when none):
+  // a new page load is never a free wheel. The very first draw is grandfathered with the garage (loadGarage).
+  const wheels = partsFor(carId, 'wheels').filter((p) => !FEATURES.economy || !hasLedger() || owns(carId, p.id));
+  if (wheels.length) v.parts.wheels = pick(wheels).id;
   v.wheels.tire = v.wheels.rearTire = Math.random() < 0.7 ? 'mild' : 'stretched';
   // Finishes repeat to weight the draw toward the common ones.
   v.paint = { color: pick([...SWATCHES.loud, ...SWATCHES.deep]), finish: pick<PaintFinish>(['gloss', 'metallic', 'metallic', 'pearl', 'candy', 'matte']) };
@@ -96,17 +106,25 @@ export function loadGarage(): GarageState {
     if (slots.length) {
       const current = Math.max(0, Math.min(slots.length - 1, Math.round(Number(parsed?.current) || 0)));
       const g = { current, slots };
+      let dirty = false;
       if (!(Number(parsed?.migration) >= MIGRATION)) {
         for (const b of slots) b.performance.launchRpm = defaultLaunchRpm(b.carId);
-        saveGarage(g);
+        dirty = true;
       }
+      // Grandfather what the saved builds wear (once per device), then strip what a car does not own.
+      startLedger(slots);
+      for (const b of slots) if (enforceOwnership(b).length) dirty = true;
+      if (dirty) saveGarage(g);
       return g;
     }
   } catch {
     /* a slot that fails validation: fall through to the default */
   }
-  // Not saved: until the player keeps it (picks a build on the menu or changes it in the garage), the next page load draws another.
-  return { current: 0, slots: [randomBuild('Garage')] };
+  // Not saved: until the player keeps it (picks a build on the menu or changes it in the garage), the next page load
+  // draws another. A first ever draw starts the ledger with its wheel, so the starter car keeps its look.
+  const slots = [randomBuild('Garage')];
+  startLedger(slots);
+  return { current: 0, slots };
 }
 
 export function saveGarage(g: GarageState): boolean {
@@ -122,12 +140,14 @@ export function addSlot(g: GarageState, b: CarBuild): boolean {
 }
 
 /**
- * Take in a shared build (a ?build= link at boot or a code pasted in the
- * garage): a new slot while there is room, else it replaces the slot in use,
- * which stays selected.
+ * Take in a shared build (a code pasted in the garage): a new slot while there
+ * is room, else it replaces the slot in use, which stays selected. Parts its car
+ * does not own come off first; the return says which, for the player's notice.
  */
-export function importBuild(g: GarageState, b: CarBuild): void {
+export function importBuild(g: GarageState, b: CarBuild): WornPart[] {
+  const stripped = enforceOwnership(b);
   if (!addSlot(g, b)) g.slots[g.current] = b;
+  return stripped;
 }
 
 // ---------------------------------------------------------------------------

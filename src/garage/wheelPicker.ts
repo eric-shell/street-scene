@@ -9,7 +9,10 @@
  * makers' groups in place, so its menu stays open for the next maker. The
  * picker opens scrolled to the wheel fitted, and a tile asks for its thumbnail
  * only as it scrolls into the pane, so a maker's dozen wheels load, not all of
- * them.
+ * them. Each tile carries the wheel's tag for this car (garageWidgets.ts
+ * partTagEl: its price, or a lock with the races still to finish; nothing once
+ * owned); picking one the car does not own still previews it, and the garage
+ * asks to buy it (garageUi.ts offer).
  */
 import type { PartEntry } from '../shared/parts';
 import { h, multiSelect, sheen } from '../ui/kit/dom';
@@ -41,6 +44,8 @@ export interface WheelPickerOptions {
   thumbs: WheelThumbs;
   /** The car's front offset target (mm), so the tiles show each face where this car sets it. */
   target?: number;
+  /** The wheel's tag on its tile (its price or lock for this car; null for none: owned, or the economy off). */
+  tag?(wheel: PartEntry): HTMLElement | null;
   onMakers(makers: string[]): void;
   onPick(id: string): void;
 }
@@ -84,10 +89,11 @@ export function wheelPicker(o: WheelPickerOptions): HTMLElement {
 
   function tile(p: PartEntry, group: string): HTMLElement {
     const img = h('img', { class: 'wheel-picker__thumb', alt: '', draggable: 'false' }) as HTMLImageElement;
+    const tag = o.tag?.(p) ?? null;
     const el = h(
       'button',
-      { type: 'button', class: `wheel-picker__tile${p.id === o.current ? ' is-selected' : ''}`, title: `${group} ${p.displayName}`, 'aria-pressed': String(p.id === o.current) },
-      h('span', { class: 'wheel-picker__frame' }, img),
+      { type: 'button', class: `wheel-picker__tile${p.id === o.current ? ' is-selected' : ''}`, title: `${group} ${p.displayName}${tag ? ` · ${tag.textContent}` : ''}`, 'aria-pressed': String(p.id === o.current) },
+      h('span', { class: 'wheel-picker__frame' }, img, tag),
       h('span', { class: 'wheel-picker__name' }, p.displayName),
       sheen(),
     );

@@ -8,11 +8,11 @@
  *    boulevards, 1% on plain streets). A car holding the middle of a lane feels about that grade pulling it
  *    toward the kerb, and a turn across the crown leans it. The crown fades out over a junction's reach
  *    (ROAD_PHYSICS.crown), so a fan is flat. Streets a district claims (a bridge, the El's street, a
- *    roundabout's arms, the river's edges) stay as that district built them.
+ *    roundabout's arms, the channel's edges) stay as that district built them.
  *  - Humps: on plain side streets the circuit and sprint do not use, a cosine bump (road.hump*) every 60-120 m,
  *    full height across the lanes and eased off toward the kerb. Laid out after the districts are final
  *    (planHumps), because they depend on the routes, the drag strip and where each district stands.
- *  - Joints: `lipAt` is one expansion joint's raised-cosine lip; the highway deck and the river's bridges place
+ *  - Joints: `lipAt` is one expansion joint's raised-cosine lip; the highway deck and the channel's bridges place
  *    them on their own axes (DeckSpan.joint).
  *
  * The crown and the humps are one HeightMod folded into the terrain (createTerrain), indexed by a grid of the

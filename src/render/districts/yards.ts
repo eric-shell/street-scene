@@ -62,7 +62,7 @@ export const YARD = {
   grade: 0.04,
   /** Clear of an infill pocket's footprint by this (m): its own back wall is the source wall, so the yard starts just behind it. */
   pocketGap: 0.6,
-  /** Clear of every other area's footprint (parks, alleys, ramps, the El, the highway, the river) by this (m): the ground under or beside them is open. */
+  /** Clear of every other area's footprint (parks, alleys, ramps, the El, the highway, the channel) by this (m): the ground under or beside them is open. */
   areaGap: 2.5,
   /** Clear of every building's footprint by this (m). */
   buildingGap: 0.8,

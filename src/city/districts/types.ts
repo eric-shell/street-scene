@@ -2,7 +2,7 @@
  * District framework: the common vocabulary every area module speaks.
  *
  * Roughly half the city is plain downtown blocks; the rest is special areas
- * (hills, parks, a river, an elevated subway, alleys, roundabouts, a monument
+ * (hills, parks, a channel, an elevated subway, alleys, roundabouts, a monument
  * plaza, ...). Each kind lives in its own module (src/city/districts/<kind>.ts) implementing
  * DistrictModule, with a matching renderer in src/render/districts/<kind>.ts.
  *
@@ -25,7 +25,7 @@
  * Walls are one sided (normal toward the drivable side) and push back a car
  * up to 3 m behind them, so two drivable spaces separated by a wall must be at
  * least ~4 m apart (use a solid body between them). Where two drivable levels
- * stack (a bridge deck over the river channel) the walls of one level carry a
+ * stack (a bridge deck over the channel) the walls of one level carry a
  * `top` or `bottom` height so cars on the other pass them (see DeckSpan).
  */
 import type { Vec2 } from '../../sim/math';
@@ -43,7 +43,7 @@ export type AreaKind =
   | 'backAlley'
   | 'park'
   | 'subway'
-  | 'river'
+  | 'channel'
   | 'roundabout'
   | 'infill'
   | 'hills'
@@ -65,7 +65,7 @@ export type AreaKind =
 /**
  * Ground surface under a point. 'road' / 'sidewalk' / 'offroad' are the
  * original three; districts add concrete (plazas, channel floor), grass
- * (parks, planter islands), water (the trickle in the river channel) and
+ * (parks, planter islands), water (the trickle in the channel) and
  * cobble (the road strip of every alley, see districts/alley.ts) and quay
  * (a harbor's dock paving: dusty, oil stained concrete with a grip of its
  * own, districts/waterfront.ts), sand (a beach's loose sand: low grip, heavy
@@ -103,13 +103,13 @@ export const COBBLE_PRIORITY = 6;
  * pillar: elevated railway support (subway).
  * parapet / culvert / fence / trench / channelEnd: bridge deck sides (a car in the channel below
  *   passes under them: Wall.bottom), a bridge's abutments on the banks under its deck (solids with
- *   Wall.top), bank top fence, ramp retaining walls, channel tunnel ends (river).
+ *   Wall.top), bank top fence, ramp retaining walls, channel tunnel ends (channel).
  * tree: a tree trunk (park, roundabout).
  * monument: the step ring around a landmark's base, or an arch's piers (monument).
  * tunnel / rock: tunnel walls, portal wingwalls and the shut in building line behind them;
  *   the rock face along a ridge's cutting (tunnel).
- * pier: overpass piers and abutments (overpass); a river bridge's piers standing on
- *   the channel floor under its deck (solids with Wall.top, river).
+ * pier: overpass piers and abutments (overpass); a channel bridge's piers standing on
+ *   the channel floor under its deck (solids with Wall.top, channel).
  * highway: the elevated highway's columns (Wall.under: cars on the deck pass over them), its deck
  *   barriers and median (Wall.bottom: cars under the deck pass beneath them), its on-ramps' walls and
  *   the frontage under a ramp's merge, the closures at its ends and, in a race, across its ramps (highway).
@@ -193,7 +193,7 @@ export interface Area {
   variant: string;
   /** Footprint polygon in XZ (any orientation), [] for areas without one. */
   polygon: Vec2[];
-  /** Centerline for linear areas (river, subway), [] otherwise. */
+  /** Centerline for linear areas (channel, subway), [] otherwise. */
   path: Vec2[];
   /** Claimed road graph nodes, edges and block faces (CityBlocks.faces ids). */
   nodes: number[];
@@ -245,7 +245,7 @@ export interface HeightMod {
 
 /**
  * A drivable level that is not the terrain, inside `polygon`. Two forms:
- *  - `lower`: a bridge deck over a sunken district (the river channel). The
+ *  - `lower`: a bridge deck over a sunken district (the channel). The
  *    terrain is the deck; `lower` adds the ground beneath it (its height
  *    below the deck, 0 or negative, with the gradient), which World.heightAt
  *    returns for a car body nearer to it than to the deck.
@@ -308,7 +308,7 @@ export interface AreaBuild {
   surfaces: SurfacePatch[];
   /** Folded into the terrain (graph phase only). */
   heightMods: HeightMod[];
-  /** Two level spans (bridge decks over the river channel), read by World's height queries. */
+  /** Two level spans (bridge decks over the channel), read by World's height queries. */
   decks: DeckSpan[];
   /** No buildings or infill inside these polygons (graph phase only). */
   exclusions: Vec2[][];
@@ -444,7 +444,7 @@ export const AREA_PRIORITY: Record<AreaKind, number> = {
   subway: 4,
   alley: 5,
   backAlley: 6,
-  river: 7,
+  channel: 7,
   roundabout: 8,
   infill: 9,
   monument: 10,
@@ -477,7 +477,7 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   backAlley: { stroke: 'rgba(255,122,217,0.14)', width: 4 },
   park: { fill: 'rgba(169,220,118,0.2)' },
   subway: { stroke: 'rgba(120,220,232,0.45)', width: 4, dash: [14, 10] },
-  river: { fill: 'rgba(120,220,232,0.16)' },
+  channel: { fill: 'rgba(120,220,232,0.16)' },
   roundabout: { stroke: 'rgba(147,146,147,0.4)', width: 4 },
   infill: { fill: 'rgba(147,146,147,0.08)' },
   hills: { fill: 'rgba(147,146,147,0.07)', stroke: 'rgba(147,146,147,0.34)', width: 2.5, dash: [6, 7] },

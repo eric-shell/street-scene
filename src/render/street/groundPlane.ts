@@ -5,7 +5,7 @@
  * a grade it only works if it follows the grade: a flat 19 m pool on a 4 %
  * street is 0.4 m under the road at its uphill edge (clipped away) and 0.4 m
  * over it at the downhill one (floating), and a streak running 20 m up a ramp
- * cuts into it. Hills, the highway's ramps, the bluff and the river's
+ * cuts into it. Hills, the highway's ramps, the bluff and the channel's
  * entrances are all grades of several percent.
  *
  * Two tools, both render only and build-time (nothing runs per frame):

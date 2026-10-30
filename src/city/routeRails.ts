@@ -5,9 +5,9 @@
  * (sim/rails.ts).
  */
 import { CITY, ROUTE } from './config';
-import { type RoadGraph, edgeBetween, isBendNode, isRiverEdge, otherNode } from './roadGraph';
+import { type RoadGraph, edgeBetween, isBendNode, isChannelEdge, otherNode } from './roadGraph';
 import { type CityBlocks, type Wall, corridorClearance, makeWall } from './blocks';
-import { isChannelNode } from './districts/river';
+import { isChannelNode } from './districts/channel';
 import { DEG, type Vec2, abs, atan2, clamp, cos, distToSegment, lineIntersectT, sign, sin, sqrt, wrapAngle } from '../sim/math';
 import type { Route } from './route';
 import { segmentAt } from './districts/geom';
@@ -216,8 +216,8 @@ export function routeRails(g: RoadGraph, route: Route, blocks: CityBlocks): Rail
       const T = R * tanHalf;
       const reach = Math.max(T + 1, Math.min(ROUTE.railReach + (eIn.width + eOut.width) * 0.4, maxReach));
       // A ramp has its own trench walls: the rail ends at the corner instead of running down it.
-      const reachIn = isRiverEdge(eIn) ? T + 0.5 : reach;
-      const reachOut = isRiverEdge(eOut) ? T + 0.5 : reach;
+      const reachIn = isChannelEdge(eIn) ? T + 0.5 : reach;
+      const reachOut = isChannelEdge(eOut) ? T + 0.5 : reach;
       const T1 = { x: V.x - din.x * T, z: V.z - din.z * T };
       const T2 = { x: V.x + dout.x * T, z: V.z + dout.z * T };
       // Fillet center: R inside the incoming line (toward P).
@@ -386,7 +386,7 @@ export function routeRails(g: RoadGraph, route: Route, blocks: CityBlocks): Rail
       for (let k = 1; k < pts.length; k++) cum[k] = cum[k - 1] + sqrt((pts[k].x - pts[k - 1].x) ** 2 + (pts[k].z - pts[k - 1].z) ** 2);
     }
 
-    // A run that reaches a city wall further along the street (a river side ramp's trench end at a T
+    // A run that reaches a city wall further along the street (a channel side ramp's trench end at a T
     // just past the corner, likely on the curved grid's skewed blocks) is cut short before it.
     {
       const crossesCity = (k: number) => {

@@ -858,7 +858,7 @@ describe('collisions', () => {
 });
 
 describe('landings, banks and brakes', () => {
-  /** A river style channel: floor at -4.2 m for |z| < 11, a smoothstep bank up to the street at |z| = 19. */
+  /** A channel style channel: floor at -4.2 m for |z| < 11, a smoothstep bank up to the street at |z| = 19. */
   function bankWorld(): World {
     const F = 11;
     const W = 8;

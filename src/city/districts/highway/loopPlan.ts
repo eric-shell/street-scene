@@ -18,7 +18,7 @@
  * mouth is a cut clear of the row street's junctions, whose embankment and
  * infield stay in its block and whose last stretch (out over the row street,
  * onto the deck's end) clears the street beneath, all of it clear of the El,
- * the river, a bluff and the roundabouts.
+ * the channel, a bluff and the roundabouts.
  *
  * The two loops of an end are mirror images across the row street, so their
  * feet are paired where they can be: both at the same place along the street,

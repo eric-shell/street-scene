@@ -116,11 +116,11 @@ const MEET = {
   /** People and cars keep this far from a route shortcut's sidewalks (m). */
   shortcutClear: 2.5,
   peopleCap: 340,
-  /** Steepest ground (rise per run) a car parks on: people stand on the river's banks, cars do not. */
+  /** Steepest ground (rise per run) a car parks on: people stand on the channel's banks, cars do not. */
   carMaxGrade: 0.18,
 } as const;
 
-/** Surfaces a meet may stand on (block interiors are 'offroad', the river 'water'). */
+/** Surfaces a meet may stand on (block interiors are 'offroad', the channel 'water'). */
 const GROUND = new Set(['road', 'sidewalk', 'concrete', 'grass']);
 
 /** Circles in a uniform hash: everything placed so far. */
@@ -239,7 +239,7 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
   const route = world.route;
   /**
    * Open ground: on a street, sidewalk, plaza or lawn, off the course, clear of walls, buildings and
-   * everything placed. `flat` (parked cars) also rules out the river's sloped banks.
+   * everything placed. `flat` (parked cars) also rules out the channel's sloped banks.
    */
   const free = (x: number, z: number, r: number, flat = false): boolean => {
     if (!GROUND.has(world.surfaceAt(x, z))) return false;
@@ -274,7 +274,7 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
   for (const g of world.barrierGroups ?? []) {
     const id = (g.walls[0] as RailWall | undefined)?.group;
     if (id === undefined) continue;
-    // Behind a closure across a river ramp the trench climbs away: the meet stays near its foot.
+    // Behind a closure across a channel ramp the trench climbs away: the meet stays near its foot.
     const steep = g.edges.some((e) => world.graph.edges[e].kind === 'ramp');
     closureDepth.set(id, steep ? Math.min(g.depth, MEET.cornerDepth + MEET.closureEndClear) : g.depth);
   }

@@ -54,7 +54,7 @@
  *    one on each sidewalk behind the curb, carrying a cap beam under the deck,
  *    and an outer one behind an alley's back wall under a lane. Never on a
  *    road, clear of every junction's closure reach, the El's deck and
- *    stations, the river and every ramp's mouth;
+ *    stations, the channel and every ramp's mouth;
  *  - exclusions: no buildings or infill near a swing's turns (the deck cuts
  *    the corner there), beside a block of street left at its width (an alley
  *    ends on it: its mouth stays as it was, the deck overhangs the frontage),
@@ -66,7 +66,7 @@
  *    it (they may well run under it), and a racer who climbs onto it is off
  *    the course until a reset puts it back on the route.
  *
- * Planned right after the bluff (districts/index.ts): it keeps off the river
+ * Planned right after the bluff (districts/index.ts): it keeps off the channel
  * channel, the bluff, roundabouts and alleys, edits the graph (the widening,
  * the swings' diagonals, the missing streets) before any face is claimed, and
  * claims the streets under its deck (not the El's) and its ramps' foot

@@ -9,7 +9,7 @@
  * the harbor's skyline, render only behind the railing's closed gates.
  *
  * Planned after the routes and every other feature that reaches the city's
- * edge (the El and its run-off to its portal, the river's channel ends, the
+ * edge (the El and its run-off to its portal, the channel ends, the
  * expressway's deck, the bluff): each side's free stretch is what is left of
  * it once those keep CFG.clearance m away along it, and the side with the
  * longest stretch (open ends, an even quay height and the routes running

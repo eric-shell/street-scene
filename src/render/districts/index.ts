@@ -24,7 +24,7 @@ import { lakeRenderer } from './lake';
 import { marketRenderer } from './market';
 import { monumentRenderer } from './monument';
 import { parkRenderer } from './park';
-import { riverRenderer } from './river';
+import { channelRenderer } from './channel';
 import { roundaboutRenderer } from './roundabout';
 import { subwayRenderer } from './subway';
 import { highwayRenderer } from './highway';
@@ -40,7 +40,7 @@ import { cableCarRenderer } from './cableCar';
 
 export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   downtownRenderer,
-  riverRenderer,
+  channelRenderer,
   parkRenderer,
   roundaboutRenderer,
   alleyRenderer,

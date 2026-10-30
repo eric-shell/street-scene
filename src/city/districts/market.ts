@@ -105,7 +105,7 @@ function routeView(g: RoadGraph, r: CarveRoute): RouteView {
   } else {
     // The start and finish lines as buildRoute places them, with every node's distance measured on
     // its driving polyline (roundabout arcs add to it, the corners it rounds take away: along a
-    // sprint diving through the river channel the two drift far enough apart to matter).
+    // sprint diving through the channel the two drift far enough apart to matter).
     const built = buildRoute(g, 'sprint', r.nodes);
     const sOf = (id: number): number => {
       const q = g.nodes[id];

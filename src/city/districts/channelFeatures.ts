@@ -1,5 +1,5 @@
 /**
- * River channel features: one to three small set pieces per seed somewhere
+ * Channel features: one to three small set pieces per seed somewhere
  * along the floor, so a run down the channel is never only a straight. Each
  * is a shape added to the terrain's channel profile (no walls, so nothing here
  * can pin a car and the AI simply drives over them), with analytic gradients
@@ -15,20 +15,20 @@
  * - ledge: one half of the floor raised a step for a stretch, its edge a short
  *   steep bevel: drive along it, drop off it, or climb it.
  * - median: a low rounded ridge down the centerline with water barriers and
- *   sandbags standing on it (districts/river.ts build places them), splitting
+ *   sandbags standing on it (districts/channel.ts build places them), splitting
  *   the floor into two lanes: pick one, or go through.
  *
  * Features stay clear of the entrance feet and the bridge decks (the closures
  * and meets stand at the feet; nothing changes under a deck) and of each other.
  * The one sided ones sit on the side away from the low flow trickle. Stored in
  * the area params like the ramps (featuresOf) so the sim's profile and the
- * renderer (render/districts/river.ts) agree. Pure.
+ * renderer (render/districts/channel.ts) agree. Pure.
  */
 import { CITY } from '../config';
 import { Rng } from '../../sim/prng';
 import { smooth01, type Smooth } from './geom';
 
-const CFG = CITY.districts.river;
+const CFG = CITY.districts.channel;
 const FEAT = CFG.features;
 
 export const FEATURE_KINDS = ['hump', 'bar', 'table', 'ledge', 'median'] as const;

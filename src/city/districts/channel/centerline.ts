@@ -1,14 +1,14 @@
 /**
- * The river's centerline as the area params store it: samples c0..c{cn-1} of the channel's z every cdx m
- * from cx0, read back by a uniform Catmull-Rom through them (C1, flat beyond the ends). riverL is the signed
- * distance across the channel from it, riverFrame its tangent and normal, riverSlope its dz/dx. The meander
- * is gentle, so distances measured this way are close to the true normal distance. Everything in the river
+ * The channel's centerline as the area params store it: samples c0..c{cn-1} of the channel's z every cdx m
+ * from cx0, read back by a uniform Catmull-Rom through them (C1, flat beyond the ends). channelL is the signed
+ * distance across the channel from it, channelFrame its tangent and normal, channelSlope its dz/dx. The meander
+ * is gentle, so distances measured this way are close to the true normal distance. Everything in the channel
  * (planner, ramps, bridges, features, terrain, renderer) reads the channel through these.
  */
 import { CITY } from '../../config';
 import { sqrt } from '../../../sim/math';
 
-const CFG = CITY.districts.river;
+const CFG = CITY.districts.channel;
 
 const samplesCache = new WeakMap<Record<string, number>, Float64Array>();
 
@@ -25,7 +25,7 @@ function samplesOf(p: Record<string, number>): Float64Array {
 }
 
 /** Centerline z at x: uniform Catmull-Rom through the samples (C1), flat beyond the ends. */
-export function riverCenter(p: Record<string, number>, x: number): number {
+export function channelCenter(p: Record<string, number>, x: number): number {
   const s = samplesOf(p);
   const n = s.length;
   const u = (x - p.cx0) / p.cdx;
@@ -41,7 +41,7 @@ export function riverCenter(p: Record<string, number>, x: number): number {
 }
 
 /** dz/dx of the centerline at x. */
-export function riverSlope(p: Record<string, number>, x: number): number {
+export function channelSlope(p: Record<string, number>, x: number): number {
   const s = samplesOf(p);
   const n = s.length;
   const u = (x - p.cx0) / p.cdx;
@@ -56,13 +56,13 @@ export function riverSlope(p: Record<string, number>, x: number): number {
 }
 
 /** Signed distance across the channel (z above the centerline at the point's x; the meander is gentle, so this is close to the true normal distance). */
-export function riverL(p: Record<string, number>, x: number, z: number): number {
-  return z - riverCenter(p, x);
+export function channelL(p: Record<string, number>, x: number, z: number): number {
+  return z - channelCenter(p, x);
 }
 
 /** Unit tangent (toward +x) and normal (toward +l) of the centerline at x. */
-export function riverFrame(p: Record<string, number>, x: number): { tx: number; tz: number; mx: number; mz: number } {
-  const s = riverSlope(p, x);
+export function channelFrame(p: Record<string, number>, x: number): { tx: number; tz: number; mx: number; mz: number } {
+  const s = channelSlope(p, x);
   const tl = sqrt(1 + s * s);
   const tx = 1 / tl;
   const tz = s / tl;

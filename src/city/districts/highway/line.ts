@@ -13,7 +13,7 @@
  * an alley ends, the street keeps its width so the alley's mouth stays as
  * it was), too many missing streets, a swing
  * whose diagonal would squeeze a junction's sectors, cross another street or
- * come near the El, a diagonal or the river, the deck near the river channel
+ * come near the El, a diagonal or the channel, the deck near the channel
  * or a bluff, or a second crossing of the El. Pure.
  */
 import { CITY } from '../../config';
@@ -23,7 +23,7 @@ import { DEG, Vec2, atan2, cos, distToSegment, sin, sqrt, tan } from '../../../s
 import { Rng, deriveSeed } from '../../../sim/prng';
 import type { Area, PlanContext } from '../types';
 import { distToPolygonEdge, pointInPolygon } from '../geom';
-import { riverCenter } from '../river';
+import { channelCenter } from '../channel';
 import { bluffFootprint } from '../bluff';
 import { gridNode, streetChain } from '../subway';
 import { HALF, PLAIN, elCrossings, segmentHit } from './shape';
@@ -36,8 +36,8 @@ const DIAGONAL_CLEAR = 45;
 /** A street the line lays keeps this far from every junction and bend it does not join (m). */
 const NODE_GAP = 22;
 
-/** The deck keeps this far beyond the river channel's top edge (m, past its own half width). */
-const RIVER_CLEAR = 14;
+/** The deck keeps this far beyond the channel's top edge (m, past its own half width). */
+const CHANNEL_CLEAR = 14;
 
 /** At most this many blocks of the line may have no street under the deck (laid again). */
 const MAX_MISSING = 2;
@@ -192,7 +192,7 @@ export function fillet(C: Vec2, u: Vec2, v: Vec2, T: number): { pts: Vec2[]; r: 
 
 /** What the planner keeps the deck and its ramps clear of. */
 export interface Hazards {
-  rivers: Area[];
+  channels: Area[];
   bluffs: Vec2[][];
   rings: RoadNode[];
   /** The El's path sampled every few meters. */
@@ -209,14 +209,14 @@ export function hazards(ctx: PlanContext): Hazards {
       for (let k = 0; k < n; k++) el.push({ x: p[i].x + ((p[i + 1].x - p[i].x) * k) / n, z: p[i].z + ((p[i + 1].z - p[i].z) * k) / n });
     }
   }
-  return { rivers: ctx.areas.filter((a) => a.kind === 'river'), bluffs: ctx.areas.filter((a) => a.kind === 'bluff').map((a) => bluffFootprint(a)), rings: ctx.graph.nodes.filter((n) => n.ring), el };
+  return { channels: ctx.areas.filter((a) => a.kind === 'channel'), bluffs: ctx.areas.filter((a) => a.kind === 'bluff').map((a) => bluffFootprint(a)), rings: ctx.graph.nodes.filter((n) => n.ring), el };
 }
 
-/** Clear of the river channel, a bluff and (unless `rings` is false: the deck spans over one) every roundabout by `margin` (m). */
+/** Clear of the channel, a bluff and (unless `rings` is false: the deck spans over one) every roundabout by `margin` (m). */
 export function clearAt(hz: Hazards, x: number, z: number, margin: number, rings = true): boolean {
-  for (const r of hz.rivers) {
+  for (const r of hz.channels) {
     if (x < r.params.x0 - margin || x > r.params.x1 + margin) continue;
-    if (Math.abs(z - riverCenter(r.params, x)) < r.params.top + margin) return false;
+    if (Math.abs(z - channelCenter(r.params, x)) < r.params.top + margin) return false;
   }
   for (const p of hz.bluffs) if (pointInPolygon(x, z, p) || distToPolygonEdge(x, z, p) < margin) return false;
   if (rings) for (const n of hz.rings) if ((n.x - x) ** 2 + (n.z - z) ** 2 < (n.ring!.outer + CITY.sidewalk + margin) ** 2) return false;
@@ -296,7 +296,7 @@ function layable(g: RoadGraph, hz: Hazards, a: number, b: number, half: number, 
  * The line along the rows per column (`rows`, the swings' rows as they leave and join) with the given
  * swings, or null where it does not fit: a claimed node or street on its way (the El's excepted), an
  * alley's end or a roundabout, too many missing streets, a swing or a missing street that cannot be
- * laid, a diagonal near a swing, the deck near the river channel, a bluff or a roundabout's ring, or
+ * laid, a diagonal near a swing, the deck near the channel, a bluff or a roundabout's ring, or
  * crossing the El more than once.
  */
 export function planLine(ctx: PlanContext, hz: Hazards, rows: readonly number[], swings: readonly Swing[]): LinePlan | null {
@@ -488,7 +488,7 @@ export function planLine(ctx: PlanContext, hz: Hazards, rows: readonly number[],
   path.unshift({ x: path[0].x - t0.x * r0, z: path[0].z - t0.z * r0 });
   path.push({ x: last.x + tN.x * rN, z: last.z + tN.z * rN });
   for (let i = 0; i < W; i++) at[i]++;
-  // The deck clear of the river, a bluff and every roundabout, across its whole width; the El crossed once at most.
+  // The deck clear of the channel, a bluff and every roundabout, across its whole width; the El crossed once at most.
   let length = 0;
   for (let i = 1; i < path.length; i++) {
     const p = path[i - 1];
@@ -501,7 +501,7 @@ export function planLine(ctx: PlanContext, hz: Hazards, rows: readonly number[],
       for (const v of [-HALF, 0, HALF]) {
         const x = p.x + ((q.x - p.x) * s) / len + nx * v;
         const z = p.z + ((q.z - p.z) * s) / len + nz * v;
-        if (!clearAt(hz, x, z, RIVER_CLEAR, false)) return null;
+        if (!clearAt(hz, x, z, CHANNEL_CLEAR, false)) return null;
       }
     }
   }

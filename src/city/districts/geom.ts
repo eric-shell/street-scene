@@ -82,7 +82,7 @@ export function distToPolyline(x: number, z: number, pts: Vec2[]): number {
   return distToSegments(x, z, pts, false);
 }
 
-/** Distance from a point to an open polyline (m), through sim/math distToSegment (alleys, car parks, the river's decks). */
+/** Distance from a point to an open polyline (m), through sim/math distToSegment (alleys, car parks, the channel's decks). */
 export function distToPath(path: readonly Vec2[], x: number, z: number): number {
   let best = Infinity;
   for (let i = 0; i + 1 < path.length; i++) best = Math.min(best, distToSegment(x, z, path[i].x, path[i].z, path[i + 1].x, path[i + 1].z));

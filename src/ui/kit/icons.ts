@@ -101,6 +101,10 @@ export {
   MountainSnow,
   Trees,
   SquareParking,
+  // The garage's parts economy and Settings › Stats: a locked part, the points balance, the stats page.
+  Lock,
+  Coins,
+  ChartColumn,
   // The full city map: zoom and find-me controls, the waypoint.
   LocateFixed,
   ZoomIn,

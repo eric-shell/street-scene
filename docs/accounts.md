@@ -1,6 +1,6 @@
 # Accounts (Google sign-in, Neon, Vercel)
 
-Signed-in testers get their garage, garage prefs and settings (minus this device's graphics: `quality`, `autoQuality`, `showFps`) on every device. Signed out, or on a build without `VITE_GOOGLE_CLIENT_ID`, the game runs on local storage as before. Replays, ghosts, bests, music and the debug panels' tuning stay local.
+Signed-in testers get their garage, garage prefs, settings (minus this device's graphics: `quality`, `autoQuality`, `showFps`) and progress on every device. The synced store keys (`cloudSave.ts` `SYNCED`): `garage.v1`, `garage.prefs.v1`, `settings.v1`, and the progress keys `points.v1` (the points ledger), `stats.v1` (races and the rest Settings › Stats shows) and `purchases.v1` (the parts bought, per car). The progress keys only grow, so a download is merged with this device's copy (max per field for points and stats, union for purchases) instead of written over it: docs/economy.md. Signed out, or on a build without `VITE_GOOGLE_CLIENT_ID`, the game runs on local storage as before. Replays, ghosts, bests, music and the debug panels' tuning stay local.
 
 ## Pieces
 

@@ -185,7 +185,7 @@ describe('road profile: joints', () => {
           if (!d.joint) continue;
           joints++;
           // Bridge decks over the channel and the highway's deck chunks: never a ramp (solid or not), never anything else.
-          expect(area.kind === 'river' ? d.lower !== undefined : area.kind === 'highway' && area.variant === 'deck' && d.upper !== undefined, `seed ${seed} ${area.kind}`).toBe(true);
+          expect(area.kind === 'channel' ? d.lower !== undefined : area.kind === 'highway' && area.variant === 'deck' && d.upper !== undefined, `seed ${seed} ${area.kind}`).toBe(true);
         }
       });
       expect(joints, `seed ${seed}`).toBeGreaterThan(0);

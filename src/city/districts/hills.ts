@@ -14,7 +14,7 @@
  * with a smoothstep of the distance to that rectangle over a slope width
  * derived from the height and the grade cap (a smoothstep is steepest at
  * 1.5 / width), so the modifier is C1 everywhere and exactly 0 at its
- * bounding box. Slopes keep clear of the river channel (its floor must stay
+ * bounding box. Slopes keep clear of the channel (its floor must stay
  * flat), the El (trains cannot climb), roundabouts (their islands are built
  * level), the monument plaza and each other; they may run on past the city
  * edge. The area polygon covers the plateau and most of the slope, so
@@ -53,7 +53,7 @@ import { Rng, deriveSeed } from '../../sim/prng';
 import type { Area, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { pointInPolygon, polygonCentroid, smooth01, type Smooth } from './geom';
-import { rampAlong, rampPoint, rampsOf, riverCenter } from './river';
+import { rampAlong, rampPoint, rampsOf, channelCenter } from './channel';
 import { bluffFootprint } from './bluff';
 import { quayGuard } from './harborShore';
 
@@ -378,13 +378,13 @@ export function shapeOf(area: Area): HillShape {
 
 
 /**
- * Whether a hill's slopes keep clear of everything built level on this plan (river, El, highway, bluff, roundabouts,
+ * Whether a hill's slopes keep clear of everything built level on this plan (channel, El, highway, bluff, roundabouts,
  * monument, car parks, lakes, alley jump runs) and of the hills already `made` (grades would add up). Shared by the
  * planner and by the Hill Climb route preference (events.ts), so the routes favour streets a hill can really stand on.
  */
 export function hillFitter(ctx: Pick<PlanContext, 'graph' | 'areas' | 'event'>): (s: HillShape, made: readonly HillShape[]) => boolean {
   const g = ctx.graph;
-  const rivers = ctx.areas.filter((a) => a.kind === 'river');
+  const channels = ctx.areas.filter((a) => a.kind === 'channel');
   const subways = ctx.areas.filter((a) => a.kind === 'subway').map((a) => samplePath(a.path, 10));
   // The elevated highway: its deck holds a smoothed level over the ground and its ramps climb a fixed
   // height to it, so no slope under either (districts/highway/); outlines sampled, the deck's line too.
@@ -414,7 +414,7 @@ export function hillFitter(ctx: Pick<PlanContext, 'graph' | 'areas' | 'event'>):
     });
   // The channel's ramps climb a set profile out to a level lip at the street: a slope under one tilts the
   // lip and the climb (sampled from the foot to past the top; the channel check covers only the bank).
-  const ramps = rivers.flatMap((r) => rampsOf(r).map((m) => samplePath([rampPoint(m, 0, 0), rampPoint(m, rampAlong(r.params, m, m.topL) + 6, 0)], 6)));
+  const ramps = channels.flatMap((r) => rampsOf(r).map((m) => samplePath([rampPoint(m, 0, 0), rampPoint(m, rampAlong(r.params, m, m.topL) + 6, 0)], 6)));
   const rings = g.nodes.filter((n) => n.ring);
   // A Harbor Run's routes were picked for the quay that is planned after the hills (harborShore.ts): a slope
   // over its frontage would take the stretch from it (waterfront.ts), so the slopes keep off the frontage too.
@@ -422,8 +422,8 @@ export function hillFitter(ctx: Pick<PlanContext, 'graph' | 'areas' | 'event'>):
 
   return (s, made) => {
     const reach = s.w + CFG.clearance;
-    for (const r of rivers) {
-      for (let x = r.params.x0; x <= r.params.x1; x += 12) if (plateauDistance(s, x, riverCenter(r.params, x)).d < reach + r.params.top) return false;
+    for (const r of channels) {
+      for (let x = r.params.x0; x <= r.params.x1; x += 12) if (plateauDistance(s, x, channelCenter(r.params, x)).d < reach + r.params.top) return false;
     }
     for (const path of ramps) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
     for (const path of subways) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;

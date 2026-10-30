@@ -7,7 +7,7 @@
 import { CITY, ROUTE } from './config';
 import { type RoadGraph, chainFrom, otherNode } from './roadGraph';
 import { type EdgeMouths, type Wall, makeWall } from './blocks';
-import { riverL } from './districts/river';
+import { channelL } from './districts/channel';
 import { type Vec2, abs, lineIntersectT, sqrt } from '../sim/math';
 import type { Route } from './route';
 
@@ -98,7 +98,7 @@ function nearestOn(walls: readonly Wall[], p: Vec2): { q: Vec2; d: number } {
   return best;
 }
 
-function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: number, rails: Wall[] = [], setback = 0, river?: Record<string, number>, ties = true): MouthBarrier {
+function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: number, rails: Wall[] = [], setback = 0, channel?: Record<string, number>, ties = true): MouthBarrier {
   const e = g.edges[edge];
   const m = mouths[edge];
   const p = node === e.a ? m.aP.outer : m.bP.outer;
@@ -124,9 +124,9 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
   }
   // Across a channel the closure runs fence to fence (the banks are drivable), a hair short of the
   // fence walls; across a ramp, a hair short of its trench walls.
-  const half = e.kind === 'channel' ? e.width / 2 + CITY.districts.river.channelMargin + CITY.districts.river.bankWidth + 0.2 : e.kind === 'ramp' ? e.width / 2 - 0.3 : e.width / 2 + e.sidewalk;
+  const half = e.kind === 'channel' ? e.width / 2 + CITY.districts.channel.channelMargin + CITY.districts.channel.bankWidth + 0.2 : e.kind === 'ramp' ? e.width / 2 - 0.3 : e.width / 2 + e.sidewalk;
   // Past the plinths of the ramps meeting at a foot, so the closure never cuts a plinth face: a ramp
-  // tilted along the channel (one whose top took a bend node of its street, districts/river.ts)
+  // tilted along the channel (one whose top took a bend node of its street, districts/channel.ts)
   // carries its trench walls further along it than a square one.
   if (e.kind === 'channel') {
     for (const id of n.edges) {
@@ -138,8 +138,8 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
       const rdz = (top.z - n.z) / rl;
       const along = abs(rdx * dx + rdz * dz);
       const across = abs(rdx * dz - rdz * dx);
-      const plinth = r.width / 2 + CITY.districts.river.rampBody;
-      d = Math.max(d, CITY.districts.river.closureFootClear, rl * along + plinth * across + 3.5);
+      const plinth = r.width / 2 + CITY.districts.channel.rampBody;
+      d = Math.max(d, CITY.districts.channel.closureFootClear, rl * along + plinth * across + 3.5);
     }
   }
   const d0 = d;
@@ -224,16 +224,16 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
   // (-dz, dx) points toward the next edge in the node's angular order, so a -> b runs counterclockwise.
   let ha = half;
   let hb = half;
-  if (e.kind === 'channel' && river) {
+  if (e.kind === 'channel' && channel) {
     // The channel edge is a chord of the meander, up to a meter off the true centerline: each end
     // is found on the real bank, a hair inside the fence line, so the closure never pokes through it.
-    const fence = river.top + 0.5 - 0.3;
+    const fence = channel.top + 0.5 - 0.3;
     const reach = (sg: number): number => {
       let lo = half - 4;
       let hi = half + 4;
       for (let i = 0; i < 30; i++) {
         const mid = (lo + hi) / 2;
-        if (abs(riverL(river, cx + sg * dz * mid, cz - sg * dx * mid)) < fence) lo = mid;
+        if (abs(channelL(channel, cx + sg * dz * mid, cz - sg * dx * mid)) < fence) lo = mid;
         else hi = mid;
       }
       return (lo + hi) / 2;
@@ -264,9 +264,9 @@ function railAcross(n: Vec2, dx: number, dz: number, reach: number, rails: reado
 /**
  * Barrier groups for every closed side street of the route, in route node
  * order. Pass the route's corner rails so barriers stay behind them, and the
- * river area's params so closures across its channel end at the bank fences.
+ * channel area's params so closures across its channel end at the bank fences.
  */
-export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Route, rails: Wall[] = [], river?: Record<string, number>, cityWalls: readonly Wall[] = []): BarrierGroup[] {
+export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Route, rails: Wall[] = [], channel?: Record<string, number>, cityWalls: readonly Wall[] = []): BarrierGroup[] {
   const byNode = new Map<number, MouthBarrier[]>();
   const order = route.nodes;
   /** A barrier line crossing a city wall (a bridge body's culvert face right where a wide junction's corners end). */
@@ -293,13 +293,13 @@ export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Ro
     const fl = sqrt((far.x - n.x) ** 2 + (far.z - n.z) ** 2) || 1;
     const headOn = !!to && ((to.x - base.x) * (far.x - n.x) + (to.z - base.z) * (far.z - n.z)) / (il * fl) > 0.55;
     const setback = headOn ? ROUTE.barrierSetbackHeadOn : ROUTE.barrierSetbackSide;
-    let mb = mouthBarrier(g, mouths, cs.edge, cs.node, near, setback, river);
+    let mb = mouthBarrier(g, mouths, cs.edge, cs.node, near, setback, channel);
     // A tie to a corner rail that would cut through a building corner or across the course: a full closure behind the rail instead.
     const tieOff = (t: MouthBarrier) => crossesWall(t) || crossesRoute(t);
-    if (mb.tie && (tieOff(mb) || (mb.second && tieOff(mb.second)))) mb = mouthBarrier(g, mouths, cs.edge, cs.node, near, setback, river, false);
+    if (mb.tie && (tieOff(mb) || (mb.second && tieOff(mb.second)))) mb = mouthBarrier(g, mouths, cs.edge, cs.node, near, setback, channel, false);
     // Set back into a wall (a bridge body starting where the corners end): stand at the mouth instead.
-    if (!mb.railed && !mb.tie && crossesWall(mb)) mb = mouthBarrier(g, mouths, cs.edge, cs.node, near, 0, river, false);
-    // Still into one (a river side ramp's trench opening beside the mouth): end half a metre short of it.
+    if (!mb.railed && !mb.tie && crossesWall(mb)) mb = mouthBarrier(g, mouths, cs.edge, cs.node, near, 0, channel, false);
+    // Still into one (a channel side ramp's trench opening beside the mouth): end half a metre short of it.
     for (const w of cityWalls) {
       if (abs(w.ax - mb.a.x) > 60 || abs(w.az - mb.a.z) > 60) continue;
       const t = segCross(mb.a, mb.b, { x: w.ax, z: w.az }, { x: w.bx, z: w.bz });
@@ -389,7 +389,7 @@ export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Ro
         const onto = far.edges.length === 2 ? g.edges[far.edges[0] === lastEdge ? far.edges[1] : far.edges[0]] : undefined;
         let room: number;
         if (onto?.kind === 'ramp') {
-          room = chain.length - b.d + onto.length * CITY.districts.river.rampLip;
+          room = chain.length - b.d + onto.length * CITY.districts.channel.rampLip;
         } else {
           const other = barrierAt(lastEdge, farId);
           const farMouth = other ? other.d : mouthBarrier(g, mouths, lastEdge, farId).d - 1.5;

@@ -1,6 +1,6 @@
 ---
 name: district
-description: Add or change a city district kind (parks, alleys, river, subway, roundabouts, infill, or a new one) - the paired sim module and renderer, registries, config, wall looks and the tests that enforce them. Use for any task about city areas, special blocks, drivable features or the minimap's area colors.
+description: Add or change a city district kind (parks, alleys, channel, subway, roundabouts, infill, or a new one) - the paired sim module and renderer, registries, config, wall looks and the tests that enforce them. Use for any task about city areas, special blocks, drivable features or the minimap's area colors.
 ---
 # Districts
 
@@ -10,7 +10,7 @@ A district kind is two files plus registrations. Read `src/city/districts/types.
 |---|---|
 | `park` | claim whole block faces, add a terrain height modifier with exact gradients, solid props as walls (trees) |
 | `alley` / `backAlley` | edit the road graph (narrow streets, new shortcut edges) and call `ctx.graphChanged()` |
-| `river` | a linear area with a path, bridges, several wall looks, surfaces at different priorities |
+| `channel` | a linear area with a path, bridges, several wall looks, surfaces at different priorities |
 | `roundabout` | claim nodes, replace an intersection with a ring and a solid island |
 | `infill` | a `late` phase module that fills leftover frontage after buildings exist |
 

@@ -5,7 +5,7 @@
  * and smoothed so the small kinks at every node become gentle curves the
  * trains can ride without snapping. Along it:
  *  - the deck top height: the terrain dilated and smoothed along the line, so
- *    the deck never dips into the river channel or follows a pothole, plus
+ *    the deck never dips into the channel or follows a pothole, plus
  *    the deck height, dropping to the portals at the ends; across a bluff
  *    (districts/bluff.ts) the deck holds one absolute level instead (`level`)
  *    and blends back into that profile beyond it, over whatever length keeps
@@ -31,7 +31,7 @@ export const RAIL = {
   step: 2,
   /** Smoothing half window (m): node kinks become arcs about twice this long. */
   smooth: 14,
-  /** Terrain dilation half window (m) before smoothing: spans the river channel. */
+  /** Terrain dilation half window (m) before smoothing: spans the channel. */
   dilate: 30,
   /** Height smoothing half window (m). */
   heightSmooth: 22,

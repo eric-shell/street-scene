@@ -514,7 +514,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
       const lat = half + CITY.sidewalk;
       const g0 = h(smp.x, smp.z);
       // Facade to facade at the highest height both podiums reach (a podium is only 4.4 m on a ground floor
-      // building, 7.7 m and up with floors); the route's open stretches (highway, park, river
+      // building, 7.7 m and up with floors); the route's open stretches (highway, park, channel
       // bank) have no facades at all, so there it is post to post beyond the sidewalk.
       let span: { ax: number; az: number; bx: number; bz: number; y: number } | null = null;
       for (const up of DRESS.bannerYs) {
@@ -538,7 +538,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
         if (Math.abs(ga - g0) > DRESS.postRise || Math.abs(gz - g0) > DRESS.postRise) continue;
         if (!POST_GROUND.has(world.surfaceAt(ax, az)) || !POST_GROUND.has(world.surfaceAt(bx, bz))) continue;
         // A drawn post must have a sim wall or solid behind it, or a car could drive through it (a ghost): the
-        // open ground of a park, plaza or river bank has none, so those stations get no banner.
+        // open ground of a park, plaza or channel bank has none, so those stations get no banner.
         const pa = postBacked(ax, az);
         const pb = postBacked(bx, bz);
         if (!pa || !pb) continue;

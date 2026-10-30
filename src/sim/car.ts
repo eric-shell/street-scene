@@ -4,7 +4,7 @@
  * springs against the terrain. Deterministic: fixed dt, no globals.
  *
  * The body leans at most BODY_LEAN away from the ground under it, not from
- * level, so it lies over on a river bank and pitches up a ramp with all four
+ * level, so it lies over on a channel bank and pitches up a ramp with all four
  * wheels loaded. The ground pushes back along its normal: the springs' load
  * times the slope is the force down a grade at rest and what slows a car
  * climbing a bank. Landings are absorbed by a stiff, lossy bump stop and a
@@ -94,7 +94,9 @@ export interface CarState {
    * and what crashes into walls, barriers, rails and other racers took this tick (stages, 0 when none; race.ts zeroes it each tick).
    */
   nitroChain: number;
-  nitroGain: { drift: number; nearMiss: number; draft: number; zone: number; wreck: number };
+  nitroGain: { drift: number; nearMiss: number; draft: number; zone: number; wreck: number; air: number };
+  /** Seconds since the last wheel touched the ground, 0 while any wheel has contact (refillNitrous pays nitrous.refillAir past nitrous.airGrace of it). */
+  airTime: number;
   nitroLoss: number;
   /** Tank and overdrive a reset or tow took this tick (stages, 0 when none; reset.ts sets it, race.ts zeroes it each tick). */
   nitroReset: number;
@@ -192,7 +194,8 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     nitroRun: -1,
     nitroOver: 0,
     nitroChain: 0,
-    nitroGain: { drift: 0, nearMiss: 0, draft: 0, zone: 0, wreck: 0 },
+    nitroGain: { drift: 0, nearMiss: 0, draft: 0, zone: 0, wreck: 0, air: 0 },
+    airTime: 0,
     nitroLoss: 0,
     nitroReset: 0,
     throttle: 0,
@@ -939,7 +942,7 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   Fu -= sumF * (sl.gx * fx + sl.gz * fz);
   Fv -= sumF * (sl.gx * lx + sl.gz * lz);
   // Load transfer (pitch and roll below) follows the body's actual acceleration, slope included, so a
-  // bank or a grade alone does not unload the uphill wheels: a car holding a line along a river bank
+  // bank or a grade alone does not unload the uphill wheels: a car holding a line along a channel bank
   // sits on it as it would on the flat.
   c.aLong = Fu / m;
   c.aLat = Fv / m;
@@ -1025,7 +1028,7 @@ function suspension(c: CarState, t: CarTuning, world: World, h: number, fx: numb
     // Wheels ride the paving: up onto a sidewalk over its curb, not through it.
     const ground = world.driveHeightAt(wx, wz, c.y);
     // Water is felt per wheel (the body's own surface is sampled at its center): a car straddling the
-    // river trickle's edge ploughs with the wheels that are in it.
+    // channel trickle's edge ploughs with the wheels that are in it.
     if (world.surfaceAt(wx, wz, c.y) === 'water') wet++;
     const comp = ground - (c.y + wv * tRoll - wu * tPitch);
     const compVel = (comp - w.compression) / h;
@@ -1297,19 +1300,24 @@ export function driftRefillRate(c: CarState, t: CarTuning): number {
 }
 
 /**
- * Refill nitrous from style: drifting, near misses and drafting, filling the
+ * Refill nitrous from style: drifting, near misses, drafting and airtime, filling the
  * stages in order up to a full tank. Call once per tick after collisions.
  */
 export function refillNitrous(c: CarState, t: CarTuning): void {
   const drift = c.drifting ? driftRefillRate(c, t) : 0;
   const near = c.nearMiss ? t.nitrous.refillNearMiss : 0;
   const draft = c.drafting ? t.nitrous.refillDraft : 0;
-  const add = drift + near + draft;
+  // Airtime: no wheel on the ground; a kerb hop (under airGrace) pays nothing, a jump pays for every second past it.
+  const airborne = c.wheels.every((w) => !w.contact);
+  c.airTime = airborne ? c.airTime + DT : 0;
+  const air = c.airTime > t.nitrous.airGrace ? t.nitrous.refillAir : 0;
+  const add = drift + near + draft + air;
   // Telemetry: each source's share of what the tank and overdrive took (stages driftZones.ts adds go in .zone).
   const k = add > 0 ? fillNitrous(c, t, add * DT) / add : 0;
   const g = c.nitroGain;
   g.drift = drift * k;
   g.nearMiss = near * k;
   g.draft = draft * k;
+  g.air = air * k;
   g.zone = 0;
 }

@@ -9,7 +9,7 @@
  * Outro: after the player crosses the line the camera swings around the car
  * to a low, wide angle hero shot in front of it, then drifts in a slow orbit.
  * Timing and framing come from CAMERA.intro / CAMERA.outro. Render only.
- * The fly-in carries a title card with the seed's event (Hill Climb, River
+ * The fly-in carries a title card with the seed's event (Hill Climb, Channel
  * Run, ...; city/events.ts), shown while the HUD is hidden for the shot.
  * Handoff: free roam taken over from the menu starts on the showreel's shot
  * (game/streetCameras.ts) and swings round the car onto the chase camera; the

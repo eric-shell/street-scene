@@ -12,12 +12,12 @@
  * touching a route node (the route, its closed side streets and their meets),
  * nor within routeClear of the route's line, in a race or an open world alike
  * (the menu's cruise and free roam's start drive the route); never a
- * shortcut, the river, a bridge, a night market's street or a street with
+ * shortcut, the channel, a bridge, a night market's street or a street with
  * roadworks. Along the kerb a slot keeps cornerClear from a junction's curb
  * corner, clear of bus bays and path mouths, a hydrant's front, a bus stop's painted zone (stopClear), a level
  * crossing's gates, and its footprint off every wall and prop and on the road
  * at street level (no deck over the channel), and out of the districts that
- * own their street (PARKING.offAreas: the river's banks, a tunnel, a viaduct);
+ * own their street (PARKING.offAreas: the channel's banks, a tunnel, a viaduct);
  * anything a district stands in the street is thereby never parked into.
  *
  * Parking lots (districts/parkingLot.ts) add their cars after the kerb's: each lot's bays at its occupancy,
@@ -33,7 +33,7 @@
  */
 import type { World, Contact } from './world';
 import type { RoadEdge } from './roadGraph';
-import { chainOf, isBendNode, isRiverEdge } from './roadGraph';
+import { chainOf, isBendNode, isChannelEdge } from './roadGraph';
 import { CITY, PARKING } from './config';
 import { baysByEdge, bayHitsCircle } from './busBays';
 import { lotLayout } from './districts/parkingLot';
@@ -181,7 +181,7 @@ function buildPlan(w: World): ParkingPlan {
   const chainSide = new Map<number, 1 | -1 | 0>();
   for (const e of g.edges) {
     const strip = kerbStrip(e);
-    if (!strip || e.shortcut || e.bridge || isRiverEdge(e) || closedEdges.has(e.id) || routeNodes.has(e.a) || routeNodes.has(e.b)) continue;
+    if (!strip || e.shortcut || e.bridge || isChannelEdge(e) || closedEdges.has(e.id) || routeNodes.has(e.a) || routeNodes.has(e.b)) continue;
     const chain = chainOf(g, e.id);
     const key = Math.min(...chain.edges);
     let cs = chainSide.get(key);

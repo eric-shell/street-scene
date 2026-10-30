@@ -66,7 +66,7 @@ function plan(world: World): Gateway[] {
   /** Every way into a hood; the best that has room for the sign wins. */
   const offers: { hood: number; score: number; edge: number; node: number; onRoute: boolean }[] = [];
 
-  // The route's own entries, the earliest along the route first. A hood entered by a river ramp or the channel is met
+  // The route's own entries, the earliest along the route first. A hood entered by a channel ramp or the channel is met
   // at the first street after it.
   const r = world.route;
   const n = r.edges.length;

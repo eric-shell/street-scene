@@ -22,7 +22,7 @@
  * A seed's home (cityIdentity.ts signature) dresses its own region: a New York home steams most of its
  * downtown manholes (steam.ts draws the plumes), a Miami home lays terrazzo slabs along the downtown sidewalks.
  *
- * The river's channel and ramp edges get nothing: the river renderer paints
+ * The channel and ramp edges get nothing: the channel renderer paints
  * its own floor, and a decal draped on the terrain under a bridge deck would
  * hang at deck level 4 m over the floor (the terrain there is the deck,
  * World.heightAt without a body height). The route's rubber samples the
@@ -38,7 +38,8 @@ import { DECAL_ATLAS_SIZE, DECAL_CELLS, DecalKind, AtlasCell } from '../textures
 import { baysByEdge } from '../../city/busBays';
 import { planParking } from '../../city/parking';
 import { bayMouth } from './busBays';
-import { downtownFactor, isBendNode, isRiverEdge } from '../../city/roadGraph';
+import { CROSSWALK, edgePaint } from './crosswalks';
+import { downtownFactor, isBendNode, isChannelEdge } from '../../city/roadGraph';
 import { regionAt } from '../buildings/architecture';
 import { signatureAt } from '../cityIdentity';
 import { StreetSpots } from './streetSpots';
@@ -110,9 +111,7 @@ const DETAIL = {
   /** A plain street's junction cobbles its crosswalks when its node is at least this far downtown, at this seeded share. */
   cobbleDowntown: 0.5,
   cobbleShare: 0.5,
-  /** The band runs from the mouth over the painted stripes' span (cityMeshes: 1.2 to 4.2 m in), this wide of a margin to each curb. */
-  cobbleFrom: 1.15,
-  cobbleTo: 4.25,
+  /** The band runs over the painted stripes' span (crosswalks.ts, a little wider), this wide of a margin to each curb. */
   cobbleMargin: 0.45,
   /** Pale paving bars along the band's two long edges. */
   cobbleBar: 0.2,
@@ -242,7 +241,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     else parkedSides.set(row.edge, new Set([row.side]));
   }
 
-  /** Whether a plain street's crosswalks at this junction are cobbled: downtown, outside any district (a river bank, a market), every road a plain street or an alley, a seeded share (a hash of the node, so every street of the junction agrees). */
+  /** Whether a plain street's crosswalks at this junction are cobbled: downtown, outside any district (a channel bank, a market), every road a plain street or an alley, a seeded share (a hash of the node, so every street of the junction agrees). */
   const cobbleMemo = new Map<number, boolean>();
   const cobbleAt = (node: number): boolean => {
     let hit = cobbleMemo.get(node);
@@ -257,13 +256,17 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
 
   // ---------- per edge ----------
   g.edges.forEach((e, ei) => {
-    if (isRiverEdge(e)) return;
+    if (isChannelEdge(e)) return;
     const m = mouths[ei];
     const alley = e.kind === 'backAlley' || e.kind === 'alley';
     const a = { x: (m.aP.curb.x + m.aN.curb.x) / 2, z: (m.aP.curb.z + m.aN.curb.z) / 2 };
     const b = { x: (m.bP.curb.x + m.bN.curb.x) / 2, z: (m.bP.curb.z + m.bN.curb.z) / 2 };
     const len = Math.hypot(b.x - a.x, b.z - a.z);
     if (len < 10) return;
+    // Where the straight road starts at each end and which ends carry a crosswalk (crosswalks.ts): the paint below follows cityMeshes.
+    const paint = edgePaint(g, mouths, ei);
+    const offA = paint?.offA ?? 0;
+    const offB = paint?.offB ?? 0;
     const dx = (b.x - a.x) / len;
     const dz = (b.z - a.z) / len;
     // Left of travel a -> b, like the lane markings.
@@ -321,8 +324,8 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     const bendA = isBendNode(g, e.a);
     const bendB = isBendNode(g, e.b);
     for (const [s, dir] of [
-      [6, 1],
-      [len - 6, -1],
+      [6 + offA, 1],
+      [len - 6 - offB, -1],
     ] as const) {
       if (dir > 0 ? bendA : bendB) continue;
       for (const side of [1, -1]) {
@@ -368,14 +371,14 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     }
     // Worn crosswalk paint under the wheel tracks of every lane, at both junction ends.
     for (const [from, dir] of [
-      [0, 1],
-      [len, -1],
+      [offA, 1],
+      [len - offB, -1],
     ] as const) {
-      if (dir > 0 ? bendA : bendB) continue;
+      if (!(dir > 0 ? paint?.crossA : paint?.crossB)) continue;
       if (e.kind === 'street' && cobbleAt(dir > 0 ? e.a : e.b)) {
         // A cobbled crosswalk: setts over the painted stripes, between two pale bars.
-        const x0 = from + dir * DETAIL.cobbleFrom;
-        const x1 = from + dir * DETAIL.cobbleTo;
+        const x0 = from + dir * (CROSSWALK.from - 0.05);
+        const x1 = from + dir * (CROSSWALK.to + 0.05);
         const across = half - DETAIL.cobbleMargin;
         const cols = Math.max(2, Math.round((2 * across) / TRAM.bandPiece));
         for (let k = 0; k < cols; k++) {
@@ -398,7 +401,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
       if (tram.edges.has(ei) && !lane.outer) continue;
       if (e.lanes === 2 && !rng.chance(DECAL.arrow2Lane * D)) continue;
       if (toB ? bendB : bendA) continue;
-      const s = toB ? len - DECAL.arrowBack : DECAL.arrowBack;
+      const s = toB ? len - DECAL.arrowBack - offB : DECAL.arrowBack + offA;
       const p = at(s, lane.lat);
       let kind: DecalKind = 'arrowStraight';
       if (e.lanes === 4) kind = lane.outer ? (rng.chance(0.5) ? 'arrowRight' : 'arrowStraightRight') : rng.chance(0.4) ? 'arrowStraightLeft' : 'arrowStraight';
@@ -615,7 +618,7 @@ type Quad = (out: GeoBuilder, kind: DecalKind, cx: number, cz: number, yaw: numb
  * fillet through the apex, exit streaks where the car runs wide, and burnout
  * marks off the grid slots. The fillet is a circular arc tangent to both
  * legs, which is close enough to the AI's smoothed line. A corner at a node
- * of the river's own (a channel bend, an entrance foot) is on the channel
+ * of the channel's own (a channel bend, an entrance foot) is on the channel
  * floor, so its rubber uses `quadLow`: a braking mark there can reach under a
  * bridge deck, where the terrain is the deck.
  */
@@ -625,7 +628,7 @@ function rubberOnRoute(world: World, rng: Rng, gb: GeoBuilder, quadHigh: Quad, q
   const n = P.length;
   const dark = (k: number) => new THREE.Color(k, k, k);
   const g = world.graph;
-  const floorNodes = new Set(g.nodes.filter((nd) => nd.edges.length > 0 && nd.edges.every((eid) => isRiverEdge(g.edges[eid]))).map((nd) => `${nd.x},${nd.z}`));
+  const floorNodes = new Set(g.nodes.filter((nd) => nd.edges.length > 0 && nd.edges.every((eid) => isChannelEdge(g.edges[eid]))).map((nd) => `${nd.x},${nd.z}`));
   const from = route.closed ? 0 : 1;
   const to = route.closed ? n - 1 : n - 1;
   for (let i = from; i < to; i++) {

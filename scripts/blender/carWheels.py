@@ -64,13 +64,13 @@ JUNK = r'(?i)(?<![a-z])(stand|ground|plane|shadow|floor|backdrop|logo|badge|embl
 
 # The garage groups wheels by the real maker of their donor, under a fictional maker name (real
 # wheel makers' names never ship): the maker as the donor's title leads with it -> the group.
-GROUPS = {'Work': 'Kaito', 'Rotiform': 'Mizuchi', 'Vossen': 'Seiryu', 'HRE': 'Byakko', 'Fifteen52': 'Hotaru',
-          'SSR': 'Hiryu', 'BBS': 'Suzaku', 'Volk': 'Genbu', 'Enkei': 'Kohaku',
-          'Advan': 'Kitsune', 'Avant Garde': 'Tengu', 'Brixton Forged': 'Oni', 'Kyusha Shoes': 'Tanuki', 'Velare': 'Yamabiko',
-          'VIP Modular': 'Baku', 'Weds': 'Fujin', 'Brabus': 'Nue', 'Budnik': 'Orochi',
-          'Devil Japan': 'Shuten', 'Kansei': 'Nekomata', 'MAE': 'Kamaitachi', 'Spoon': 'Kappa', 'Konig': 'Kodama',
-          'Rays': 'Genbu',   # Volk is a Rays brand: one group
-          'Vossen-x-Work': 'Seiryu'}   # a Vossen collaboration, listed with Vossen
+GROUPS = {'Work': 'Yamabiko', 'Rotiform': 'Oni', 'Vossen': 'Tanuki', 'HRE': 'Kitsune', 'Fifteen52': 'Kappa',
+          'SSR': 'Seiryu', 'BBS': 'Fujin', 'Volk': 'Nue', 'Enkei': 'Kamaitachi',
+          'Advan': 'Baku', 'Avant Garde': 'Byakko', 'Brixton Forged': 'Hiryu', 'Kyusha Shoes': 'Mizuchi', 'Velare': 'Shuten',
+          'VIP Modular': 'Suzaku', 'Weds': 'Tengu', 'Brabus': 'Genbu', 'Budnik': 'Hotaru',
+          'Devil Japan': 'Kaito', 'Kansei': 'Kodama', 'MAE': 'Nekomata', 'Spoon': 'Orochi', 'Konig': 'Kohaku',
+          'Rays': 'Nue',   # Volk is a Rays brand: one group
+          'Vossen-x-Work': 'Tanuki'}   # a Vossen collaboration, listed with Vossen
 
 # Most donors are jonver87's (CC BY 4.0): clean showpiece models without tires, each piece its own
 # mesh. Recipe fields: `construction` 'single' / 'multi' (one-piece or multi-piece, stated on every wheel: the

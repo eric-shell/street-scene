@@ -28,7 +28,7 @@ import { Vec2, distToSegment, sqrt, yawOf } from '../../../sim/math';
 import type { Area, AreaBuild, BuildContext, DeckSpan, HeightSample } from '../types';
 import { emptyBuild } from '../types';
 import { circlePolygon, distToPolygonEdge, pointInPolygon, solidWalls } from '../geom';
-import { riverCenter } from '../river';
+import { channelCenter } from '../channel';
 import { gridNode, streetChain } from '../subway';
 import { RAIL, projectOnCurve } from '../../railCurve';
 import { type Lip, lipSeries } from '../../roadProfile';
@@ -82,8 +82,8 @@ export function buildDeck(ctx: BuildContext, area: Area): AreaBuild {
     }
   }
   const elReach = CITY.districts.subway.deckWidth / 2 + 2.5;
-  const rivers = ctx.areas.filter((a) => a.kind === 'river');
-  const inChannel = (x: number, z: number) => rivers.some((rv) => Math.abs(z - riverCenter(rv.params, x)) < rv.params.top + CITY.districts.river.bridgeBody + 2);
+  const channels = ctx.areas.filter((a) => a.kind === 'channel');
+  const inChannel = (x: number, z: number) => channels.some((rv) => Math.abs(z - channelCenter(rv.params, x)) < rv.params.top + CITY.districts.channel.bridgeBody + 2);
   const rampPolys = deck.ramps.map((r) => r.area.polygon);
   // The loops' mouths on the street beneath, and the slip ramps' runs along it: no bent stands where a
   // car crosses the sidewalk to them.

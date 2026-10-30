@@ -3,7 +3,7 @@ import { CITY } from '../src/city/config';
 import { createCity, createWorld, planRoads } from '../src/city/world';
 import type { City, World } from '../src/city/world';
 import { Rng } from '../src/sim/prng';
-import { riverCenter } from '../src/city/districts/river';
+import { channelCenter } from '../src/city/districts/channel';
 import { polygonBounds, pointInPolygon } from '../src/city/districts/geom';
 import { HIGHWAY_HALF, LOOP_AT, deckPoint, deckTopAt, deckUnderAt, highwayDeck, laneCenter } from '../src/city/districts/highway/shape';
 import type { HighwayDeck, HighwayRamp } from '../src/city/districts/highway/shape';
@@ -61,7 +61,7 @@ describe('elevated highway (plan)', () => {
     }
   });
 
-  it('crosses the map along its rows, swinging once or twice, clear of the river, a loop pair at each end and its interchanges an off-ramp beside an on-ramp, the same way every time', () => {
+  it('crosses the map along its rows, swinging once or twice, clear of the channel, a loop pair at each end and its interchanges an off-ramp beside an on-ramp, the same way every time', () => {
     let withInterchange = 0;
     for (const seed of highwaySeeds(5, 10)) {
       const plan = planRoads(seed);
@@ -76,11 +76,11 @@ describe('elevated highway (plan)', () => {
       expect(deck.params.swings).toBeLessThanOrEqual(CFG.swings[1]);
       const rows = Array.from({ length: CITY.gridW }, (_, i) => deck.params[`row${i}`]);
       for (let i = 1; i < rows.length; i++) if (rows[i] >= 0 && rows[i - 1] >= 0) expect(Math.abs(rows[i] - rows[i - 1])).toBeLessThanOrEqual(1);
-      // Its deck clear of the river channel.
-      for (const r of plan.districts.areas.filter((a) => a.kind === 'river')) {
+      // Its deck clear of the channel.
+      for (const r of plan.districts.areas.filter((a) => a.kind === 'channel')) {
         for (const q of p) {
           if (q.x < r.params.x0 || q.x > r.params.x1) continue;
-          expect(Math.abs(q.z - riverCenter(r.params, q.x))).toBeGreaterThan(r.params.top + HIGHWAY_HALF);
+          expect(Math.abs(q.z - channelCenter(r.params, q.x))).toBeGreaterThan(r.params.top + HIGHWAY_HALF);
         }
       }
       // A loop pair at each end of the drivable deck: one down off the outgoing carriageway, one up onto
@@ -535,13 +535,13 @@ describe('elevated highway (alleys)', () => {
   });
 });
 
-describe('river bridges beside the highway', () => {
+describe('channel bridges beside the highway', () => {
   it('answer every two level query exactly as before the highway (fingerprint)', () => {
     // FNV-1a over heightAt, driveHeightAt, slopeAt, surfaceAt at three heights and twoLevels, sampled over every
     // bridge deck's span on three seeds (two with a highway), recorded on the commit before the highway's
-    // levels joined the river's (DeckSpan `upper`), re-recorded for the per-seed city plans (all three seeds a
-    // river and a highway), and again when the bridge decks gained their expansion joints (DeckSpan `joint`, a 2 cm lip every
-    // 20 m on the deck level only) and the streets their crown. A change to the river or the terrain moves it on purpose.
+    // levels joined the channel's (DeckSpan `upper`), re-recorded for the per-seed city plans (all three seeds a
+    // channel and a highway), and again when the bridge decks gained their expansion joints (DeckSpan `joint`, a 2 cm lip every
+    // 20 m on the deck level only) and the streets their crown. A change to the channel or the terrain moves it on purpose.
     let h = 2166136261;
     const mix = (v: number | string | boolean) => {
       const s = typeof v === 'number' ? v.toFixed(9) : String(v);
@@ -550,9 +550,9 @@ describe('river bridges beside the highway', () => {
     for (const seed of [25135766, 1630930914, 7]) {
       const city = createCity(seed);
       const w = createWorld(seed, 'circuit', city, { openWorld: true });
-      const river = w.areas.find((a) => a.kind === 'river');
-      if (!river) continue;
-      for (const dk of w.districts.builds[river.id].decks) {
+      const channel = w.areas.find((a) => a.kind === 'channel');
+      if (!channel) continue;
+      for (const dk of w.districts.builds[channel.id].decks) {
         const b = polygonBounds(dk.polygon);
         for (let x = b.minX; x <= b.maxX; x += 2.7) {
           for (let z = b.minZ; z <= b.maxZ; z += 2.3) {

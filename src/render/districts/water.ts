@@ -1,5 +1,5 @@
 /**
- * The water material the harbor, the lake, the park ponds and the river's puddles share. It is the city's dark
+ * The water material the harbor, the lake, the park ponds and the channel's puddles share. It is the city's dark
  * mirror (a vertex tinted MeshStandardMaterial that the sky and the lamps reflect in) with a patched fragment stage,
  * so it stays one material, one draw call and no extra pass:
  *  - a scrolling pair of normal-map octaves (a small tileable noise normal map generated once, two layers at
@@ -70,7 +70,7 @@ export interface WaterOptions {
   roughness?: number;
   /** The tier: Low draws the flat mirror. */
   quality: Quality;
-  /** Take the flat mirror whatever the tier (the river's low trickle keeps its own look at the floor). */
+  /** Take the flat mirror whatever the tier (the channel's low trickle keeps its own look at the floor). */
   flat?: boolean;
 }
 

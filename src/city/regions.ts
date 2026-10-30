@@ -110,7 +110,7 @@ export function regionMap(seed: number, g: RoadGraph, areas: readonly Area[], he
   const hSpan = Math.max(1, hMax - hMin);
   const water: { x: number; z: number }[] = [];
   for (const a of areas) {
-    if (a.kind !== 'river' && a.kind !== 'lake' && a.kind !== 'waterfront') continue;
+    if (a.kind !== 'channel' && a.kind !== 'lake' && a.kind !== 'waterfront') continue;
     const pts = a.path.length ? a.path : a.polygon;
     for (let i = 0; i < pts.length; i += Math.max(1, Math.floor(pts.length / 40))) water.push(pts[i]);
   }

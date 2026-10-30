@@ -11,7 +11,7 @@
  *    corner along the back of the sidewalk. Which streets a route closes or
  *    turns at is only known per race, so a structure keeps clear of every
  *    junction's full reach, like the El's columns (subway.ts).
- *  - What a structure keeps away from: the river channel (bridges, ramps and
+ *  - What a structure keeps away from: the channel (bridges, ramps and
  *    banks), the El (its deck and columns), the elevated highway (its deck,
  *    columns and ramps), hill slopes (their grades would
  *    tilt a bore or a deck), roundabouts (their rings are wider than their
@@ -25,7 +25,7 @@ import { Vec2, distToSegment, sqrt } from '../../sim/math';
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Area, PlanContext } from './types';
 import { HillShape, plateauDistance, shapeOf } from './hills';
-import { riverCenter } from './river';
+import { channelCenter } from './channel';
 import { bluffFootprint } from './bluff';
 import { distToPolygonEdge, pointInPolygon, polygonBounds } from './geom';
 import { NodeHeap } from '../graphSearch';
@@ -160,7 +160,7 @@ export function edgeFaces(faces: { id: number; outer: boolean; edges: number[] }
 
 /** Everything a structure keeps clear of, gathered once per plan. */
 export interface SiteHazards {
-  rivers: Area[];
+  channels: Area[];
   /** The El's path sampled every few meters, with its deck half width. */
   el: Vec2[];
   elHalf: number;
@@ -191,7 +191,7 @@ export function siteHazards(ctx: PlanContext): SiteHazards {
     if (a.kind === 'overpass') takePath(taken, a.path, a.params.reach);
   }
   return {
-    rivers: ctx.areas.filter((a) => a.kind === 'river'),
+    channels: ctx.areas.filter((a) => a.kind === 'channel'),
     el,
     elHalf: CITY.districts.subway.deckWidth / 2,
     hills: ctx.areas.filter((a) => a.kind === 'hills').map(shapeOf),
@@ -215,14 +215,14 @@ export function takePath(taken: SiteHazards['taken'], path: readonly Vec2[], r: 
 }
 
 /**
- * Is (x, z) at least `margin` m clear of the river channel (its top edge), the
+ * Is (x, z) at least `margin` m clear of the channel (its top edge), the
  * El's deck, the highway's deck and ramps, every hill's slope, every
  * roundabout's ring and the structures planned so far?
  */
 export function siteClear(hz: SiteHazards, x: number, z: number, margin: number): boolean {
-  for (const r of hz.rivers) {
+  for (const r of hz.channels) {
     if (x < r.params.x0 - margin || x > r.params.x1 + margin) continue;
-    if (Math.abs(z - riverCenter(r.params, x)) < r.params.top + margin) return false;
+    if (Math.abs(z - channelCenter(r.params, x)) < r.params.top + margin) return false;
   }
   for (const p of hz.el) if ((p.x - x) ** 2 + (p.z - z) ** 2 < (hz.elHalf + margin) ** 2) return false;
   for (const s of hz.hills) if (plateauDistance(s, x, z).d < s.w + margin) return false;

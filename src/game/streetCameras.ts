@@ -401,7 +401,7 @@ export class ShowreelCamera {
     this.glideDist = d > stage.path.length / 2 ? d - stage.path.length : d;
     this.glideDur = Math.min(GLIDE.maxDur, GLIDE.dur * Math.sqrt(Math.max(1, Math.abs(this.glideDist) / GLIDE.ref)));
     this.glideLift = f.y - stage.world.heightAt(f.x, f.z, f.y);
-    // The gliding frame's last height is the level hint under a river deck (World.heightAt).
+    // The gliding frame's last height is the level hint under a channel deck (World.heightAt).
     this.glideFrame.y = f.y;
     this.glide = 0;
     this.blend = 1;

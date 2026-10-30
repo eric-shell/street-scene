@@ -32,7 +32,7 @@
  * Planned after the subway, the roundabouts and the alleys and before the
  * back alleys and the routes (districts/index.ts): it edits the subway area's
  * path and polygon and tells its build where the detour runs (params.bluff),
- * keeps clear of roundabouts, the river and the lake, and claims the streets it
+ * keeps clear of roundabouts, the channel and the lake, and claims the streets it
  * reshapes (ramps, dips, the crest) and the nodes on it, so back alleys,
  * route shortcuts, parks and the monument keep off; the hills keep off its
  * whole footprint (hills.ts). Height: one modifier with an exact analytic
@@ -49,7 +49,7 @@ import { RAIL, buildRailCurve } from '../railCurve';
 import type { Area, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { distToPolygonEdge, pointInPolygon, smooth01v } from './geom';
-import { riverCenter } from './river';
+import { channelCenter } from './channel';
 import { applyElDetour, elColumnAt, elDetourPath, elStreetEdges, gridNode } from './subway';
 
 const CFG = CITY.districts.bluff;
@@ -405,7 +405,7 @@ export const bluffModule: DistrictModule = {
     for (const c of cands) {
       // The right of way at rowOffset, or a little further out where that puts the crossing on a bend
       // node of the crest street (a street's bend nodes stand near its thirds, roadGraph.ts).
-      // On the side the El swings toward, else (CFG.mirror) across its street: a river, a lake or a diagonal
+      // On the side the El swings toward, else (CFG.mirror) across its street: a channel, a lake or a diagonal
       // on one side leaves the other free, which doubles the placements.
       let pl: Placement | null = null;
       for (const dir of CFG.mirror ? ([1, -1] as const) : ([1] as const)) {
@@ -501,7 +501,7 @@ export const bluffModule: DistrictModule = {
  * Try one placement: crest street row `r`, the high side toward rows r + o.
  * Rows: low r - o (the foot), crest r, dip r + o (the back slope's foot), the
  * El's S curves over the blocks to rows r -/+ 2o. Returns null when anything
- * does not fit (a missing street, a diagonal through it, the river, a ramp
+ * does not fit (a missing street, a diagonal through it, the channel, a ramp
  * or a dip too close to a junction, the El too low somewhere).
  */
 function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | -1, rowOffset: number, dir: 1 | -1): Placement | null {
@@ -625,7 +625,7 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
       const fu = hitFace ? uv(hitFace.x, hitFace.z).u : NaN;
       const onFace = hitFace !== null && fu > uA - we - 8 && fu < uB + we + 8;
       if (!inA && !inB && !onFace && !segmentCrossesPolygon(a, b, poly)) continue;
-      // Anything of the river's in there is ruled out; any street may run over the gentle slopes (like
+      // Anything of the channel's in there is ruled out; any street may run over the gentle slopes (like
       // a hill's flank).
       if (e.kind === 'channel' || e.kind === 'ramp' || e.bridge || e.shortcut) {
         ok = false;
@@ -752,8 +752,8 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
       if (!ok) break;
     }
     if (!ok) continue;
-    // Clear of the river channel, every part.
-    const rivers = ctx.areas.filter((a) => a.kind === 'river');
+    // Clear of the channel, every part.
+    const channels = ctx.areas.filter((a) => a.kind === 'channel');
     const rim = footprint(shape, 10);
     const probes: Vec2[] = [];
     for (let i = 0; i < rim.length; i++) {
@@ -762,10 +762,10 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
       for (let t = 0; t <= 1; t += 0.05) probes.push({ x: p.x + (q.x - p.x) * t, z: p.z + (q.z - p.z) * t });
     }
     for (let k = rowK0; k < rowK1; k++) for (let t = 0; t <= 1; t += 0.1) probes.push({ x: legs[k].x + (legs[k + 1].x - legs[k].x) * t, z: legs[k].z + (legs[k + 1].z - legs[k].z) * t });
-    for (const rv of rivers) {
-      const sgn = (p: Vec2) => (p.z - riverCenter(rv.params, p.x) > 0 ? 1 : -1);
+    for (const rv of channels) {
+      const sgn = (p: Vec2) => (p.z - channelCenter(rv.params, p.x) > 0 ? 1 : -1);
       const s0 = sgn(probes[0]);
-      for (const p of probes) if (sgn(p) !== s0 || Math.abs(p.z - riverCenter(rv.params, p.x)) < rv.params.top + 20) ok = false;
+      for (const p of probes) if (sgn(p) !== s0 || Math.abs(p.z - channelCenter(rv.params, p.x)) < rv.params.top + 20) ok = false;
     }
     // Clear of the lake, which stands level (lake.ts): nothing of the terrace or the right of way near its block.
     for (const lk of ctx.areas) {

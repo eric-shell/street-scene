@@ -1,5 +1,5 @@
 /**
- * Planning the river (planRiver, the district's plan). It tries row pairs of the city's grid for the first
+ * Planning the channel (planChannel, the district's plan). It tries row pairs of the city's grid for the first
  * meander (midline) whose band clears every junction and seats an entrance in every quarter (bandClear, the
  * candidate entrances), merges the crossing streets into straight edges, then builds into the graph the ramp
  * feet, T nodes and ramp edges, sizes the bell mouths to the room beside them (sizeMouths) and runs the channel
@@ -8,24 +8,24 @@
  */
 import { CITY } from '../../config';
 import type { RoadGraph, RoadEdge, RoadNode } from '../../roadGraph';
-import { addEdge, addNode, chainOf as streetChain, chains as streetChains, isRiverEdge, mergeChains, otherNode, splitEdge } from '../../roadGraph';
+import { addEdge, addNode, chainOf as streetChain, chains as streetChains, isChannelEdge, mergeChains, otherNode, splitEdge } from '../../roadGraph';
 import { Vec2, distToSegment, segmentT, sin, sqrt } from '../../../sim/math';
 import { deriveSeed } from '../../../sim/prng';
 import type { Area, PlanContext } from '../types';
-import { planFeatures } from '../riverFeatures';
-import { channelWidth, riverCenter, riverFrame, riverL } from './centerline';
+import { planFeatures } from '../channelFeatures';
+import { channelWidth, channelCenter, channelFrame, channelL } from './centerline';
 import { type Ramp, type RampPlan, rampAlong, rampsOf } from './ramps';
 import { STREET_KINDS, bridgesOf, chainOf, crosses, crossingT } from './bridges';
 
-const CFG = CITY.districts.river;
+const CFG = CITY.districts.channel;
 const LAKE = CITY.districts.lake;
 
 /** A bell mouth's plinth keeps this far (m) inside the room to the next corridor; the room is capped at MOUTH_ROOM (m). */
 const MOUTH_MARGIN = 2;
 const MOUTH_ROOM = 40;
 
-/** The river district's plan: claim the channel, its bridges and ramps (DistrictModule.plan). */
-export function planRiver(ctx: PlanContext): void {
+/** The channel district's plan: claim the channel, its bridges and ramps (DistrictModule.plan). */
+export function planChannel(ctx: PlanContext): void {
   if (!CFG.enabled) return;
   const rng = ctx.rng;
   if (!rng.chance(CFG.chance)) return;
@@ -81,23 +81,23 @@ export function planRiver(ctx: PlanContext): void {
     };
   };
   /**
-   * The lake (carved before the river) all on one side of the band, its shore well off it, so no bank
-   * street is a shore street. The lake was put where the river would run without it (lake.ts), so this
+   * The lake (carved before the channel) all on one side of the band, its shore well off it, so no bank
+   * street is a shore street. The lake was put where the channel would run without it (lake.ts), so this
    * only turns away rows that ran through its blocks.
    */
   const lakeClear = (p: Record<string, number>): boolean => {
     for (const lk of lakes) {
-      const s0 = riverL(p, lk.polygon[0].x, lk.polygon[0].z) > 0;
+      const s0 = channelL(p, lk.polygon[0].x, lk.polygon[0].z) > 0;
       for (const q of lk.polygon) {
-        const l = riverL(p, q.x, q.z);
-        if (l > 0 !== s0 || Math.abs(l) < T + LAKE.riverClear) return false;
+        const l = channelL(p, q.x, q.z);
+        if (l > 0 !== s0 || Math.abs(l) < T + LAKE.channelClear) return false;
       }
     }
     return true;
   };
   /** Junctions clear of the band, every street either crossing it squarely or well away from it. */
   const bandClear = (p: Record<string, number>): boolean => {
-    for (const n of g.nodes) if (n.edges.length !== 2 && Math.abs(riverL(p, n.x, n.z)) < T + CFG.junctionClear) return false;
+    for (const n of g.nodes) if (n.edges.length !== 2 && Math.abs(channelL(p, n.x, n.z)) < T + CFG.junctionClear) return false;
     // The other pieces of a crossing street (cut through bend nodes, roadGraph.ts) run on into the
     // crossing: they are its approach, not a street alongside the band.
     const approach = new Set<number>();
@@ -108,7 +108,7 @@ export function planRiver(ctx: PlanContext): void {
       if (crosses(p, a, b)) {
         if (!STREET_KINDS.has(e.kind) || e.shortcut) return false;
         const t = crossingT(p, a, b, 0);
-        const fr = riverFrame(p, a.x + (b.x - a.x) * t);
+        const fr = channelFrame(p, a.x + (b.x - a.x) * t);
         const len = e.length || 1;
         if (Math.abs(((b.x - a.x) / len) * fr.tx + ((b.z - a.z) / len) * fr.tz) > CFG.maxSkew) return false;
         if (!chainOf(g, p, e)) return false;
@@ -117,7 +117,7 @@ export function planRiver(ctx: PlanContext): void {
         for (let k = 0; k <= steps; k++) {
           const x = a.x + ((b.x - a.x) * k) / steps;
           const z = a.z + ((b.z - a.z) * k) / steps;
-          if (Math.abs(riverL(p, x, z)) < T + CFG.streetClear) return false;
+          if (Math.abs(channelL(p, x, z)) < T + CFG.streetClear) return false;
         }
       }
     }
@@ -137,7 +137,7 @@ export function planRiver(ctx: PlanContext): void {
     count: number;
   }
   const planEntrances = (p: Record<string, number>): Entrances => {
-    const lOf = (x: number, z: number) => riverL(p, x, z);
+    const lOf = (x: number, z: number) => channelL(p, x, z);
     // Crossing streets, each followed through its bends into a deck polyline; all bridges unless a ford.
     const crossing = g.edges.filter((e) => crosses(p, g.nodes[e.a], g.nodes[e.b]));
     const chains = new Map<number, { edges: RoadEdge[]; nodes: number[] }>();
@@ -186,7 +186,7 @@ export function planRiver(ctx: PlanContext): void {
       const tf = crossingT(p, a, b, 0);
       const fx = a.x + (b.x - a.x) * tf;
       const fz = a.z + (b.z - a.z) * tf;
-      const fr = riverFrame(p, fx);
+      const fr = channelFrame(p, fx);
       if (Math.abs(ux * fr.tx + uz * fr.tz) > 0.25) return false;
       if (![a, b].every((n) => Math.abs(lOf(n.x, n.z)) - F - setbackOf(n, e) >= CFG.rampMinRun)) return false;
       // No other road (a diagonal leaving the same junction, say) runs through the dip's trench or
@@ -213,13 +213,13 @@ export function planRiver(ctx: PlanContext): void {
     };
 
     // ----- Side ramps: from the foot at channel x, straight up bank `side` along the channel's normal to
-    // the first street roughly parallel to the river, with the curb far enough from the floor for a
+    // the first street roughly parallel to the channel, with the curb far enough from the floor for a
     // legal grade and near enough that the trench fits, nothing else across the trench.
     const hw = CFG.rampHalfWidth;
     const body = CFG.rampBody;
     const sideRamp = (xr: number, side: number): RampPlan | null => {
-      const fr = riverFrame(p, xr);
-      const P = { x: xr, z: riverCenter(p, xr) };
+      const fr = channelFrame(p, xr);
+      const P = { x: xr, z: channelCenter(p, xr) };
       const dx = side * fr.mx;
       const dz = side * fr.mz;
       let best: RoadEdge | null = null;
@@ -228,7 +228,7 @@ export function planRiver(ctx: PlanContext): void {
       for (const e of g.edges) {
         // Never a diagonal: the warp (roadGraph.ts) swings some within the parallel test below, and a
         // trench meeting one obliquely pokes its end into the street.
-        if (!STREET_KINDS.has(e.kind) || e.kind === 'diagonal' || e.bridge || e.shortcut || isRiverEdge(e)) continue;
+        if (!STREET_KINDS.has(e.kind) || e.kind === 'diagonal' || e.bridge || e.shortcut || isChannelEdge(e)) continue;
         const a = g.nodes[e.a];
         const b = g.nodes[e.b];
         const sx = b.x - a.x;
@@ -239,7 +239,7 @@ export function planRiver(ctx: PlanContext): void {
         const v = ((a.x - P.x) * dz - (a.z - P.z) * dx) / den;
         if (u <= 0 || v < 0 || v > 1) continue;
         const len = e.length || 1;
-        // The T node keeps clear of the street's own ends, and the street runs along the river.
+        // The T node keeps clear of the street's own ends, and the street runs along the channel.
         if (v * len < 18 || (1 - v) * len < 18) continue;
         if (Math.abs((sx / len) * fr.tx + (sz / len) * fr.tz) < 0.8) continue;
         if (u < bestU) {
@@ -370,7 +370,7 @@ export function planRiver(ctx: PlanContext): void {
   // Every street over the channel runs straight from bank junction to bank junction, and so does
   // every street of the two bank rows: their pieces through bend nodes (roadGraph.ts) merge back
   // into one edge, so a bridge deck, a ford's ramps and a side ramp's T each sit on
-  // one straight edge. The river plans first, so only the lake's claims hold ids yet (graphChanged
+  // one straight edge. The channel plans first, so only the lake's claims hold ids yet (graphChanged
   // carries them through the renumbering); the entrances are planned again on the merged streets.
   {
     const bp = best.p;
@@ -382,7 +382,7 @@ export function planRiver(ctx: PlanContext): void {
     };
     const over = streetChains(g).filter((c) => c.edges.length > 1 && (bank(c) || c.edges.some((id) => crosses(bp, g.nodes[g.edges[id].a], g.nodes[g.edges[id].b]))));
     if (over.length) {
-      // The lake carved before the river (districts/index.ts): its claims follow the renumbering.
+      // The lake carved before the channel (districts/index.ts): its claims follow the renumbering.
       ctx.graphChanged(mergeChains(g, over));
       best.ent = planEntrances(bp);
     }
@@ -405,7 +405,7 @@ export function planRiver(ctx: PlanContext): void {
     const key = Math.round(x * 100);
     let id = feet.get(key);
     if (id === undefined) {
-      id = addNode(g, x, riverCenter(p, x));
+      id = addNode(g, x, channelCenter(p, x));
       feet.set(key, id);
       nodes.push(id);
     }
@@ -460,7 +460,7 @@ export function planRiver(ctx: PlanContext): void {
     let piece = -1;
     let pieceD = 0.5;
     for (const e of g.edges) {
-      if (e.kind !== g.edges[q.edge].kind || isRiverEdge(e)) continue;
+      if (e.kind !== g.edges[q.edge].kind || isChannelEdge(e)) continue;
       const a = g.nodes[e.a];
       const b = g.nodes[e.b];
       const d = distToSegment(q.hit.x, q.hit.z, a.x, a.z, b.x, b.z);
@@ -486,7 +486,7 @@ export function planRiver(ctx: PlanContext): void {
   sizeMouths(g, p);
   // The chain: portal to portal through every foot, a node at least every nodeSpacing, none under a deck.
   {
-    const tmp: Area = { id: -1, kind: 'river', variant: '', polygon: [], path: [], nodes, edges, faces: [], params: p };
+    const tmp: Area = { id: -1, kind: 'channel', variant: '', polygon: [], path: [], nodes, edges, faces: [], params: p };
     const bridges = bridgesOf(g, tmp);
     const stations: number[] = [x0 + CFG.endStub, ...[...feet.values()].map((id) => g.nodes[id].x), x1 - CFG.endStub].sort((a, b) => a - b);
     const ends: number[] = [];
@@ -495,7 +495,7 @@ export function planRiver(ctx: PlanContext): void {
       const x = stations[i];
       let id = feet.get(Math.round(x * 100));
       if (id === undefined) {
-        id = addNode(g, x, riverCenter(p, x));
+        id = addNode(g, x, channelCenter(p, x));
         nodes.push(id);
         if (i === 0 || i === stations.length - 1) ends.push(id);
       }
@@ -510,7 +510,7 @@ export function planRiver(ctx: PlanContext): void {
             if (Math.abs(mx - br.cx) < keep) mx = br.cx + (mx >= br.cx ? keep : -keep);
           }
           if (mx - g.nodes[last].x < 12 || x - mx < 12) continue;
-          const mid = addNode(g, mx, riverCenter(p, mx));
+          const mid = addNode(g, mx, channelCenter(p, mx));
           nodes.push(mid);
           edges.push(addEdge(g, last, mid, 'channel', channelDims));
           last = mid;
@@ -522,6 +522,7 @@ export function planRiver(ctx: PlanContext): void {
     // The set pieces along the floor, between the end stubs, clear of every foot and deck.
     planFeatures(
       p,
+      // 'river:features' keeps the channel's old name: the label feeds deriveSeed, so renaming it would change every seed's set pieces.
       deriveSeed(p.seed, 'river:features'),
       x0 + CFG.endStub + 30,
       x1 - CFG.endStub - 30,
@@ -532,7 +533,7 @@ export function planRiver(ctx: PlanContext): void {
   ctx.graphChanged();
 
   // Footprint: the channel band, bulging out over the ramp trenches (a simple comb polygon).
-  const ramps = rampsOf({ id: -1, kind: 'river', variant: '', polygon: [], path: [], nodes, edges, faces: [], params: p });
+  const ramps = rampsOf({ id: -1, kind: 'channel', variant: '', polygon: [], path: [], nodes, edges, faces: [], params: p });
   const path: Vec2[] = [];
   const up: Vec2[] = [];
   const down: Vec2[] = [];
@@ -562,12 +563,12 @@ export function planRiver(ctx: PlanContext): void {
   }
   xs.sort((a, b) => a - b);
   for (const x of xs) {
-    const z = riverCenter(p, x);
+    const z = channelCenter(p, x);
     path.push({ x, z });
     up.push({ x, z: z + bulge(x, 1) });
     down.push({ x, z: z - bulge(x, -1) });
   }
-  ctx.addArea({ kind: 'river', variant: 'channel', polygon: up.concat(down.reverse()), path, nodes, edges, faces: [], params: p }, footprint);
+  ctx.addArea({ kind: 'channel', variant: 'channel', polygon: up.concat(down.reverse()), path, nodes, edges, faces: [], params: p }, footprint);
 }
 
 /** Record a ramp in the area params (see rampsOf). */
@@ -612,7 +613,7 @@ function sizeMouths(g: RoadGraph, p: Record<string, number>): void {
     const room: Record<number, number> = { 1: MOUTH_ROOM, [-1]: MOUTH_ROOM };
     for (const eid of T.edges) {
       const e = g.edges[eid];
-      if (isRiverEdge(e)) continue;
+      if (isChannelEdge(e)) continue;
       const n = g.nodes[otherNode(e, T.id)];
       const lat = -(n.x - ax) * uz + (n.z - az) * ux;
       const sd = lat >= 0 ? 1 : -1;

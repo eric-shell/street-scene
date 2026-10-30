@@ -135,6 +135,15 @@
     .is-loaded > &::before {
       opacity: 0;
     }
+    /* The wheel's price or lock (_part-tag.scss) in the frame's top corner, over the thumbnail. */
+    .part-tag {
+      position: absolute;
+      top: 0;
+      right: 0;
+      z-index: 1;
+      padding: 1px 4px;
+      font-size: 10px;
+    }
   }
   &__thumb {
     position: absolute;

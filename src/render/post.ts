@@ -88,6 +88,16 @@ export const NITRO_FX = {
 /** Zoom blur taps per tier (the shader loop runs up to 11): the streak is fewer, coarser samples on weaker devices, jittered per pixel either way. */
 export const POST_TAPS: Record<Quality, number> = { low: 4, medium: 7, high: 11 };
 
+/**
+ * Speed streaks (radial speed lines at the frame edge, FxShader `streak`): the tier's strength, 0 on Low (no streaks at all, the uniform
+ * stays 0 and the shader's branch is skipped), a little softer on Medium. Cost where on: no texture taps, one atan, two hashes and a
+ * few smoothsteps (~35 ALU) only for pixels outside the middle ~55% of the frame; one uniform branch (free) when off.
+ */
+export const POST_STREAKS: Record<Quality, number> = { low: 0, medium: 0.8, high: 1 };
+
+/** Speed streak look: the ellipse radius (0 centre, 1 frame edge) they fade in over, lines around the screen, share of lines drawn, additive brightness (linear light) at full strength, line width (share of a cell) and how fast they fly outward (cycles/s). */
+const STREAKS = { inner: 0.55, outer: 0.95, lines: 84, share: 0.4, gain: 0.3, width: 0.12, rate: 1.7 } as const;
+
 /** Film grain per tier (a share of the grade's own grain): High only, it is a per pixel hash every frame for a look, not legibility. */
 export const POST_GRAIN: Record<Quality, number> = { low: 0, medium: 0, high: 1 };
 
@@ -189,6 +199,8 @@ const FxShader = {
     gSeed: { value: new THREE.Vector2() },
     gPivot: { value: GRADE.pivot },
     gProtect: { value: new THREE.Vector2(...GRADE.protect) },
+    streak: { value: 0 },
+    streakTime: { value: 0 },
     lensRain: { value: 0 },
     lensTime: { value: 0 },
     lensAspect: { value: 16 / 9 },
@@ -228,6 +240,8 @@ const FxShader = {
     uniform vec2 gSeed;
     uniform float gPivot;
     uniform vec2 gProtect;
+    uniform float streak;
+    uniform float streakTime;
     uniform float lensRain;
     uniform float lensTime;
     uniform float lensAspect;
@@ -342,6 +356,24 @@ const FxShader = {
         c.rgb = max(vec3(0.0), (c.rgb - 0.18) * (1.0 + (contrast - 1.0) * warp * m) + 0.18);
         // A faint glow creeping in from the edges, in the stage's color.
         c.rgb += tint * edgeTint * warp * m * m;
+      }
+      if (streak > 0.002) {
+        // Speed streaks: thin radial dashes flying outward in a ring of angular cells, only toward the frame edge so the road stays clear.
+        vec2 sd = dir0 * vec2(lensAspect, 1.0);
+        float sm = smoothstep(${STREAKS.inner.toFixed(2)}, ${STREAKS.outer.toFixed(2)}, re);
+        if (sm > 0.0) {
+          float sa = atan(sd.y, sd.x) * ${(STREAKS.lines / (2 * Math.PI)).toFixed(4)};
+          float cell = floor(sa);
+          float h1 = fract(sin(cell * 12.9898 + 4.1) * 43758.5453);
+          float h2 = fract(sin(cell * 78.233 + 1.7) * 24634.6345);
+          // Only some cells carry a line.
+          float on = step(h1, ${STREAKS.share.toFixed(2)});
+          float line = 1.0 - smoothstep(0.0, ${STREAKS.width.toFixed(2)}, abs(fract(sa) - 0.5 - (h2 - 0.5) * 0.5));
+          // A dash that brightens toward its outer end, like a motion blurred light: the tail fades back toward the centre.
+          float t = fract(re * 1.3 - streakTime * ${STREAKS.rate.toFixed(2)} * (0.8 + 0.5 * h2) + h2 * 7.0);
+          float dash = smoothstep(0.0, 0.85, t) * (1.0 - smoothstep(0.85, 1.0, t));
+          c.rgb += vec3(0.82, 0.9, 1.0) * (on * line * dash * sm * streak * ${STREAKS.gain.toFixed(2)});
+        }
       }
       if (lensRim > 0.0) c.rgb = c.rgb * (1.0 + lensRim * ${LENS.rim.toFixed(2)}) + vec3(0.02 * lensRim);
       // Colour grade, on linear HDR (see the header for why before tone mapping).
@@ -560,6 +592,8 @@ export class PostFx {
   private grainFrame = 0;
   /** Lens rain: the tier's layers and density share (POST_LENS), the session's amount and the car speed (m/s) that quickens the drops. */
   private lensStrength = 1;
+  /** The tier's share of the speed streaks (POST_STREAKS). */
+  private streakTier = 1;
   private lensSpeed = 0;
   private readonly gradeColor = new THREE.Color();
 
@@ -589,7 +623,8 @@ export class PostFx {
   }
 
   /** Takes effect on the next setSize (GameRenderer always resizes after this). */
-  configure(opts: { lens?: { layers: number; strength: number }; bloom: boolean; bloomScale: number; bloomStrength: number; retro: boolean; msaa?: number; taps?: number; grain?: number }): void {
+  configure(opts: { lens?: { layers: number; strength: number }; bloom: boolean; bloomScale: number; bloomStrength: number; retro: boolean; msaa?: number; taps?: number; grain?: number; streaks?: number }): void {
+    this.streakTier = opts.streaks ?? 0;
     this.fx.uniforms.uTaps.value = Math.max(1, Math.min(11, Math.round(opts.taps ?? 11)));
     this.grainTier = opts.grain ?? 0;
     this.fx.uniforms.lensLayers.value = opts.lens?.layers ?? 2;
@@ -644,6 +679,13 @@ export class PostFx {
   setHaze(count: number, time: number): void {
     this.fx.uniforms.uHazeN.value = count;
     this.fx.uniforms.uHazeTime.value = time;
+  }
+
+  /** Speed streaks (0 none .. 1 full, before the tier's POST_STREAKS share) on the clock `time` (s). */
+  setSpeedStreaks(amount: number, time: number): void {
+    const u = this.fx.uniforms;
+    u.streak.value = Number.isFinite(amount) ? Math.max(0, Math.min(1, amount)) * this.streakTier : 0;
+    u.streakTime.value = Number.isFinite(time) ? time : 0;
   }
 
   setSpeedBlur(amount: number): void {

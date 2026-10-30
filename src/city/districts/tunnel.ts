@@ -27,7 +27,7 @@
  *    tunnel's crosses the ridge; it claims both blocks it stands in.
  *
  * Both keep their ends clear of the junctions' reach (closures, corner rails;
- * structures.ts), and both keep away from the river channel, the El, hill
+ * structures.ts), and both keep away from the channel, the El, hill
  * slopes, roundabouts and the other structures. The race routes' streets
  * are tried first (PlanContext.event; never where a race starts or
  * finishes), then the ones races are likely to use (routeTraffic: busy,
@@ -191,7 +191,7 @@ function placeBore(g: RoadGraph, mouths: EdgeMouths[], run: StreetRun, half: num
   return { e, edges, run, s, f, half, road, wall: road + CFG.walkway, front: road + e.sidewalk };
 }
 
-/** The bore and its wings are clear of the river, the El, hills, roundabouts and the other structures. */
+/** The bore and its wings are clear of the channel, the El, hills, roundabouts and the other structures. */
 function boreClear(hz: SiteHazards, s: Site): boolean {
   const reach = s.half + CFG.wing;
   for (let u = -reach; u <= reach + 1e-9; u += 4) {

@@ -369,11 +369,11 @@ export function parkPasses(g: RoadGraph, area: Area): ParkPass[] {
 /** Blocks that can hold a park: unclaimed, sized for it, no bridge or shortcut on their ring, clear of the linear areas, convex. */
 function parkFaces(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims' | 'faces'>): BlockFace[] {
   const g = ctx.graph;
-  const others = ctx.areas.filter((a) => a.kind === 'river' || a.kind === 'subway' || a.kind === 'highway' || a.kind === 'backAlley' || a.kind === 'alley');
+  const others = ctx.areas.filter((a) => a.kind === 'channel' || a.kind === 'subway' || a.kind === 'highway' || a.kind === 'backAlley' || a.kind === 'alley');
   return ctx.faces().filter((f) => {
     if (f.outer || f.area < CFG.minArea || f.area > CFG.maxArea || ctx.claims.face.has(f.id)) return false;
     if (f.edges.some((e) => g.edges[e].shortcut || g.edges[e].bridge || ctx.claims.edge.has(e))) return false;
-    // Clear of linear areas (river channel, subway deck, alleys).
+    // Clear of linear areas (channel, subway deck, alleys).
     for (const a of others) {
       if (a.polygon.some((p) => pointInPolygon(p.x, p.z, f.ring))) return false;
       if (f.ring.some((p) => pointInPolygon(p.x, p.z, a.polygon))) return false;
@@ -397,7 +397,7 @@ const HILLS_AT: HeightSample = { h: 0, gx: 0, gz: 0 };
 /**
  * The height modifiers of the hills the city will get, planned ahead on copies of the claims and the
  * areas as the hills module (the next in the registry) will find them, from its own stream: lake.ts
- * plans the river ahead the same way. The hills build from their params alone.
+ * plans the channel ahead the same way. The hills build from their params alone.
  */
 function hillSlopes(ctx: PlanContext): HeightMod[] {
   const areas = ctx.areas.slice();

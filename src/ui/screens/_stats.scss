@@ -1,0 +1,55 @@
+/* The settings' Stats page (statsPage.ts): headed groups of stats, each a small chamfered plate with its name
+   over its value in the values' yellow and tabular figures, two or three to a row as the card allows; the
+   headline numbers (--big) take a whole row's width at a larger size. A quiet note under a group. */
+@use '../styles/abstracts/mixins';
+.stats {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  &__title {
+    margin: 0;
+  }
+  &__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 6px;
+  }
+  &__item {
+    @include mixins.chamfer(7px);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 7px 10px;
+    @include mixins.plate(var(--surface), var(--radius-sm));
+    &--big {
+      grid-column: 1 / -1;
+      .stats__value {
+        font-size: 22px;
+      }
+    }
+  }
+  &__label {
+    @include mixins.ellipsis;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  &__value {
+    @include mixins.ellipsis;
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent-2);
+  }
+  &__note {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--muted);
+  }
+}

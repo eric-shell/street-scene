@@ -13,8 +13,8 @@
  * carve step, DistrictModule.carve): it deletes the streets between its
  * blocks, which renumbers every node and edge id, so it goes while nobody
  * holds one; it claims its shore streets and nodes then, and everything
- * planned after keeps off them (the river, the El's swings, the bluff and the
- * hills keep off its water too). Then the river (it decides bridges; its own
+ * planned after keeps off them (the channel, the El's swings, the bluff and the
+ * hills keep off its water too). Then the channel (it decides bridges; its own
  * chain merge renumbers again, carrying the lake's claims through
  * graphChanged), the subway (claims a street column), roundabouts, alleys, the bluff (moves part
  * of the El off its street; before the routes, which run over its level
@@ -44,7 +44,7 @@ import { PolygonIndex, pointInPolygon, polygonBounds } from './geom';
 import type { Vec2 } from '../../sim/math';
 import type { Area, AreaBuild, AreaKind, BuildContext, Claims, DistrictModule, HeightMod, LateContext, PlanContext, PlannedEvent, SurfacePatch } from './types';
 import { AREA_PRIORITY, emptyBuild } from './types';
-import { riverModule } from './river';
+import { channelModule } from './channel';
 import { subwayModule } from './subway';
 import { bluffModule } from './bluff';
 import { roundaboutModule } from './roundabout';
@@ -68,7 +68,7 @@ import { jumpFlightZone } from './alleyDressing';
 
 /** Every module, in planning order. */
 export const DISTRICT_MODULES: readonly DistrictModule[] = [
-  riverModule,
+  channelModule,
   subwayModule,
   roundaboutModule,
   alleyModule,
@@ -77,7 +77,7 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   backAlleyModule,
   marketModule,
   carParkModule,
-  // Claims its block here; its streets were deleted in its carve step, before the river.
+  // Claims its block here; its streets were deleted in its carve step, before the channel.
   lakeModule,
   monumentModule,
   parkModule,
@@ -119,7 +119,13 @@ export interface CityDistricts {
   finalize(): void;
 }
 
-function makeContext(seed: number, g: RoadGraph, areas: Area[], claims: Claims, budget: { total: number; used: number }, kind: AreaKind, stream = `district:${kind}`): PlanContext {
+/**
+ * The random stream a module draws from: `district:<kind>`. The channel's was named `district:river` before the
+ * area kind was renamed, and the string is kept so every seed's city stays bit-identical (the label feeds deriveSeed).
+ */
+const streamOf = (kind: AreaKind): string => `district:${kind === 'channel' ? 'river' : kind}`;
+
+function makeContext(seed: number, g: RoadGraph, areas: Area[], claims: Claims, budget: { total: number; used: number }, kind: AreaKind, stream = streamOf(kind)): PlanContext {
   let faces: BlockFace[] | null = null;
   let sectors: Sector[][] | null = null;
   return {

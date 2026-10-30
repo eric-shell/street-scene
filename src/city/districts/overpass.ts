@@ -14,7 +14,7 @@
  *    it passes takes the look 'pier' too (a fenced retaining wall between
  *    the piers, drawn by the renderer) instead of a void the infill would
  *    fill. It only crosses plain streets (no alleys, ramps or bridges) and
- *    only unclaimed blocks, and keeps away from the river, the El, hill
+ *    only unclaimed blocks, and keeps away from the channel, the El, hill
  *    slopes, roundabouts and the other structures (structures.ts).
  *
  * The renderer (render/districts/overpass.ts) draws decks, girders, lamps
@@ -216,7 +216,7 @@ function planViaduct(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], tr
       }
     }
     if (!ok || !crossings.length) continue;
-    // Clear of the river, the El, hills, roundabouts and the other structures; only unclaimed blocks.
+    // Clear of the channel, the El, hills, roundabouts and the other structures; only unclaimed blocks.
     for (let s = 0; s <= length + 1e-9 && ok; s += 5) {
       for (const v of [-half, 0, half]) {
         const x = p0.x + ux * s - uz * v;

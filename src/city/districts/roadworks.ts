@@ -29,7 +29,7 @@
  * on a route's closed side street (the street meets stand there), never near
  * a junction (crosswalks, traffic lights, shortcut mouths and closures all sit
  * at the ends of a street), never on an alley, a bridge, the El's street or
- * the river; bus bays (busBays.ts) keep off closed streets. Own random
+ * the channel; bus bays (busBays.ts) keep off closed streets. Own random
  * streams. Pure and deterministic.
  */
 import type { RoadGraph, RoadKind } from '../roadGraph';

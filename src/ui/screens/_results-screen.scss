@@ -4,11 +4,18 @@
    the way on as rows in their hues. The parts rise in a beat after one another; a new best is a sticker
    slapped on in the accent sweep, the standings deal in a row at a time, and Retry glints on its own every few
    seconds. Ten racers make a long card, so unlike the pause screen's this column scrolls, inside the kit's
-   scroll hints (_scroll-hint.scss): the edges fade and a chevron bobs where more is past them. */
+   scroll hints (_scroll-hint.scss): the edges fade and a chevron bobs where more is past them. On wide screens
+   the plates sit in two rows of columns so the screen fits a laptop: the card and the points side by side, the
+   way on beneath them as rows in columns; ten racers scroll inside their own well (_results-card.scss). Narrow
+   screens stack them in one column, which scrolls if it must. */
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 @use '../styles/abstracts/palette';
 .results-screen {
+  /* Wide enough for two columns of plates; narrow screens keep the rail's own width and stack. */
+  @include media.wide {
+    --rail-content: min(980px, calc(100vw - var(--rail-pad) * 2));
+  }
   /* The pause screen's scrim: the finish shots behind it can be bright. */
   > .rail__bg {
     background: linear-gradient(90deg, palette.alpha(bg0, 0.7), palette.alpha(bg0, 0.45) 70%, palette.alpha(bg0, 0));
@@ -34,6 +41,27 @@
       width: auto;
       max-height: none;
       padding-inline: 4px;
+    }
+  }
+  /* Two rows of columns: [card | points] over [what next]. */
+  @include media.wide {
+    .rail__step {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      align-items: start;
+      gap: 12px;
+      > .nav-list {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      }
+    }
+  }
+  /* Stacked on a phone the rows are tighter so the whole screen fits without scrolling. */
+  @include media.narrow {
+    .nav-row {
+      min-height: 48px;
+      padding-block: 6px;
     }
   }
   /* The step casts one drop shadow under everything it stands on the race (chamfered plates clip their own). */

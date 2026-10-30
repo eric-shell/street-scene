@@ -3,11 +3,11 @@ import * as THREE from 'three';
 import { CITY } from '../src/city/config';
 import { createCity, createWorld, planRoads } from '../src/city/world';
 import type { City, World } from '../src/city/world';
-import { graphIsConnected, isRiverEdge } from '../src/city/roadGraph';
+import { graphIsConnected, isChannelEdge } from '../src/city/roadGraph';
 import { createTerrain } from '../src/city/terrain';
 import { distToPolygonEdge, pointInPolygon, polygonBounds } from '../src/city/districts/geom';
 import { lakeLevels, lakeRings, lakeRolled } from '../src/city/districts/lake';
-import { riverL } from '../src/city/districts/river';
+import { channelL } from '../src/city/districts/channel';
 import type { Area, WallLook } from '../src/city/districts/types';
 import type { Wall } from '../src/city/blocks';
 import { distToSegment } from '../src/sim/math';
@@ -72,7 +72,7 @@ describe('lake (plan)', () => {
       if (lake) lakes++;
       if (lakeRolled(seed)) rolls++;
       // A seed that does not roll one never has one; one that does finds its blocks, but for the odd city
-      // whose plain blocks all stand where the river or the expressway will (measured: 96 of 100 find them).
+      // whose plain blocks all stand where the channel or the expressway will (measured: 96 of 100 find them).
       if (!lakeRolled(seed)) expect(lake, `seed ${seed}`).toBeUndefined();
     }
     expect(rolls).toBeGreaterThan(5);
@@ -99,14 +99,14 @@ describe('lake (plan)', () => {
       }
       // No dead ends, still one network, grid junctions where every planner looks for them.
       expect(graphIsConnected(g)).toBe(true);
-      // (The river's channel ends at its tunnel portals and an expressway loop's mouth at its foot: the only dead ends.)
-      for (const n of g.nodes) if (!n.edges.some((e) => isRiverEdge(g.edges[e]) || g.edges[e].kind === 'mouth')) expect(n.edges.length).toBeGreaterThanOrEqual(2);
+      // (The channel ends at its tunnel portals and an expressway loop's mouth at its foot: the only dead ends.)
+      for (const n of g.nodes) if (!n.edges.some((e) => isChannelEdge(g.edges[e]) || g.edges[e].kind === 'mouth')) expect(n.edges.length).toBeGreaterThanOrEqual(2);
       for (const n of g.nodes) if (n.gi >= 0) expect(g.nodes[n.gj * CITY.gridW + n.gi]).toBe(n);
       // Its shore streets and junctions are its own: nothing planned later took one.
       for (const e of lake.edges) expect(a.districts.areas.some((x) => x !== lake && x.kind !== 'downtown' && x.edges.includes(e))).toBe(false);
-      // Clear of the river channel, the El and every hill.
+      // Clear of the channel, the El and every hill.
       for (const x of a.districts.areas) {
-        if (x.kind === 'river') for (const p of lake.polygon) expect(Math.abs(riverL(x.params, p.x, p.z))).toBeGreaterThan(x.params.top + CFG.riverClear);
+        if (x.kind === 'channel') for (const p of lake.polygon) expect(Math.abs(channelL(x.params, p.x, p.z))).toBeGreaterThan(x.params.top + CFG.channelClear);
         if (x.kind === 'subway') for (const p of x.path) expect(pointInPolygon(p.x, p.z, lake.polygon)).toBe(false);
         if (x.kind === 'hills') for (const p of lake.polygon) expect(pointInPolygon(p.x, p.z, x.polygon)).toBe(false);
       }

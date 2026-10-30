@@ -19,7 +19,7 @@ import { InputFrame, NEUTRAL_INPUT, unpackInput } from '../sim/input';
 import { autopilotInput, type AiState } from '../sim/ai';
 import { VisualBuild } from '../shared/carBuild';
 import { DT, TICK_HZ } from '../sim/constants';
-import { DEG } from '../sim/math';
+import { DEG, clamp01 } from '../sim/math';
 import { CarView } from '../render/car/carView';
 import { manifestCar } from '../render/car/carAssets';
 import { Drivers } from '../render/people/drivers';
@@ -38,6 +38,8 @@ import { CAMERA, ChaseCamera } from '../render/camera/camera';
 import { RaceCinematics, type HandoffShot } from '../render/camera/cinematics';
 import { GameRenderer, NightScene, createNightScene } from '../render/scene';
 import { NITRO_FX } from '../render/post';
+import { measureStats } from '../sim/stats';
+import { damp } from '../shared/anim';
 import type { World } from '../city/world';
 import type { Cruise } from './cruise';
 import type { StreetStage } from './streetStage';
@@ -93,6 +95,8 @@ const SIGN_DELAY = 70;
 const AREA_SETTLE = 0.6;
 /** Nitrous screen warp easing rates in and out (1/s); a change of stage eases its glow over at NITRO_IN too. */
 const NITRO_IN = 5;
+/** Speed streaks: they start at this share of top speed, nitrous holds at least this amount, and ease in and out at these rates (1/s). */
+const STREAKS = { from: 0.6, nitro: 0.9, in: 3, out: 2 } as const;
 const NITRO_OUT = 2.5;
 /** Nitrous swells the music by this much per stage burning (dB), easing in and back out at these rates (1/s). */
 const MUSIC_LIFT = { db: [2, 4, 6], in: 4, out: 1.2 } as const;
@@ -215,6 +219,9 @@ export class RaceSession {
   private areaNext = '';
   private areaFor = 0;
   private blur = 0;
+  /** Speed streaks amount 0..1 (smoothed) and the player car's drag-set top speed (m/s, measured once in the constructor). */
+  private streaks = 0;
+  private readonly topSpeed: number;
   /** Eased rain-on-the-lens amount (0..1, the rain's share when a first person camera is on). */
   private lensRain = 0;
   private replayCam: ReplayCamMode = 'chase';
@@ -307,6 +314,8 @@ export class RaceSession {
     let own: Vec2 | null = null;
     this.wp = opts.waypoint ?? { get: () => own, set: (p) => (own = p) };
     this.race = createRace(opts.config, opts.world);
+    // The streaks' reference speed: driving the sim to its top speed costs 15-35 ms, so it is paid here under the loading screen, never on a live frame.
+    this.topSpeed = Math.max(30, measureStats(this.race.cars[0].tuning).topSpeed / 3.6);
     const hand = opts.handoff;
     this.borrowed = !!hand;
     this.night = hand ? hand.stage.lend() : createNightScene(this.race.world, gr, settings);
@@ -1033,6 +1042,10 @@ export class RaceSession {
     const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 1 : 0) : 0;
     this.blur += (target - this.blur) * (1 - Math.exp(-dt * (target > this.blur ? 6 : 3)));
     this.gr.post.setSpeedBlur(this.blur);
+    // Speed streaks: from STREAKS.from of the car's top speed up to full at it, nitrous holds them near full; same setting as the blur, off in the drone and paused.
+    const sTarget = this.settings.radialBlur && !this.drone && !this.paused ? Math.max(clamp01((p.speed / this.topSpeed - STREAKS.from) / (1 - STREAKS.from)), p.nitro ? STREAKS.nitro : 0) : 0;
+    this.streaks += (sTarget - this.streaks) * damp(sTarget > this.streaks ? STREAKS.in : STREAKS.out, dt);
+    this.gr.post.setSpeedStreaks(this.streaks < 0.003 ? 0 : this.streaks, this.time);
     // Nitrous warp: in fast, out a little slower, harder and hotter each stage; follows the speed blur setting, off in the drone and while paused.
     const stage = this.paused ? 0 : p.nitroStage;
     const warpTarget = this.settings.radialBlur && !this.drone && stage > 0 ? NITRO_FX.stageWarp[stage - 1] : 0;

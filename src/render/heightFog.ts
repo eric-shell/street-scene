@@ -1,5 +1,5 @@
 /**
- * Height fog: the scene's exponential fog thickens near the ground and thins with altitude, so the river
+ * Height fog: the scene's exponential fog thickens near the ground and thins with altitude, so the channel
  * channel and the low parks fill with haze while the highway deck and the bluff look out over it. One
  * implementation for every fog in the game, at zero per-frame cost: three shared uniforms written when a
  * scene is built or a mood is applied, and a few extra ALU ops per fogged fragment (or vertex).
@@ -13,7 +13,7 @@
  * i.e. density rising toward `floor` and decaying with altitude, normalised so m(street level) = 1 (the world's
  * floor is its lowest drivable ground, `lowestGround`, and `falloff` and `gain` follow from it and the mood's
  * `pool` ratio, see `setHeightFog`): the
- * street looks exactly as it did before height fog on every mood, the river channel below it thickens, and
+ * street looks exactly as it did before height fog on every mood, the channel below it thickens, and
  * decks, the bluff and the highway above it thin out (never below HF_MIN, so high ground is never fogless).
  * The average along a straight ray has a closed form (the exponential's integral over the segment, divided by
  * the height change; the level-ray case falls back to the midpoint value), so it needs only the heights of the
@@ -44,8 +44,8 @@ import type { World } from '../city/world';
 
 /** Height fog defaults. The mood (render/sky/weather.ts `MoodDef.heightPool`) overrides `pool`. */
 export const FOG_HEIGHT = {
-  /** World height (m) of the deepest haze when a world has no low ground of its own (the river channel's depth); `lowestGround` replaces it per world. */
-  floor: -CITY.districts.river.depth,
+  /** World height (m) of the deepest haze when a world has no low ground of its own (the channel's depth); `lowestGround` replaces it per world. */
+  floor: -CITY.districts.channel.depth,
   /** Falloffs between street level and the floor: the haze is e^-spans (about a sixth) of its floor strength at the street, before normalising. */
   spans: 1.8,
   /** The falloff (m) stays between these, so a shallow world still gets a pool and a very deep one a gradient. */
@@ -108,7 +108,7 @@ export const HEIGHT_FOG_UNIFORMS = {
 };
 
 /**
- * The lowest ground a car can be on in `world` (m): the least height over the road graph's nodes, the river
+ * The lowest ground a car can be on in `world` (m): the least height over the road graph's nodes, the channel
  * channel's centreline and the lake's shore, kept inside FOG_HEIGHT.floorRange. A world with none of them
  * deeper than the range's top gets the default floor. Called once per scene build.
  */
@@ -117,7 +117,7 @@ export function lowestGround(world: World): number {
   let low = Infinity;
   for (const n of world.graph.nodes) low = Math.min(low, world.heightAt(n.x, n.z));
   for (const a of world.areas) {
-    if (a.kind !== 'river' && a.kind !== 'lake') continue;
+    if (a.kind !== 'channel' && a.kind !== 'lake') continue;
     for (const p of a.path.length ? a.path : a.polygon) low = Math.min(low, world.heightAt(p.x, p.z));
   }
   if (!Number.isFinite(low) || low >= shallowest) return FOG_HEIGHT.floor;

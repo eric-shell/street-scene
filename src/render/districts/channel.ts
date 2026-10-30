@@ -1,6 +1,6 @@
 /**
- * River renderer: the concrete flood channel as a race venue end to end.
- * Stained, jointed concrete (riverTextures.ts) over the floor and the sloped
+ * Channel renderer: the concrete flood channel as a race venue end to end.
+ * Stained, jointed concrete (channelTextures.ts) over the floor and the sloped
  * banks, draped on the sim's lower level (World.heightAt with a body height
  * below everything: the channel profile, which runs on under every bridge
  * deck) so every ramp trench and pier is exactly where the collision says;
@@ -10,7 +10,7 @@
  * (fences and cones are props; the pink and amber string lights across the
  * mouth are drawn here from the planner's hints); the set pieces on the floor
  * (a hump, a water bar, a tabletop, a ledge, a median:
- * city/districts/riverFeatures.ts) on their own fine grid, the raised concrete
+ * city/districts/channelFeatures.ts) on their own fine grid, the raised concrete
  * tinted like the plinths with a painted line along each crest; under each
  * deck its slab, girders,
  * the piers on the floor edges and the abutments on the banks (the sim's
@@ -23,19 +23,19 @@
  *
  * Meshes: five merged meshes of its own (concrete, decals, fence, wet, light
  * pools) plus the kit's shared builders. Render only: the walls it draws are
- * the river district's own.
+ * the channel district's own.
  */
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
-import type { Bridge, Ramp } from '../../city/districts/river';
-import { bridgePoint, bridgesOf, distToBridge, footAlongs, mouthAlongs, pierOffsets, pierReach, rampAlong, rampHalf, rampOuter, rampPoint, rampsOf, riverCenter, riverFrame, riverL } from '../../city/districts/river';
+import type { Bridge, Ramp } from '../../city/districts/channel';
+import { bridgePoint, bridgesOf, distToBridge, footAlongs, mouthAlongs, pierOffsets, pierReach, rampAlong, rampHalf, rampOuter, rampPoint, rampsOf, channelCenter, channelFrame, channelL } from '../../city/districts/channel';
 import type { Area } from '../../city/districts/types';
-import { type Feature, type FeatureSample, featureHeight, featureSpan, featuresOf } from '../../city/districts/riverFeatures';
+import { type Feature, type FeatureSample, featureHeight, featureSpan, featuresOf } from '../../city/districts/channelFeatures';
 import type { Wall } from '../../city/blocks';
 import type { Vec2 } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
-import { RIVER_TEX, UvRect, riverTextures } from '../textures/riverTextures';
+import { CHANNEL_TEX, UvRect, channelTextures } from '../textures/channelTextures';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, stringLights, wallBox } from './kit';
 import { WATER, waterMaterial } from './water';
@@ -93,11 +93,11 @@ const DECK_UNDERSIDE = DRESS.slab + DRESS.girder;
 /**
  * How far below a deck's road its structure reaches at (x, z) (m): the slab
  * and girders everywhere, the pier bents' cap beams as well over the floor
- * edges (the sim's pier rows, CITY.districts.river.pierInset inside the
+ * edges (the sim's pier rows, CITY.districts.channel.pierInset inside the
  * floor edge). The cameras stay under it (render/camera/ceilings.ts).
  */
 export function deckUndersideAt(p: Record<string, number>, x: number, z: number): number {
-  const offBent = Math.abs(Math.abs(riverL(p, x, z)) - (p.floor - CITY.districts.river.pierInset));
+  const offBent = Math.abs(Math.abs(channelL(p, x, z)) - (p.floor - CITY.districts.channel.pierInset));
   return DECK_UNDERSIDE + (offBent < DRESS.capT / 2 + DRESS.capRoom ? DRESS.capH : 0);
 }
 
@@ -124,8 +124,8 @@ const TINT = {
 } as const;
 
 
-export const riverRenderer: DistrictRenderer = {
-  kinds: ['river'],
+export const channelRenderer: DistrictRenderer = {
+  kinds: ['channel'],
   build(kit, areas) {
     for (const a of areas) buildChannel(kit, a);
   },
@@ -153,7 +153,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   const F = p.floor;
   const T = p.top;
   const fenceL = T + 0.5;
-  const tex = riverTextures(kit.world.seed);
+  const tex = channelTextures(kit.world.seed);
   const rng = new Rng(((p.seed ?? kit.world.seed) ^ 0x7a9) >>> 0 || 1);
   const ramps = rampsOf(a);
   const features = featuresOf(p);
@@ -162,7 +162,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   const build = kit.builds[a.id];
   const world = kit.world;
   const bridges = bridgesOf(world.graph, a);
-  const zc = (x: number) => riverCenter(p, x);
+  const zc = (x: number) => channelCenter(p, x);
   /** The deck level (the terrain) and the channel level beneath it (the same ground away from the decks). */
   const h = kit.h;
   const hLow: Ground = (x, z) => world.heightAt(x, z, -Infinity);
@@ -174,7 +174,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   /** The standing water on the floor (puddles): the shared water material, ringed by rain; the trickle in `wet` keeps its own flat look. */
   const puddles = new GeoBuilder(true);
   const pools = new GeoBuilder(true);
-  const span = RIVER_TEX.concreteSpan;
+  const span = CHANNEL_TEX.concreteSpan;
 
   const normalLow = (x: number, z: number): [number, number, number] => {
     const s = world.slopeAt(x, z, -Infinity);
@@ -241,7 +241,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     if (al > F + 0.6) return TINT.bank;
     if (al > F - 0.8) return TINT.waterLine;
     // Darker, wetter concrete around the low flow trickle.
-    const d = l - CITY.districts.river.waterOffset;
+    const d = l - CITY.districts.channel.waterOffset;
     return TINT.floor.clone().multiplyScalar(1 - 0.22 * Math.exp(-(d * d) / 12));
   };
   const xs: number[] = [];
@@ -332,7 +332,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     }
   }
 
-  // ----- The set pieces on the floor (city/districts/riverFeatures.ts): each on its own fine grid across
+  // ----- The set pieces on the floor (city/districts/channelFeatures.ts): each on its own fine grid across
   // the whole band (1 m columns, floor rows every 0.75 m) draped on the channel level like the rest,
   // the raised concrete tinted like the plinths, and a painted line along each crest or edge so it
   // reads from a distance at night.
@@ -344,7 +344,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   const featRows = ls.filter((l) => Math.abs(l) > F + 1e-6);
   for (let l = -F; l <= F + 1e-6; l += 0.75) featRows.push(l);
   featRows.sort((u, v) => u - v);
-  const R = CITY.districts.river.features;
+  const R = CITY.districts.channel.features;
   const crestPaint = col(0xf0c030, 0.8);
   features.forEach((f, i) => {
     const lo = f.x - fspan[i];
@@ -399,8 +399,8 @@ function buildChannel(kit: DistrictKit, a: Area): void {
       const y1 = yAt(b0.x, b0.z);
       const nx = (-(b0.z - a0.z) / len) * s;
       const nz = ((b0.x - a0.x) / len) * s;
-      const u0 = run / RIVER_TEX.fenceSpan;
-      const u1 = (run + len) / RIVER_TEX.fenceSpan;
+      const u0 = run / CHANNEL_TEX.fenceSpan;
+      const u1 = (run + len) / CHANNEL_TEX.fenceSpan;
       const v = [
         fence.vertex(a0.x, y0 + 0.02, a0.z, nx, 0, nz, u0, 0, TINT.post),
         fence.vertex(b0.x, y1 + 0.02, b0.z, nx, 0, nz, u1, 0, TINT.post),
@@ -464,7 +464,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     const plinthTop: Ground = (x, z) => h(x, z) + DRESS.plinth;
     for (const sd of [1, -1]) {
       const alongs = [aF + 0.4, ...footAlongs(r).filter((a) => a > aF + 0.4)];
-      for (let s = alongs[alongs.length - 1] + 2; s < aTop - CITY.districts.river.mouthLength - 0.05; s += 2) alongs.push(s);
+      for (let s = alongs[alongs.length - 1] + 2; s < aTop - CITY.districts.channel.mouthLength - 0.05; s += 2) alongs.push(s);
       alongs.push(...mouthAlongs(r, aTop).filter((a) => a < aTop - 0.4), aTop - 0.4);
       chainlink(
         alongs.map((a) => rampPoint(r, a, sd * (rampHalf(r, a, sd) + 0.3))),
@@ -510,14 +510,14 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   const nearestBridge = (x: number, z: number): Bridge => bridges.reduce((best, br) => (distToBridge(br, x, z) < distToBridge(best, x, z) ? br : best));
   const columns = solidsOf(piers).map((solid) => {
     const c = solidCenter(solid);
-    return { solid, c, br: nearestBridge(c.x, c.z), s: riverL(p, c.x, c.z) >= 0 ? 1 : -1 };
+    return { solid, c, br: nearestBridge(c.x, c.z), s: channelL(p, c.x, c.z) >= 0 ? 1 : -1 };
   });
   for (const br of bridges) {
     for (const s of [-1, 1]) {
       const bent = columns.filter((k) => k.br === br && k.s === s);
       if (!bent.length) continue;
       // The cap beam across the deck at the bent's l, its ends past the outer columns, chamfered underneath.
-      const lp = s * (F - CITY.districts.river.pierInset);
+      const lp = s * (F - CITY.districts.channel.pierInset);
       const reach = pierReach(br) + DRESS.capOver;
       const c0 = bridgePoint(p, br, -reach, lp);
       const c1 = bridgePoint(p, br, reach, lp);
@@ -582,7 +582,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
         if (i === 0) cap.push(cope);
       }
       // The face toward the floor carries an arched recess and a lamp over it, as a culvert mouth.
-      if (lFace(p, f) < F + CITY.districts.river.abutment + 0.5 && len > 10) {
+      if (lFace(p, f) < F + CITY.districts.channel.abutment + 0.5 && len > 10) {
         const dx = (f.bx - f.ax) / len;
         const dz = (f.bz - f.az) / len;
         const n = Math.max(1, Math.floor(len / 12));
@@ -606,7 +606,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
       for (const w of [-(br.dk - 2.5), br.dk - 2.5]) {
         const q = bridgePoint(p, br, w, s * (F - 3.5));
         const y = h(q.x, q.z) - DRESS.slab - 0.15;
-        const fr = riverFrame(p, q.x);
+        const fr = channelFrame(p, q.x);
         lamp(kit, pools, q.x, y, q.z, -s * fr.mx, -s * fr.mz, 0.8, hLow);
       }
     }
@@ -647,15 +647,15 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   }
 
   // ----- Drains on the bank faces, clear of ramps and decks.
-  const busy = (x: number, half: number) => ramps.some((r) => Math.abs(x - r.ax) < r.hw + r.body + half + 3) || bridges.some((b) => Math.abs(x - b.cx) < b.dk + CITY.districts.river.bridgeBody + half + 4) || features.some((f, i) => Math.abs(x - f.x) < fspan[i] + half + 2);
+  const busy = (x: number, half: number) => ramps.some((r) => Math.abs(x - r.ax) < r.hw + r.body + half + 3) || bridges.some((b) => Math.abs(x - b.cx) < b.dk + CITY.districts.channel.bridgeBody + half + 4) || features.some((f, i) => Math.abs(x - f.x) < fspan[i] + half + 2);
   for (let x = p.x0 + 90 + rng.range(0, 60); x < p.x1 - 60; x += rng.range(DRESS.drainGap[0], DRESS.drainGap[1])) {
     if (busy(x, 1.4)) continue;
     bankDecal(kit, p, decal, tex.drain, x - 1.3, x + 1.3, rng.chance(0.5) ? 1 : -1, F + 0.1, T - 1.8, 3);
   }
 
   // ----- Water: the low flow trickle (a dark mirror, on under the decks) and puddles on the floor.
-  const wo = CITY.districts.river.waterOffset;
-  const wh = CITY.districts.river.waterHalf;
+  const wo = CITY.districts.channel.waterOffset;
+  const wh = CITY.districts.channel.waterHalf;
   {
     let last: [number, number] | null = null;
     for (const x of xs) {
@@ -695,7 +695,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     }
   }
 
-  // ----- Meshes: five of the river's own, disposed with the scene; the textures live per seed.
+  // ----- Meshes: five of the channel's own, disposed with the scene; the textures live per seed.
   const add = (gb: GeoBuilder, name: string, mat: THREE.Material, order = 0): THREE.Mesh | null => {
     if (!gb.vertexCount) return null;
     const m = new THREE.Mesh(kit.track(gb.build()), kit.track(mat));
@@ -706,22 +706,22 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   };
   const flatWater = waterMaterial(kit, { quality: kit.quality, flat: true });
   const concreteMat = new THREE.MeshStandardMaterial({ map: tex.concrete, vertexColors: true, roughness: 0.93, metalness: 0, envMapIntensity: 0.35 });
-  add(concrete, 'riverConcrete', concreteMat);
+  add(concrete, 'channelConcrete', concreteMat);
   add(
     decal,
-    'riverDecals',
+    'channelDecals',
     new THREE.MeshStandardMaterial({ map: tex.decals, emissiveMap: tex.decals, emissive: 0xffffff, emissiveIntensity: 0.28, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, roughness: 0.9 }),
     1,
   );
-  add(fence, 'riverFence', new THREE.MeshStandardMaterial({ map: tex.chainlink, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.45, metalness: 0.75, envMapIntensity: 0.7 }));
-  add(wet, 'riverWater', flatWater, 1);
-  add(puddles, 'riverPuddles', waterMaterial(kit, { quality: kit.quality, calm: WATER.calm.puddle }), 1);
-  add(pools, 'riverLightPools', new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), 2);
+  add(fence, 'channelFence', new THREE.MeshStandardMaterial({ map: tex.chainlink, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.45, metalness: 0.75, envMapIntensity: 0.7 }));
+  add(wet, 'channelWater', flatWater, 1);
+  add(puddles, 'channelPuddles', waterMaterial(kit, { quality: kit.quality, calm: WATER.calm.puddle }), 1);
+  add(pools, 'channelLightPools', new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), 2);
 }
 
 /** |l| of a wall's midpoint. */
 function lFace(p: Record<string, number>, f: Wall): number {
-  return Math.abs(riverL(p, (f.ax + f.bx) / 2, (f.az + f.bz) / 2));
+  return Math.abs(channelL(p, (f.ax + f.bx) / 2, (f.az + f.bz) / 2));
 }
 
 /** The solids among some walls, each as its faces (the walls sharing one Wall.solid). */
@@ -761,8 +761,8 @@ function solidCenter(faces: Wall[]): Vec2 {
 function deckUnderside(gb: GeoBuilder, p: Record<string, number>, br: Bridge, T: number, h: (x: number, z: number) => number, flat: (gb: GeoBuilder, q: V3[], c: THREE.Color, u?: (v: V3) => number, v?: (w: V3) => number) => void): void {
   const L = T + 2.5;
   const W = br.dk + DRESS.slabOver;
-  const vertical = (v: V3) => (v.x + v.z) / RIVER_TEX.concreteSpan;
-  const height = (v: V3) => v.y / RIVER_TEX.concreteSpan;
+  const vertical = (v: V3) => (v.x + v.z) / CHANNEL_TEX.concreteSpan;
+  const height = (v: V3) => v.y / CHANNEL_TEX.concreteSpan;
   const rows = Math.max(2, Math.ceil((2 * L) / DRESS.deckRow));
   const deckY = (l: number): number => {
     const q = bridgePoint(p, br, 0, l);
@@ -886,7 +886,7 @@ function bankDecal(kit: DistrictKit, p: Record<string, number>, gb: GeoBuilder, 
     const row: number[] = [];
     for (let i = 0; i <= segs; i++) {
       const x = x0 + ((x1 - x0) * i) / segs;
-      const z = riverCenter(p, x) + s * al;
+      const z = channelCenter(p, x) + s * al;
       const t = i / segs;
       // Seen from the floor, the bank at +l has the viewer's right toward -x, the other toward +x.
       const u = s > 0 ? uv.u1 - (uv.u1 - uv.u0) * t : uv.u0 + (uv.u1 - uv.u0) * t;

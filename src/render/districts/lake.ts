@@ -4,7 +4,7 @@
  * it (the sim's 'lakeRail' walls: posts, a top and a middle rail, taller gate
  * posts with lanterns where the jetty leaves), the bank falling from the
  * coping to the bed on the sim's own ground, reeds along the waterline, and
- * the water: one flat polygon at the lake's level in the river's dark mirror
+ * the water: one flat polygon at the lake's level in the channel's dark mirror
  * material (render/districts/water.ts waterMaterial), stiller and a shade
  * darker. On it, the lights: every lantern post and the jetty's lamp throws
  * a shimmering streak across the water toward the viewer (laid out per

@@ -20,7 +20,7 @@
  * at its foot to the deck's planned height at E (with its hump over the El);
  * it is an embankment until it leaves the block its foot is in, and a bridge
  * from there on, over the cross street (high enough over it) and the frontage
- * beyond. It keeps clear of a swing's turns, the El crossing, the river, a
+ * beyond. It keeps clear of a swing's turns, the El crossing, the channel, a
  * bluff and the roundabouts; its lane runs on as long as the deck has room,
  * cut short to no less than CFG.rampLaneMin at full width. `want` of the
  * pairs are kept, spaced along each side of the deck, clear of the end loops.
@@ -174,7 +174,7 @@ export function plannedTop(site: RampSite, s: number): number {
 
 /**
  * The free block with these four grid corners, or null: no shortcut through it and (unless `loose`) no
- * street round it a ramp may not bridge: a river bridge, or a claimed one but the El's, the river's or
+ * street round it a ramp may not bridge: a channel bridge, or a claimed one but the El's, the channel's or
  * an alley's (the outline keeps clear of the El's deck and the channel itself).
  */
 export function blockOf(site: RampSite, corners: { x: number; z: number }[], loose = false): BlockFace | null {
@@ -186,7 +186,7 @@ export function blockOf(site: RampSite, corners: { x: number; z: number }[], loo
   if (face.edges.some((e) => g.edges[e].shortcut)) return null;
   const bridgeable = (e: number) => {
     const claim = ctx.claims.edge.get(e);
-    return (PLAIN.has(g.edges[e].kind) || g.edges[e].kind === 'alley') && !g.edges[e].bridge && (claim === undefined || ['subway', 'river', 'alley'].includes(ctx.areas[claim].kind));
+    return (PLAIN.has(g.edges[e].kind) || g.edges[e].kind === 'alley') && !g.edges[e].bridge && (claim === undefined || ['subway', 'channel', 'alley'].includes(ctx.areas[claim].kind));
   };
   if (!loose && !face.edges.every(bridgeable)) return null;
   return face;

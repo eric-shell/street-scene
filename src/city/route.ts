@@ -9,7 +9,7 @@
  * routeRails.ts lays the corner rails.
  */
 import { CITY, ROUTE } from './config';
-import { type RoadGraph, edgeBetween, isBendNode, isRiverEdge } from './roadGraph';
+import { type RoadGraph, edgeBetween, isBendNode, isChannelEdge } from './roadGraph';
 import { chainBackwards, routeChains } from './districts/alleyPath';
 import { shortcutSpan } from './districts/alleyShortcuts';
 import type { QuayCut } from './districts/harborShore';
@@ -230,7 +230,7 @@ export function routeRuns(g: RoadGraph, nodes: number[], edges: number[], closed
 }
 
 /**
- * Where a circuit's start line goes: the middle of its longest run that is a street (not the river's
+ * Where a circuit's start line goes: the middle of its longest run that is a street (not the channel's
  * floor or a ramp, nor across a level crossing's tracks), as the index of the edge it is on in the
  * circuit's edge list (polylineFrom order on `nodes`) and the parameter along that edge from
  * nodes[index]. The planners that keep the start straight clear mirror buildRoute through this.
@@ -238,11 +238,11 @@ export function routeRuns(g: RoadGraph, nodes: number[], edges: number[], closed
 export function circuitStart(g: RoadGraph, nodes: number[]): { index: number; t: number; run: RouteRun } {
   const edges = polylineFrom(g, nodes, true);
   const runs = routeRuns(g, nodes, edges, true);
-  const river = (r: RouteRun) => r.edges.some((e) => isRiverEdge(g.edges[e]) || g.edges[e].crossing !== undefined);
+  const channel = (r: RouteRun) => r.edges.some((e) => isChannelEdge(g.edges[e]) || g.edges[e].crossing !== undefined);
   let best = runs[0];
   for (const r of runs) {
-    const rb = river(r);
-    const bb = river(best);
+    const rb = channel(r);
+    const bb = channel(best);
     if ((!rb && bb) || (rb === bb && r.length > best.length)) best = r;
   }
   let s = best.length / 2;
@@ -273,7 +273,7 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[], 
 
   if (closed) {
     // Start line in the middle of the longest straight that is a street (the grid, gantries and
-    // crowds belong on one, not on the river's floor or a ramp): a run of pieces through bend nodes
+    // crowds belong on one, not on the channel's floor or a ramp): a run of pieces through bend nodes
     // (circuitStart), so a curving street counts whole.
     const start = circuitStart(g, nodes);
     const li = start.index;

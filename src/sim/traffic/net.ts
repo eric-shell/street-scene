@@ -48,7 +48,7 @@ function pathBlocked(w: World, xs: number[], zs: number[], r: number, contacts: 
     for (let k = i === 0 ? 0 : 1; k <= n; k++) {
       const x = xs[i] + (dx * k) / n;
       const z = zs[i] + (dz * k) / n;
-      // Probed at street level: over the river channel a bridge's piers stand beneath its deck (Wall.top).
+      // Probed at street level: over the channel a bridge's piers stand beneath its deck (Wall.top).
       if (w.collideCircle(x, z, r, contacts, w.heightAt(x, z)) > 0) return true;
       const s = w.surfaceAt(x, z);
       if (s === 'offroad' || s === 'grass' || s === 'water') return true;

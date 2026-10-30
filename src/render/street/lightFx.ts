@@ -20,7 +20,7 @@
  * drawn runs to the front of the instance buffers and sets the instance count.
  * Pools and streaks are 'fog' class (lamps read from afar). Both lie on the
  * ground, which is rarely level (hills lift blocks 8-16 m, the highway's ramps,
- * the bluff and the river's entrances climb at several percent), so each emitter
+ * the bluff and the channel's entrances climb at several percent), so each emitter
  * carries a ground plane fitted at build (groundPlane.ts): a pool's instance
  * matrix is sheared onto it, and a streak's vertex shader sets its height from
  * the emitter's gradient (iGrad) along its length. A plane is zero extra

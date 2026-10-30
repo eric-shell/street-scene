@@ -1,5 +1,5 @@
 /**
- * Procedural canvas textures for the river channel (render/districts/river.ts):
+ * Procedural canvas textures for the channel (render/districts/channel.ts):
  * stained concrete with expansion joints and cracks, a decal strip of storm
  * drain outlets and the arched culvert recesses under the bridges, and
  * a tiling chain-link fence (alpha tested). Seeded, so every scene of a seed
@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { Rng } from '../../sim/prng';
 
 /** Meters per repeat of the concrete texture, and the decal strip's layout (px): one row of cells. */
-export const RIVER_TEX = {
+export const CHANNEL_TEX = {
   concreteSpan: 16,
   atlas: 1024,
   cell: 256,
@@ -25,7 +25,7 @@ export interface UvRect {
   v1: number;
 }
 
-export interface RiverTextures {
+export interface ChannelTextures {
   concrete: THREE.CanvasTexture;
   decals: THREE.CanvasTexture;
   chainlink: THREE.CanvasTexture;
@@ -124,8 +124,8 @@ function makeConcrete(rng: Rng): THREE.CanvasTexture {
 }
 
 function makeDecals(rng: Rng): [THREE.CanvasTexture, UvRect, UvRect, UvRect] {
-  const S = RIVER_TEX.atlas;
-  const C = RIVER_TEX.cell;
+  const S = CHANNEL_TEX.atlas;
+  const C = CHANNEL_TEX.cell;
   const [c, ctx] = canvas(S, C);
   ctx.clearRect(0, 0, S, C);
   // Drain outlet: a dark pipe mouth in a concrete collar, rust and algae streaking down.
@@ -218,17 +218,17 @@ function makeChainlink(): THREE.CanvasTexture {
   return finish(c, true, true);
 }
 
-let cache: { seed: number; tex: RiverTextures } | null = null;
+let cache: { seed: number; tex: ChannelTextures } | null = null;
 
 /** The channel's textures for a seed, shared by every scene of that seed and replaced when the seed changes. */
-export function riverTextures(seed: number): RiverTextures {
+export function channelTextures(seed: number): ChannelTextures {
   if (cache && cache.seed === seed) return cache.tex;
   cache?.tex.dispose();
   const rng = new Rng((seed ^ 0x51a7e) >>> 0 || 1);
   const concrete = makeConcrete(rng);
   const [decals, drain, arch, portal] = makeDecals(rng);
   const chainlink = makeChainlink();
-  const tex: RiverTextures = {
+  const tex: ChannelTextures = {
     concrete,
     decals,
     chainlink,

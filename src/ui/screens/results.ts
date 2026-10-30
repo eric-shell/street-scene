@@ -33,6 +33,7 @@ const POINTS_LINES: [PointsSource, string][] = [
   ['drift', 'Drifts'],
   ['nearMiss', 'Near misses'],
   ['draft', 'Slipstream'],
+  ['air', 'Airtime'],
   ['wreck', 'Wrecks'],
   ['crash', 'Crashes'],
 ];
@@ -42,36 +43,42 @@ const POINTS_COUNT = { delay: 0.45, time: 1.2 } as const;
 const pts = (n: number) => Math.round(n).toLocaleString('en-US');
 
 /**
- * The points card: the run's total big and counting up, the lifetime total beneath it ("+1,240 · 18,560 total",
+ * The points card: the run's total big and counting up, the balance to spend beneath it ("+1,240 · 18,560 to spend",
  * shared/points.ts), a new best or the event's best beside the kicker, and a line per source that paid.
  */
 function pointsBlock(tally: PointsTally, best: number, newBest: boolean, lifetime: { gained: number; total: number }): HTMLElement {
   const total = pointsTotal(tally);
-  const value = h('b', { class: 'results-points__total' }, pts(prefersReducedMotion() ? total : 0));
+  const reduce = prefersReducedMotion();
+  const value = h('b', { class: 'results-points__total' }, pts(reduce ? total : 0));
   const list = h('ul', { class: 'results-points__list' });
   for (const [k, label] of POINTS_LINES) {
     if (Math.round(tally[k]) <= 0) continue;
     list.append(h('li', { class: k === 'crash' ? 'results-points__item results-points__item--crash' : 'results-points__item' }, h('span', {}, label), h('b', {}, `${k === 'crash' ? '−' : '+'}${pts(tally[k])}`)));
   }
-  if (!prefersReducedMotion() && total > 0) {
+  // A tuned run adds nothing to the balance, so only the balance shows.
+  const lifeText = (gained: number, sum: number) => (lifetime.gained > 0 ? `+${pts(gained)} · ${pts(sum)} to spend` : `${pts(sum)} to spend`);
+  const lifeBefore = lifetime.total - lifetime.gained;
+  const life = lifetime.total > 0 ? h('p', { class: 'results-points__life' }, lifeText(reduce ? lifetime.gained : 0, reduce ? lifetime.total : lifeBefore)) : null;
+  // One eased count drives the run's total and the lifetime line together: the lifetime climbs from where it stood as the run's points roll in.
+  if (!reduce && (total > 0 || lifetime.gained > 0)) {
     const start = performance.now() + POINTS_COUNT.delay * 1000;
     const step = (now: number) => {
       if (!value.isConnected && now > start) return;
       const k = Math.max(0, Math.min(1, (now - start) / (POINTS_COUNT.time * 1000)));
-      value.textContent = pts(total * (1 - Math.pow(1 - k, 3)));
+      const e = 1 - Math.pow(1 - k, 3);
+      value.textContent = pts(total * e);
+      if (life) life.textContent = lifeText(lifetime.gained * e, lifeBefore + lifetime.gained * e);
       if (k < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
   }
   const tag = newBest ? h('span', { class: 'results-screen__badge' }, icon(Sparkles, { size: 14 }), 'New best') : best > 0 && h('span', { class: 'results-points__best' }, `Best ${pts(best)}`);
-  // A tuned run adds nothing to the lifetime total, so only the total shows.
-  const life = lifetime.gained > 0 ? `+${pts(lifetime.gained)} · ${pts(lifetime.total)} total` : `${pts(lifetime.total)} total`;
   return h(
     'section',
     { class: 'results-points', 'aria-label': 'Points' },
     h('div', { class: 'results-points__head' }, h('span', { class: 'label label--kicker' }, icon(Sparkles, { size: 14 }), 'Points'), tag),
     value,
-    lifetime.total > 0 && h('p', { class: 'results-points__life' }, life),
+    life,
     list,
   );
 }
@@ -87,7 +94,7 @@ function pointsBlock(tally: PointsTally, best: number, newBest: boolean, lifetim
  */
 export function resultsScreen(o: {
   mode: RaceMode;
-  /** The seed's event name (Hill Climb, River Run, ...), the card's name. */
+  /** The seed's event name (Hill Climb, Channel Run, ...), the card's name. */
   event?: string;
   rows: ResultRow[];
   position: number;
@@ -97,7 +104,7 @@ export function resultsScreen(o: {
   points: PointsTally;
   pointsBest: number;
   newPointsBest: boolean;
-  /** What this run added to the lifetime points (0 for a tuned run) and the total after (shared/points.ts). */
+  /** What this run added to the points (0 for a tuned run) and the balance left to spend after it (shared/points.ts). */
   lifetime: { gained: number; total: number };
   tuned: boolean;
   /** How this run stands against a challenge link's mark (main.ts challengeResult), or null off one. */

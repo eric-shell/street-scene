@@ -212,6 +212,10 @@ export interface CarTuning {
     refillNearMiss: number;
     /** Stage fraction per second in a slipstream. */
     refillDraft: number;
+    /** Stage fraction per second while airborne past airGrace. */
+    refillAir: number;
+    /** Seconds with no wheel on the ground before airtime starts paying. */
+    airGrace: number;
     /** Stages a knocked down prop pays the car that broke it, scaled by sqrt(its effective mass / wreckFullMass) and capped at 1 (a can is worth a quarter of a pole; props.ts). */
     wreckBonus: number;
     /** Effective prop mass (kg, mass * anchor) at and above which a wreck pays the whole bonus. */
@@ -257,7 +261,7 @@ export interface CarTuning {
     /** A beach's sand (districts/waterfrontBeach.ts): loose, so a good deal less grip than a road, and a heavy rolling drag (N, full above 1 m/s). */
     sandGrip: number;
     sandDrag: number;
-    /** Water in the river trickle: hydrodynamic drag, N per (m/s)^2 of speed with all four wheels in it (scaled by the wheels that are). */
+    /** Water in the channel trickle: hydrodynamic drag, N per (m/s)^2 of speed with all four wheels in it (scaled by the wheels that are). */
     waterDrag: number;
   };
   collision: {

@@ -3,8 +3,8 @@
  * layers (ui/map/cityMap.ts) so they read like the full map and the minimap, and
  * both the same model: the whole city tilted like a model on a table, turning
  * slowly, with the cruising car's live position on it (a heading arrow over a
- * radar ping) and the event's signature district breathing (the river for
- * River Run, the quay for Harbor Run, the roundabouts for Ring Rush ...). Going from home to the race
+ * radar ping) and the event's signature district breathing (the channel for
+ * Channel Run, the quay for Harbor Run, the roundabouts for Ring Rush ...). Going from home to the race
  * step keeps the same city at the same angle; only the course arrives.
  *  - CityOverview: the home card's map, the table on its own. It says where
  *    tonight's event is without saying which race. A click opens the full map.
@@ -45,7 +45,7 @@ export interface MapPose {
 /** The event's signature districts, which breathe on the overview. */
 const SIGNATURE: Record<EventFlavourId, AreaKind | null> = {
   hillClimb: 'hills',
-  riverRun: 'river',
+  channelRun: 'channel',
   harborRun: 'waterfront',
   alleySprint: 'alley',
   underTheEl: 'subway',
@@ -281,7 +281,7 @@ export class CityOverview {
     c.lineCap = 'round';
     c.lineJoin = 'round';
     const g = this.world.graph;
-    const ink = kind === 'river' || kind === 'subway' || kind === 'waterfront' ? PALETTE.cyan : kind === 'alley' ? PALETTE.blue : kind === 'hills' ? PALETTE.soft : kind === 'monument' ? PALETTE.yellow : PALETTE.orange;
+    const ink = kind === 'channel' || kind === 'subway' || kind === 'waterfront' ? PALETTE.cyan : kind === 'alley' ? PALETTE.blue : kind === 'hills' ? PALETTE.soft : kind === 'monument' ? PALETTE.yellow : PALETTE.orange;
     c.strokeStyle = ink;
     c.fillStyle = ink;
     for (const a of this.world.areas) {

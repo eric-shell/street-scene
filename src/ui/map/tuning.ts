@@ -112,7 +112,7 @@ export const LEGEND_SECTIONS: readonly { title: string; layers: readonly LegendL
     title: 'Places',
     layers: [
       { key: 'park', label: 'Parks', kinds: ['park'] },
-      { key: 'water', label: 'Water', kinds: ['river', 'lake', 'waterfront'] },
+      { key: 'water', label: 'Water', kinds: ['channel', 'lake', 'waterfront'] },
       { key: 'high', label: 'High ground', kinds: ['hills', 'bluff'] },
       { key: 'monument', label: 'Monuments', kinds: ['monument'] },
       { key: 'market', label: 'Night markets', kinds: ['market'] },

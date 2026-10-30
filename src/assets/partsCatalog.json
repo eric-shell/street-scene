@@ -417,7 +417,7 @@
     {
       "id": "wheel_akane",
       "displayName": "Akane",
-      "group": "Hiryu",
+      "group": "Seiryu",
       "construction": "multi",
       "offset": 0.0987,
       "offsetBias": 25,
@@ -439,7 +439,7 @@
     {
       "id": "wheel_akatsuki",
       "displayName": "Akatsuki",
-      "group": "Byakko",
+      "group": "Kitsune",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -465,7 +465,7 @@
     {
       "id": "wheel_ame",
       "displayName": "Ame",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "single",
       "lip": "rim",
       "carId": "universal",
@@ -484,7 +484,7 @@
     {
       "id": "wheel_aoi",
       "displayName": "Aoi",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -510,7 +510,7 @@
     {
       "id": "wheel_asagi",
       "displayName": "Asagi",
-      "group": "Shuten",
+      "group": "Kaito",
       "construction": "multi",
       "offset": -0.06354,
       "lip": "chrome",
@@ -539,7 +539,7 @@
     {
       "id": "wheel_asahi",
       "displayName": "Asahi",
-      "group": "Kohaku",
+      "group": "Kamaitachi",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -565,7 +565,7 @@
     {
       "id": "wheel_ayame",
       "displayName": "Ayame",
-      "group": "Kitsune",
+      "group": "Baku",
       "construction": "multi",
       "offset": 0.03617,
       "lip": "chrome",
@@ -594,7 +594,7 @@
     {
       "id": "wheel_botan",
       "displayName": "Botan",
-      "group": "Yamabiko",
+      "group": "Shuten",
       "construction": "single",
       "lip": "rim",
       "carId": "universal",
@@ -613,7 +613,7 @@
     {
       "id": "wheel_chidori",
       "displayName": "Chidori",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": 0.03291,
       "lip": "chrome",
@@ -634,7 +634,7 @@
     {
       "id": "wheel_daichi",
       "displayName": "Daichi",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": 0.05796,
       "lip": "chrome",
@@ -662,7 +662,7 @@
     {
       "id": "wheel_enishi",
       "displayName": "Enishi",
-      "group": "Tanuki",
+      "group": "Mizuchi",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -688,7 +688,7 @@
     {
       "id": "wheel_fubuki",
       "displayName": "Fubuki",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -714,7 +714,7 @@
     {
       "id": "wheel_fuuga",
       "displayName": "Fuuga",
-      "group": "Genbu",
+      "group": "Nue",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -740,7 +740,7 @@
     {
       "id": "wheel_fuyu",
       "displayName": "Fuyu",
-      "group": "Oni",
+      "group": "Hiryu",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -766,7 +766,7 @@
     {
       "id": "wheel_gekko",
       "displayName": "Gekko",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": -0.01193,
       "lip": "chrome",
@@ -793,7 +793,7 @@
     {
       "id": "wheel_genki",
       "displayName": "Genki",
-      "group": "Tengu",
+      "group": "Byakko",
       "construction": "multi",
       "offset": 0.00512,
       "lip": "chrome",
@@ -821,7 +821,7 @@
     {
       "id": "wheel_getsuei",
       "displayName": "Getsuei",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -847,7 +847,7 @@
     {
       "id": "wheel_hagane",
       "displayName": "Hagane",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": 0.02856,
       "offsetBias": 25,
@@ -869,7 +869,7 @@
     {
       "id": "wheel_hanabi",
       "displayName": "Hanabi",
-      "group": "Hiryu",
+      "group": "Seiryu",
       "construction": "multi",
       "offset": -0.04237,
       "lip": "chrome",
@@ -898,7 +898,7 @@
     {
       "id": "wheel_hane",
       "displayName": "Hane",
-      "group": "Suzaku",
+      "group": "Fujin",
       "construction": "multi",
       "lip": "chrome",
       "lugs": {
@@ -925,7 +925,7 @@
     {
       "id": "wheel_hari",
       "displayName": "Hari",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": -0.04349,
       "lip": "chrome",
@@ -946,7 +946,7 @@
     {
       "id": "wheel_haruka",
       "displayName": "Haruka",
-      "group": "Tengu",
+      "group": "Byakko",
       "construction": "multi",
       "offset": -0.01755,
       "lip": "chrome",
@@ -974,7 +974,7 @@
     {
       "id": "wheel_hasu",
       "displayName": "Hasu",
-      "group": "Byakko",
+      "group": "Kitsune",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1001,7 +1001,7 @@
     {
       "id": "wheel_hibiki",
       "displayName": "Hibiki",
-      "group": "Genbu",
+      "group": "Nue",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1027,7 +1027,7 @@
     {
       "id": "wheel_hien",
       "displayName": "Hien",
-      "group": "Suzaku",
+      "group": "Fujin",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1053,7 +1053,7 @@
     {
       "id": "wheel_hikari",
       "displayName": "Hikari",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1079,7 +1079,7 @@
     {
       "id": "wheel_himawari",
       "displayName": "Himawari",
-      "group": "Fujin",
+      "group": "Tengu",
       "construction": "multi",
       "offset": 0.03466,
       "lip": "chrome",
@@ -1100,7 +1100,7 @@
     {
       "id": "wheel_hinoko",
       "displayName": "Hinoko",
-      "group": "Genbu",
+      "group": "Nue",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1126,7 +1126,7 @@
     {
       "id": "wheel_hisui",
       "displayName": "Hisui",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1152,7 +1152,7 @@
     {
       "id": "wheel_homura",
       "displayName": "Homura",
-      "group": "Hiryu",
+      "group": "Seiryu",
       "construction": "multi",
       "offset": 0.04085,
       "offsetBias": 25,
@@ -1174,7 +1174,7 @@
     {
       "id": "wheel_hotaka",
       "displayName": "Hotaka",
-      "group": "Hiryu",
+      "group": "Seiryu",
       "construction": "multi",
       "offset": -0.06368,
       "lip": "chrome",
@@ -1203,7 +1203,7 @@
     {
       "id": "wheel_hyo",
       "displayName": "Hyo",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": -0.0206,
       "offsetBias": 25,
@@ -1225,7 +1225,7 @@
     {
       "id": "wheel_ibuki",
       "displayName": "Ibuki",
-      "group": "Oni",
+      "group": "Hiryu",
       "construction": "multi",
       "offset": 0.02574,
       "lip": "chrome",
@@ -1253,7 +1253,7 @@
     {
       "id": "wheel_inazuma",
       "displayName": "Inazuma",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": -0.06515,
       "lip": "chrome",
@@ -1280,7 +1280,7 @@
     {
       "id": "wheel_iwa",
       "displayName": "Iwa",
-      "group": "Genbu",
+      "group": "Nue",
       "construction": "single",
       "offsetBias": 20,
       "lip": "rim",
@@ -1307,7 +1307,7 @@
     {
       "id": "wheel_kaen",
       "displayName": "Kaen",
-      "group": "Oni",
+      "group": "Hiryu",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1333,7 +1333,7 @@
     {
       "id": "wheel_kagami",
       "displayName": "Kagami",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1359,7 +1359,7 @@
     {
       "id": "wheel_kagero",
       "displayName": "Kagero",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1385,7 +1385,7 @@
     {
       "id": "wheel_kaminari",
       "displayName": "Kaminari",
-      "group": "Genbu",
+      "group": "Nue",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1411,7 +1411,7 @@
     {
       "id": "wheel_kanade",
       "displayName": "Kanade",
-      "group": "Byakko",
+      "group": "Kitsune",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1437,7 +1437,7 @@
     {
       "id": "wheel_karasu",
       "displayName": "Karasu",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1463,7 +1463,7 @@
     {
       "id": "wheel_kasane",
       "displayName": "Kasane",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": -0.00168,
       "lip": "chrome",
@@ -1491,7 +1491,7 @@
     {
       "id": "wheel_kasumi",
       "displayName": "Kasumi",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": -0.01761,
       "lip": "chrome",
@@ -1519,7 +1519,7 @@
     {
       "id": "wheel_kawa",
       "displayName": "Kawa",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": 0.01011,
       "lip": "chrome",
@@ -1547,7 +1547,7 @@
     {
       "id": "wheel_kawasemi",
       "displayName": "Kawasemi",
-      "group": "Kappa",
+      "group": "Orochi",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1573,7 +1573,7 @@
     {
       "id": "wheel_kazakiri",
       "displayName": "Kazakiri",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1599,7 +1599,7 @@
     {
       "id": "wheel_kaze",
       "displayName": "Kaze",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1626,7 +1626,7 @@
     {
       "id": "wheel_kirameki",
       "displayName": "Kirameki",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1652,7 +1652,7 @@
     {
       "id": "wheel_kiri",
       "displayName": "Kiri",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1678,7 +1678,7 @@
     {
       "id": "wheel_kiseki",
       "displayName": "Kiseki",
-      "group": "Kohaku",
+      "group": "Kamaitachi",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1704,7 +1704,7 @@
     {
       "id": "wheel_kogane",
       "displayName": "Kogane",
-      "group": "Suzaku",
+      "group": "Fujin",
       "construction": "multi",
       "offset": 0.07777,
       "lip": "chrome",
@@ -1732,7 +1732,7 @@
     {
       "id": "wheel_kori",
       "displayName": "Kori",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": 0.03218,
       "lip": "chrome",
@@ -1760,7 +1760,7 @@
     {
       "id": "wheel_koyomi",
       "displayName": "Koyomi",
-      "group": "Hiryu",
+      "group": "Seiryu",
       "construction": "multi",
       "offset": -0.06465,
       "lip": "chrome",
@@ -1788,7 +1788,7 @@
     {
       "id": "wheel_kumo",
       "displayName": "Kumo",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": -0.03631,
       "lip": "chrome",
@@ -1816,7 +1816,7 @@
     {
       "id": "wheel_madoka",
       "displayName": "Madoka",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1842,7 +1842,7 @@
     {
       "id": "wheel_mikazuki",
       "displayName": "Mikazuki",
-      "group": "Kamaitachi",
+      "group": "Nekomata",
       "construction": "multi",
       "offset": 0.02181,
       "lip": "chrome",
@@ -1863,7 +1863,7 @@
     {
       "id": "wheel_minamo",
       "displayName": "Minamo",
-      "group": "Kamaitachi",
+      "group": "Nekomata",
       "construction": "multi",
       "offset": 0.02994,
       "lip": "chrome",
@@ -1884,7 +1884,7 @@
     {
       "id": "wheel_minato",
       "displayName": "Minato",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1910,7 +1910,7 @@
     {
       "id": "wheel_mio",
       "displayName": "Mio",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1936,7 +1936,7 @@
     {
       "id": "wheel_mizore",
       "displayName": "Mizore",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -1962,7 +1962,7 @@
     {
       "id": "wheel_momiji",
       "displayName": "Momiji",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "multi",
       "offset": -0.02286,
       "lip": "chrome",
@@ -1990,7 +1990,7 @@
     {
       "id": "wheel_nadeshiko",
       "displayName": "Nadeshiko",
-      "group": "Hiryu",
+      "group": "Seiryu",
       "construction": "multi",
       "offset": -0.06036,
       "lip": "chrome",
@@ -2018,7 +2018,7 @@
     {
       "id": "wheel_nagi",
       "displayName": "Nagi",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2044,7 +2044,7 @@
     {
       "id": "wheel_nami",
       "displayName": "Nami",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": -0.004,
       "lip": "chrome",
@@ -2072,7 +2072,7 @@
     {
       "id": "wheel_namida",
       "displayName": "Namida",
-      "group": "Hotaru",
+      "group": "Kappa",
       "construction": "single",
       "lip": "rim",
       "carId": "universal",
@@ -2091,7 +2091,7 @@
     {
       "id": "wheel_natsu",
       "displayName": "Natsu",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": -0.04344,
       "lip": "chrome",
@@ -2112,7 +2112,7 @@
     {
       "id": "wheel_nokaze",
       "displayName": "Nokaze",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": 0.01651,
       "lip": "chrome",
@@ -2140,7 +2140,7 @@
     {
       "id": "wheel_ogi",
       "displayName": "Ogi",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2166,7 +2166,7 @@
     {
       "id": "wheel_raiden",
       "displayName": "Raiden",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": -0.02529,
       "lip": "chrome",
@@ -2194,7 +2194,7 @@
     {
       "id": "wheel_rin",
       "displayName": "Rin",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2220,7 +2220,7 @@
     {
       "id": "wheel_ryusei",
       "displayName": "Ryusei",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": 0.04406,
       "lip": "chrome",
@@ -2248,7 +2248,7 @@
     {
       "id": "wheel_sagi",
       "displayName": "Sagi",
-      "group": "Orochi",
+      "group": "Hotaru",
       "construction": "single",
       "lip": "rim",
       "carId": "universal",
@@ -2267,7 +2267,7 @@
     {
       "id": "wheel_sakura",
       "displayName": "Sakura",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2293,7 +2293,7 @@
     {
       "id": "wheel_sango",
       "displayName": "Sango",
-      "group": "Baku",
+      "group": "Suzaku",
       "construction": "multi",
       "offset": 0.0209,
       "lip": "chrome",
@@ -2321,7 +2321,7 @@
     {
       "id": "wheel_sazanami",
       "displayName": "Sazanami",
-      "group": "Baku",
+      "group": "Suzaku",
       "construction": "multi",
       "offset": 0.00618,
       "lip": "chrome",
@@ -2349,7 +2349,7 @@
     {
       "id": "wheel_sazanka",
       "displayName": "Sazanka",
-      "group": "Nekomata",
+      "group": "Kodama",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2376,7 +2376,7 @@
     {
       "id": "wheel_seiun",
       "displayName": "Seiun",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "multi",
       "offset": -0.06209,
       "lip": "chrome",
@@ -2404,7 +2404,7 @@
     {
       "id": "wheel_seseragi",
       "displayName": "Seseragi",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": 0.0323,
       "lip": "chrome",
@@ -2432,7 +2432,7 @@
     {
       "id": "wheel_shigure",
       "displayName": "Shigure",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": -0.02438,
       "offsetBias": 25,
@@ -2454,7 +2454,7 @@
     {
       "id": "wheel_shinobi",
       "displayName": "Shinobi",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": 0.01565,
       "lip": "chrome",
@@ -2482,7 +2482,7 @@
     {
       "id": "wheel_shio",
       "displayName": "Shio",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "single",
       "offsetBias": 20,
       "lip": "rim",
@@ -2509,7 +2509,7 @@
     {
       "id": "wheel_shirabe",
       "displayName": "Shirabe",
-      "group": "Kodama",
+      "group": "Kohaku",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2535,7 +2535,7 @@
     {
       "id": "wheel_shirube",
       "displayName": "Shirube",
-      "group": "Oni",
+      "group": "Hiryu",
       "construction": "multi",
       "offset": 0.04012,
       "lip": "chrome",
@@ -2563,7 +2563,7 @@
     {
       "id": "wheel_shizuku",
       "displayName": "Shizuku",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "single",
       "lip": "rim",
       "carId": "universal",
@@ -2582,7 +2582,7 @@
     {
       "id": "wheel_sora",
       "displayName": "Sora",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2608,7 +2608,7 @@
     {
       "id": "wheel_sumire",
       "displayName": "Sumire",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2634,7 +2634,7 @@
     {
       "id": "wheel_suzume",
       "displayName": "Suzume",
-      "group": "Genbu",
+      "group": "Nue",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2660,7 +2660,7 @@
     {
       "id": "wheel_taki",
       "displayName": "Taki",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "single",
       "lip": "rim",
       "carId": "universal",
@@ -2679,7 +2679,7 @@
     {
       "id": "wheel_tamashii",
       "displayName": "Tamashii",
-      "group": "Genbu",
+      "group": "Nue",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2706,7 +2706,7 @@
     {
       "id": "wheel_tatsumaki",
       "displayName": "Tatsumaki",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": 0.0436,
       "lip": "chrome",
@@ -2734,7 +2734,7 @@
     {
       "id": "wheel_tomoe",
       "displayName": "Tomoe",
-      "group": "Genbu",
+      "group": "Nue",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2760,7 +2760,7 @@
     {
       "id": "wheel_tora",
       "displayName": "Tora",
-      "group": "Byakko",
+      "group": "Kitsune",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2786,7 +2786,7 @@
     {
       "id": "wheel_tsubaki",
       "displayName": "Tsubaki",
-      "group": "Baku",
+      "group": "Suzaku",
       "construction": "multi",
       "offset": -0.0558,
       "lip": "chrome",
@@ -2814,7 +2814,7 @@
     {
       "id": "wheel_tsuchi",
       "displayName": "Tsuchi",
-      "group": "Hotaru",
+      "group": "Kappa",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2840,7 +2840,7 @@
     {
       "id": "wheel_tsukimi",
       "displayName": "Tsukimi",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": 0.06228,
       "lip": "chrome",
@@ -2868,7 +2868,7 @@
     {
       "id": "wheel_tsukushi",
       "displayName": "Tsukushi",
-      "group": "Hiryu",
+      "group": "Seiryu",
       "construction": "multi",
       "offset": -0.07054,
       "lip": "chrome",
@@ -2896,7 +2896,7 @@
     {
       "id": "wheel_tsume",
       "displayName": "Tsume",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": 0.03156,
       "lip": "chrome",
@@ -2924,7 +2924,7 @@
     {
       "id": "wheel_tsurugi",
       "displayName": "Tsurugi",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": 0.00354,
       "lip": "chrome",
@@ -2952,7 +2952,7 @@
     {
       "id": "wheel_tsutsuji",
       "displayName": "Tsutsuji",
-      "group": "Kohaku",
+      "group": "Kamaitachi",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -2977,7 +2977,7 @@
     {
       "id": "wheel_tsuyu",
       "displayName": "Tsuyu",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": 0.01328,
       "lip": "chrome",
@@ -3005,7 +3005,7 @@
     {
       "id": "wheel_uguisu",
       "displayName": "Uguisu",
-      "group": "Fujin",
+      "group": "Tengu",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -3031,7 +3031,7 @@
     {
       "id": "wheel_ukigumo",
       "displayName": "Ukigumo",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -3057,7 +3057,7 @@
     {
       "id": "wheel_umi",
       "displayName": "Umi",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": 0.03374,
       "lip": "chrome",
@@ -3085,7 +3085,7 @@
     {
       "id": "wheel_usagi",
       "displayName": "Usagi",
-      "group": "Seiryu",
+      "group": "Tanuki",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -3111,7 +3111,7 @@
     {
       "id": "wheel_uzu",
       "displayName": "Uzu",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -3137,7 +3137,7 @@
     {
       "id": "wheel_wakaba",
       "displayName": "Wakaba",
-      "group": "Hotaru",
+      "group": "Kappa",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -3163,7 +3163,7 @@
     {
       "id": "wheel_yamabuki",
       "displayName": "Yamabuki",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": 0.05871,
       "lip": "chrome",
@@ -3191,7 +3191,7 @@
     {
       "id": "wheel_yari",
       "displayName": "Yari",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": 0.01768,
       "lip": "chrome",
@@ -3219,7 +3219,7 @@
     {
       "id": "wheel_yoake",
       "displayName": "Yoake",
-      "group": "Kaito",
+      "group": "Yamabiko",
       "construction": "multi",
       "offset": -0.00999,
       "lip": "chrome",
@@ -3248,7 +3248,7 @@
     {
       "id": "wheel_yuhi",
       "displayName": "Yuhi",
-      "group": "Nue",
+      "group": "Genbu",
       "construction": "single",
       "lip": "rim",
       "lugs": {
@@ -3275,7 +3275,7 @@
     {
       "id": "wheel_yuki",
       "displayName": "Yuki",
-      "group": "Mizuchi",
+      "group": "Oni",
       "construction": "multi",
       "offset": 0.05207,
       "lip": "chrome",
@@ -3303,7 +3303,7 @@
     {
       "id": "wheel_yuzu",
       "displayName": "Yuzu",
-      "group": "Hiryu",
+      "group": "Seiryu",
       "construction": "multi",
       "offset": -0.0282,
       "lip": "chrome",
@@ -3331,7 +3331,7 @@
     {
       "id": "wheel_zan",
       "displayName": "Zan",
-      "group": "Genbu",
+      "group": "Nue",
       "construction": "multi",
       "offset": 0.00127,
       "lip": "chrome",

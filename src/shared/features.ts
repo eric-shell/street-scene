@@ -21,6 +21,11 @@ const DEFAULTS = {
   replays: false,
   /** The results' Challenge a friend row. Links already sent keep working with it off. */
   challenges: true,
+  /**
+   * Points buy garage parts (shared/economy.ts prices, shared/purchases.ts ownership per car). Off: every part is
+   * free, unlocked and owned, the garage shows no prices, and nothing is spent or recorded.
+   */
+  economy: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

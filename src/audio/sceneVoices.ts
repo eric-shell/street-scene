@@ -1,6 +1,6 @@
 /**
  * Standalone voices a scene owns rather than the race: the elevated train's
- * rumble, the news helicopter's rotors, the thunder of rain nights, a fireworks display, a far stadium crowd, the
+ * rumble, the concrete channel's running water, the news helicopter's rotors, the thunder of rain nights, a fireworks display, a far stadium crowd, the
  * San Francisco cable car's bell and the harbor ferry's horn (both struck, not fed: they play out). Each
  * is created only after a user gesture (browsers refuse audio before that),
  * plays on the effects bus and fades out by itself when it stops being fed.
@@ -97,6 +97,117 @@ export class TrainRumble {
     try {
       this.src.stop();
       this.lfo.stop();
+    } catch {
+      /* already stopped */
+    }
+    this.out.disconnect();
+  }
+}
+
+/**
+ * Channel water mix: overall level (against the train rumble's 0.5: a touch under it), the broad rushing bed
+ * and its band (Hz), the gurgle's band, sweep depth (Hz) and rates (Hz), the high sparkle, and how far (pan) and
+ * how slowly (Hz) the whole thing drifts between the ears.
+ */
+const WATER = { level: 0.4, bedHz: 900, bedQ: 0.6, bed: 1, gurgleHz: 450, gurgleQ: 5, gurgle: 3, sweep: 160, sweepRate: 0.7, swirlRate: 1.9, sparkleHz: 3200, sparkle: 0.3, wander: 0.25, wanderRate: 0.13 } as const;
+
+/**
+ * The low flow trickle of the concrete channel (city/districts/channel.ts): a soft running-water bed of filtered
+ * noise, a gurgle (a narrow band whose pitch and level wander slowly) and a little high sparkle, drifting gently
+ * between the ears. Same shape as TrainRumble: created after the first user gesture, on the ambience bus, and the
+ * gain dies by itself unless the next frame renews it, so leaving the channel (or the scene) silences it.
+ */
+export class ChannelWater {
+  private ctx: AudioContext;
+  private out: GainNode;
+  private pan: StereoPannerNode;
+  private src: AudioBufferSourceNode;
+  private lfos: OscillatorNode[] = [];
+
+  /** True while the browser still waits for the first user gesture. */
+  static blocked(): boolean {
+    return TrainRumble.blocked();
+  }
+
+  static create(): ChannelWater | null {
+    if (typeof window === 'undefined' || ChannelWater.blocked()) return null;
+    const h = audioHub();
+    if (!h) return null;
+    try {
+      return new ChannelWater(h);
+    } catch {
+      return null;
+    }
+  }
+
+  private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
+    const ctx = (this.ctx = h.ctx);
+    this.out = ctx.createGain();
+    this.out.gain.value = 0;
+    this.pan = ctx.createStereoPanner();
+    this.out.connect(this.pan).connect(h.ambienceBus);
+    this.src = ctx.createBufferSource();
+    this.src.buffer = h.noise;
+    this.src.loop = true;
+    const lfo = (hz: number, depth: number, target: AudioParam) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = hz;
+      const d = ctx.createGain();
+      d.gain.value = depth;
+      o.connect(d).connect(target);
+      this.lfos.push(o);
+    };
+    // The rushing bed: a wide mid band.
+    const bed = ctx.createBiquadFilter();
+    bed.type = 'bandpass';
+    bed.frequency.value = WATER.bedHz;
+    bed.Q.value = WATER.bedQ;
+    const bedGain = ctx.createGain();
+    bedGain.gain.value = WATER.bed;
+    this.src.connect(bed).connect(bedGain).connect(this.out);
+    // The gurgle: a narrow band whose centre sweeps slowly and whose level swirls faster.
+    const gurgle = ctx.createBiquadFilter();
+    gurgle.type = 'bandpass';
+    gurgle.frequency.value = WATER.gurgleHz;
+    gurgle.Q.value = WATER.gurgleQ;
+    const gurgleGain = ctx.createGain();
+    gurgleGain.gain.value = WATER.gurgle;
+    const swirl = ctx.createGain();
+    swirl.gain.value = 0.6;
+    this.src.connect(gurgle).connect(gurgleGain).connect(swirl).connect(this.out);
+    lfo(WATER.sweepRate, WATER.sweep, gurgle.frequency);
+    lfo(WATER.swirlRate, 0.4, swirl.gain);
+    // The sparkle: high noise riding the swirl.
+    const sparkle = ctx.createBiquadFilter();
+    sparkle.type = 'bandpass';
+    sparkle.frequency.value = WATER.sparkleHz;
+    sparkle.Q.value = 1;
+    const sparkleGain = ctx.createGain();
+    sparkleGain.gain.value = WATER.sparkle;
+    this.src.connect(sparkle).connect(sparkleGain).connect(this.out);
+    lfo(WATER.swirlRate * 1.7, WATER.sparkle * 0.4, sparkleGain.gain);
+    // The whole voice drifts a little between the ears around where the trickle lies.
+    lfo(WATER.wanderRate, WATER.wander, this.pan.pan);
+    this.src.start();
+    for (const o of this.lfos) o.start();
+  }
+
+  /** level 0..1 (1 = down on the channel floor), pan -1..1 toward the trickle. */
+  update(level: number, pan: number): void {
+    const now = this.ctx.currentTime;
+    const g = this.out.gain;
+    g.cancelScheduledValues(now);
+    g.setTargetAtTime(WATER.level * clamp01(level), now, 0.25);
+    // Dead man's switch: silence unless the next frame renews it.
+    g.setTargetAtTime(0, now + 0.35, 0.3);
+    this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)) * 0.6, now, 0.2);
+  }
+
+  dispose(): void {
+    try {
+      this.src.stop();
+      for (const o of this.lfos) o.stop();
     } catch {
       /* already stopped */
     }

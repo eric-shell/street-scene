@@ -21,7 +21,7 @@ import { hoodPlan, type HoodCharacter } from './neighbourhoods';
 /** Neighbourhood names by character; a character's pool runs dry into the town pool. */
 const HOODS: Record<HoodCharacter, readonly string[]> = {
   core: ['Midtown', 'Old Town', 'The Exchange', 'Civic Center', 'The Loop', 'Neon Row', 'Crossroads', 'Center City'],
-  river: ['Riverside', 'Canal Ward', 'Millrace', 'Ferry Landing', 'Bridgeton', 'Lock District', 'Eastbank', 'Waterworks'],
+  channel: ['Riverside', 'Canal Ward', 'Millrace', 'Ferry Landing', 'Bridgeton', 'Lock District', 'Eastbank', 'Waterworks'],
   lake: ['Lakeview', 'Lakeshore', 'Shoreline', 'Mirror Flats', 'Boathouse Row', 'Stillwater'],
   harbor: ['Harborside', 'Lowtide', 'Saltmarsh', 'The Docklands', 'Bayview', 'Pier Row', 'Tidewater', 'Wharfside'],
   heights: ['Summit Heights', 'Crown Point', 'Ridgemont', 'Overlook', 'Highgate', 'Skyline Terrace', 'Belvedere', 'Windward'],
@@ -71,7 +71,7 @@ const LINES = ['Gold', 'Crimson', 'Cobalt', 'Violet', 'Jade', 'Amber', 'Silver',
 /** Name forms by kind (and variant where it shows): `{}` takes a stem. */
 const FORMS: Partial<Record<Area['kind'], readonly string[]>> = {
   park: ['{} Park', '{} Gardens', '{} Green', '{} Commons'],
-  river: ['{} River', '{} Canal', '{} Creek'],
+  channel: ['{} River', '{} Canal', '{} Creek'],
   lake: ['Lake {}', '{} Reservoir', '{} Water'],
   waterfront: ['{} Harbor', 'Port {}', '{} Wharf', '{} Docks'],
   market: ['{} Night Market', '{} Bazaar', '{} Lantern Market', '{} Street Market'],

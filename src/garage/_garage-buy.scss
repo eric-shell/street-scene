@@ -1,0 +1,29 @@
+/* The buy dialog's body (garageUi.ts offer): the part and its car, then the price, the balance and what is left
+   after, a line each with the figure right-aligned in tabular numerals; After stands out under a hairline. */
+.garage-buy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  &__part {
+    font-size: 17px;
+    font-weight: 700;
+  }
+  &__line {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--soft);
+    b {
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+    &--after {
+      padding-top: 6px;
+      border-top: 1px solid var(--line);
+      b {
+        color: var(--accent-2);
+      }
+    }
+  }
+}

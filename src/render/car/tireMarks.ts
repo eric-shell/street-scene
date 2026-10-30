@@ -6,7 +6,7 @@
  * consecutive quads share an edge and a drift reads as one continuous line.
  * A quad fades by age in the shader and is darker the deeper the slide was,
  * and once the pool is full the oldest marks are overwritten. Rubber on
- * asphalt is near black; on concrete (the river channel, plazas) it reads a
+ * asphalt is near black; on concrete (the channel, plazas) it reads a
  * little lighter. Render only: tireFx.ts feeds it from the sim's tire
  * telemetry; the CPU only writes new quads, one draw call, no per-frame
  * allocation, pool size by quality.

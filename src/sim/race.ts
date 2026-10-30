@@ -89,7 +89,7 @@ export interface StartPose {
   yaw: number;
   /** Rolling speed along the heading (m/s). */
   speed: number;
-  /** Ground height it was on (m): picks the level under a river bridge deck (World.heightAt); the deck when missing. */
+  /** Ground height it was on (m): picks the level under a channel bridge deck (World.heightAt); the deck when missing. */
   y?: number;
   /**
    * First tick of the race: the timed gates, the trains and the El are
@@ -414,7 +414,7 @@ export function resetToRoad(r: RaceState, rc: RaceCar): void {
   const route = r.world.route;
   let s = route.closed ? rc.rawS : clamp(rc.rawS, 0, route.length);
   let p = routeSample(route, s);
-  // Never onto a bridge deck's footprint over the river channel, where two levels stack and the
+  // Never onto a bridge deck's footprint over the channel, where two levels stack and the
   // car's level would have to be guessed: a little further along the route, off it.
   for (let k = 0; k < RESET_OFF_DECK.tries && r.world.twoLevels(p.x, p.z); k++) {
     s = route.closed ? s + RESET_OFF_DECK.step : Math.min(route.length, s + RESET_OFF_DECK.step);

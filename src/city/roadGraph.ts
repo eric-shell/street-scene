@@ -6,7 +6,7 @@
  * smooth field (CITY.warp) so streets sweep and junction angles vary, and every
  * grid street cut into CITY.bendSegments straight pieces through degree-2 bend
  * nodes that lie on the warped line (so a street is a chain of short edges
- * that reads as a curve, the way the river channel chains its nodes). Pure and
+ * that reads as a curve, the way the channel chains its nodes). Pure and
  * deterministic. Intersections join at most CITY.maxNodeDegree roads. District
  * planning (districts/index.ts) edits the graph afterwards: narrow alleys, back
  * alley shortcuts (splitEdge + addEdge), bridges and roundabout nodes.
@@ -23,10 +23,10 @@ import { atan2, cos, DEG, exp, sin, sqrt, TAU } from '../sim/math';
 
 /**
  * 'alley': narrow raceway street. 'backAlley': skinny shortcut through a block
- * (edge.shortcut). 'channel': the floor of the river channel between the feet
+ * (edge.shortcut). 'channel': the floor of the channel between the feet
  * of its entrances; 'ramp': an entrance, from a street down to a channel node
- * (districts/river.ts). Channel and ramp edges have no sidewalks, curbs,
- * frontage or buildings: blocks.ts treats them as open ground the river draws.
+ * (districts/channel.ts). Channel and ramp edges have no sidewalks, curbs,
+ * frontage or buildings: blocks.ts treats them as open ground the channel draws.
  * 'mouth': where an expressway loop meets the street beneath the deck
  * (districts/highway/): a stub from a junction on that street out to the
  * loop's foot on the building line, a dead end the loop carries on from. As
@@ -36,7 +36,7 @@ import { atan2, cos, DEG, exp, sin, sqrt, TAU } from '../sim/math';
  */
 export type RoadKind = 'street' | 'avenue' | 'diagonal' | 'boulevard' | 'alley' | 'backAlley' | 'channel' | 'ramp' | 'mouth';
 
-/** Curb to curb width, lanes and sidewalk of a kind made from the CITY tables (channel and ramp edges are sized by the river). */
+/** Curb to curb width, lanes and sidewalk of a kind made from the CITY tables (channel and ramp edges are sized by the channel). */
 export interface RoadDims {
   width: number;
   lanes: 2 | 4;
@@ -52,8 +52,8 @@ export function roadDims(kind: RoadKind): RoadDims {
   return { width: CITY.width[k], lanes: CITY.lanes[k], sidewalk: CITY.sidewalkWidth[k] };
 }
 
-/** An edge the river owns: the channel floor or an entrance ramp. */
-export const isRiverEdge = (e: { kind: RoadKind }): boolean => e.kind === 'channel' || e.kind === 'ramp';
+/** An edge the channel owns: the channel floor or an entrance ramp. */
+export const isChannelEdge = (e: { kind: RoadKind }): boolean => e.kind === 'channel' || e.kind === 'ramp';
 
 /** An expressway loop's mouth stub (see RoadKind). */
 export const isMouthEdge = (e: { kind: RoadKind }): boolean => e.kind === 'mouth';
@@ -106,7 +106,7 @@ export interface RoadEdge {
   shortcut?: boolean;
   /** The last edge of a shortcut chain with a jump exit (districts/alleyDressing.ts): its b node is the lip's mouth, and the chain is only a shortcut driven toward it. */
   jumpExit?: boolean;
-  /** Crosses the river channel at street level. */
+  /** Crosses the channel at street level. */
   bridge?: boolean;
   /** Crosses the El's tracks at grade (a bluff's level crossing, districts/bluff.ts) this far from node a (m). */
   crossing?: number;
@@ -248,7 +248,7 @@ export interface WarpTerm {
   pz: number;
 }
 
-/** The seed's warp terms (phases from the 'warp' stream): what warpField sums, for anything that must follow the rows (the river channel). */
+/** The seed's warp terms (phases from the 'warp' stream): what warpField sums, for anything that must follow the rows (the channel). */
 export function warpTerms(seed: number): WarpTerm[] {
   const rng = new Rng(deriveSeed(seed, 'warp'));
   return CITY.warp.map((t) => ({ amp: t.amp, k: TAU / t.wavelength, px: rng.range(0, TAU), pz: rng.range(0, TAU) }));
@@ -798,7 +798,7 @@ function compactGraph(g: RoadGraph, deadNode: Uint8Array, deadEdge: Uint8Array):
  * keeps its kind and widths and now runs the whole way, the other pieces and the bend nodes between
  * go, and every id is compacted (edges and nodes renumbered in order). Only safe while no id is held
  * where the renumbering cannot reach it (the planned areas' node and edge lists are carried through
- * by PlanContext.graphChanged): the river planner straightens its crossing streets this way so its
+ * by PlanContext.graphChanged): the channel planner straightens its crossing streets this way so its
  * ford ramps can split them the way they always did. Sorts the node edges.
  */
 export function mergeChains(g: RoadGraph, list: readonly Chain[]): Renumber {

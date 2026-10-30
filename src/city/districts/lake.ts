@@ -13,10 +13,10 @@
  *    so a cluster whose shore rings would not fit is skipped untouched.
  *    Deleting renumbers every id, so it runs while nobody holds one; the area
  *    then claims every node and street of its shore (graphChanged carries the
- *    claims through the river's own renumbering), so roundabouts, alleys,
+ *    claims through the channel's own renumbering), so roundabouts, alleys,
  *    shortcuts, the El, the expressway, closures and the market keep off it.
- *    The river, the El's swings, the bluff and the hills keep off the water by
- *    geometry (CFG.riverClear, CFG.clearance).
+ *    The channel, the El's swings, the bluff and the hills keep off the water by
+ *    geometry (CFG.channelClear, CFG.clearance).
  *  - plan (its registry slot, right after the car parks: the first with the
  *    topology final): it claims the merged block, takes its ring as the
  *    area's polygon and sets the water level from the ground along the coping.
@@ -50,7 +50,7 @@ import { emptyBuild } from './types';
 import { circlePolygon, distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, polygonCentroid, polyWalls, smooth01, type Smooth, solidWalls } from './geom';
 import { convexRing } from './park';
 import { highwayRolled, highwayRows } from './highway/line';
-import { riverL, riverModule } from './river';
+import { channelL, channelModule } from './channel';
 
 const CFG = CITY.districts.lake;
 
@@ -164,14 +164,15 @@ function cloneGraph(g: RoadGraph): RoadGraph {
 }
 
 /**
- * The river's params as it would plan them on these streets with no lake (its own stream, on a copy of
- * the graph), or null for a city without one. The river plans right after the lake carves.
+ * The channel's params as it would plan them on these streets with no lake (its own stream, on a copy of
+ * the graph), or null for a city without one. The channel plans right after the lake carves.
  */
-function riverWithout(ctx: PlanContext): Record<string, number> | null {
+function channelWithout(ctx: PlanContext): Record<string, number> | null {
   const g = cloneGraph(ctx.graph);
   const areas: Area[] = [];
   const trial: PlanContext = {
     seed: ctx.seed,
+    // 'district:river' is the channel's stream, kept under its old name so every seed's city stays bit-identical (see streamOf in index.ts).
     rng: new Rng(deriveSeed(ctx.seed, 'district:river')),
     graph: g,
     areas,
@@ -187,8 +188,8 @@ function riverWithout(ctx: PlanContext): Record<string, number> | null {
     },
     graphChanged: () => sortNodeEdges(g),
   };
-  riverModule.plan(trial);
-  return areas.find((a) => a.kind === 'river')?.params ?? null;
+  channelModule.plan(trial);
+  return areas.find((a) => a.kind === 'channel')?.params ?? null;
 }
 
 /** The face of `faces` holding (x, z), or null. */
@@ -244,14 +245,14 @@ export const lakeModule: DistrictModule = {
       for (const r of highwayRows(hw, H).slice(0, CFG.highwayRows)) keep.add(r);
     }
     for (const [key, c] of cells) if (keep.has(c.j) || keep.has(c.j + 1)) cells.delete(key);
-    // And off the river's band, where it would run with no lake (its plan on a copy of the streets): the
-    // river then runs exactly there, its entrances and bridges as they would be, and so does everything
+    // And off the channel's band, where it would run with no lake (its plan on a copy of the streets): the
+    // channel then runs exactly there, its entrances and bridges as they would be, and so does everything
     // planned around it.
-    const river = riverWithout(ctx);
-    if (river) {
-      const reach = river.top + CFG.riverClear;
+    const channel = channelWithout(ctx);
+    if (channel) {
+      const reach = channel.top + CFG.channelClear;
       for (const [key, c] of cells) {
-        const ls = c.face.ring.map((q) => riverL(river, q.x, q.z));
+        const ls = c.face.ring.map((q) => channelL(channel, q.x, q.z));
         if (ls.some((l) => Math.abs(l) < reach || l > 0 !== ls[0] > 0)) cells.delete(key);
       }
     }

@@ -3,13 +3,13 @@
  * Two macro terms (a broad ridge or tilt at a 2.4 km wavelength in a seed-random
  * heading, a gentler valley roughly across it at 3 km) give each seed one side
  * higher than the other, a long rise climbed over several blocks or a wide
- * hollow, so the district features (the bluff, the park hills, the river) read
+ * hollow, so the district features (the bluff, the park hills, the channel) read
  * as part of one terrain instead of bumps on a flat. Three rolling terms on top
  * give the crests and dips you feel lap to lap. The macro waves are so long
  * that their curvature never launches a car; they only add steady grade, which
  * the CITY.hillAmp / hillFreq pairs bound (worst case about 6%). Five
  * sinusoids in all; slopeAt is their exact analytic gradient.
- * District height modifiers (river channel, park hills, planter islands) are
+ * District height modifiers (channel, park hills, planter islands) are
  * added on top through a coarse grid, each with its own exact gradient.
  */
 import { CITY } from './config';

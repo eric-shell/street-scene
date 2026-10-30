@@ -2,7 +2,7 @@
  * The harbor's shape as the waterfront area's params store it (waterfront.ts plans it), read by its build,
  * its renderer (render/districts/waterfront.ts) and the maps: the side's frame (u along the coast, v out to
  * sea, both in m), the coast line (the sea wall's edge as v of u: samples c0..c{cn-1} every cdx m from cx0,
- * read through the river's centerline interpolation, river/centerline.ts, since it is the same uniform
+ * read through the channel's centerline interpolation, channel/centerline.ts, since it is the same uniform
  * Catmull-Rom), the water level (tilted gently along the coast, w0 + wt * u, over the stretch it was fitted
  * to, level beyond), the ground lowered
  * past the sea wall under it (harborLowering: a height modifier with an exact gradient) and the open
@@ -20,7 +20,7 @@ import type { Terrain } from '../terrain';
 import { type Vec2, sqrt } from '../../sim/math';
 import type { Area, HeightMod, HeightSample } from './types';
 import { smooth01, type Smooth } from './geom';
-import { riverCenter, riverSlope } from './river/centerline';
+import { channelCenter, channelSlope } from './channel/centerline';
 
 /** A side's frame: unit U along the coast and V out to sea (U = (Vz, -Vx), so V is always U's left). */
 export interface HarborFrame {
@@ -51,12 +51,12 @@ export function harborFrame(a: Area): HarborFrame {
 
 /** The sea wall's edge (v, m) at u: the coast line, flat beyond its samples. */
 export function coastV(p: Record<string, number>, u: number): number {
-  return riverCenter(p, u);
+  return channelCenter(p, u);
 }
 
 /** dv/du of the coast line at u. */
 export function coastSlope(p: Record<string, number>, u: number): number {
-  return riverSlope(p, u);
+  return channelSlope(p, u);
 }
 
 /** The unit normal out to sea at u, square to the coast line (the frame's v turned by the coast's slope). */

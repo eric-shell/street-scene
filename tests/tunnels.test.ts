@@ -9,7 +9,7 @@ import { ridgeAt, ridgeRawAt, ridgeShape, tunnelShape } from '../src/city/distri
 import { viaductShape } from '../src/city/districts/overpass';
 import { junctionReach, toLocal } from '../src/city/districts/structures';
 import { plateauDistance } from '../src/city/districts/hills';
-import { riverCenter } from '../src/city/districts/river';
+import { channelCenter } from '../src/city/districts/channel';
 import type { Area } from '../src/city/districts/types';
 import type { City } from '../src/city/world';
 import { createRace, stepRace } from '../src/sim/race';
@@ -82,8 +82,8 @@ describe('tunnels and overpasses (city)', () => {
       for (const w of c.blocks.walls) {
         if (w.look !== 'tunnel' && w.look !== 'rock' && w.look !== 'pier') continue;
         const a = byId.get(w.area ?? -1)!;
-        // The river's bridge piers stand on the channel floor under a deck, on purpose (districts/river.ts).
-        if (a.kind === 'river') continue;
+        // The channel's bridge piers stand on the channel floor under a deck, on purpose (districts/channel.ts).
+        if (a.kind === 'channel') continue;
         expect(a.kind === 'tunnel' || a.kind === 'overpass').toBe(true);
         for (const t of [0.1, 0.5, 0.9]) expect(offRoads(c, w.ax + (w.bx - w.ax) * t, w.az + (w.bz - w.az) * t)).toBe(true);
         const mx = (w.ax + w.bx) / 2;
@@ -157,10 +157,10 @@ describe('tunnels and overpasses (city)', () => {
             const hi = Math.max((P.x - A.x) * ux + (P.z - A.z) * uz, (Q.x - A.x) * ux + (Q.z - A.z) * uz);
             if (hi > along - s.half - s.wing && lo < along + s.half + s.wing) expect(a.edges).toContain(id);
           }
-          // Clear of the river channel.
-          for (const r of c.districts.areas.filter((x) => x.kind === 'river')) {
+          // Clear of the channel.
+          for (const r of c.districts.areas.filter((x) => x.kind === 'channel')) {
             if (s.cx < r.params.x0 || s.cx > r.params.x1) continue;
-            expect(Math.abs(s.cz - riverCenter(r.params, s.cx))).toBeGreaterThan(r.params.top + 10);
+            expect(Math.abs(s.cz - channelCenter(r.params, s.cx))).toBeGreaterThan(r.params.top + 10);
           }
         } else {
           for (const p of c.districts.builds[a.id].props.filter((q) => q.kind === 'pier')) {

@@ -1,10 +1,10 @@
 /**
- * Event flavours: every seed names its race event (Hill Climb, River Run,
+ * Event flavours: every seed names its race event (Hill Climb, Channel Run,
  * Alley Sprint, Under the El, Ring Rush, Grand Tour, Downtown Dash, and on a
  * harbor's seeds Harbor Run) with a
  * one line tagline, so seeds feel different before the start. The flavour is
  * a weighted draw on its own stream (deriveSeed(seed, 'event')) among the
- * ones this city can deliver: no River Run without the river channel, no
+ * ones this city can deliver: no Channel Run without the channel, no
  * Under the El without the El, no Ring Rush with fewer than two roundabouts,
  * no Harbor Run without a quay.
  *
@@ -14,7 +14,7 @@
  * way, the block that can hold the monument, share on the wide fast roads,
  * open ground with room for a hill), anchor nodes the searches start from
  * and a Dijkstra weight bias toward its feature.
- * Every flavour but River Run keeps the river dive as a second wish where the
+ * Every flavour but Channel Run keeps the channel dive as a second wish where the
  * channel exists (rated below the flavour's own), so the channel stays part
  * of most races. Hills and the monument are planned after the routes
  * (districts/index.ts: the routes are picked as soon as the street topology
@@ -57,12 +57,12 @@ import type { Area, HeightSample, PlanContext } from './districts/types';
 import { hillAt, hillSiteEdges, shapeOf } from './districts/hills';
 import { TOUR_REACH, monumentSites, plazaCorners, plazaSides, plazaWraps } from './districts/monument';
 import { parkCorners } from './districts/park';
-import { riverCenter } from './districts/river';
+import { channelCenter } from './districts/channel';
 import { type HarborShore, harborShore } from './districts/harborShore';
 import { Rng, deriveSeed } from '../sim/prng';
 import { DEG, type Vec2, abs, distToSegment, sqrt } from '../sim/math';
 
-export type EventFlavourId = 'hillClimb' | 'riverRun' | 'harborRun' | 'alleySprint' | 'underTheEl' | 'ringRush' | 'grandTour' | 'downtownDash';
+export type EventFlavourId = 'hillClimb' | 'channelRun' | 'harborRun' | 'alleySprint' | 'underTheEl' | 'ringRush' | 'grandTour' | 'downtownDash';
 
 export interface EventFlavour {
   /** The flavour's own name (docs, tests, debugging); players see a seed's title built from `nouns`. */
@@ -90,12 +90,12 @@ export const EVENT_FLAVOURS: Readonly<Record<EventFlavourId, EventFlavour>> = {
     ],
     weight: 3,
   },
-  riverRun: {
-    name: 'River Run',
-    nouns: ['River Run', 'Channel Run', 'Flood Run', 'Riverbed Dash', 'Spillway', 'Floodway', 'Canal Run', 'Low Water', 'Storm Drain', 'Dry Bed Dash', 'Undertow', 'Embankment', 'Waterline', 'Culvert Run'],
+  channelRun: {
+    name: 'Channel Run',
+    nouns: ['Channel Run', 'Flood Channel', 'Flood Run', 'Channel Dash', 'Spillway', 'Floodway', 'Canal Run', 'Low Water', 'Storm Drain', 'Dry Bed Dash', 'Undertow', 'Embankment', 'Waterline', 'Culvert Run'],
     taglines: [
       'Down the ramps and flat out along the channel',
-      'Drop into the concrete river and keep it pinned',
+      'Drop into the concrete channel and keep it pinned',
       'Below the bridges, between the walls, no way out but forward',
       'The channel runs dry tonight and so does the grip',
       'Down the banks and under every bridge in town',
@@ -231,7 +231,7 @@ const ORDER = Object.keys(EVENT_FLAVOURS) as EventFlavourId[];
  */
 export const EVENTS = {
   /** Channel floor on the route (m) that delivers / rates 2: a dive and a good stretch along the channel, which runs the whole map. */
-  riverRun: { some: 160, long: 420, bias: 0.7 },
+  channelRun: { some: 160, long: 420, bias: 0.7 },
   /**
    * A route's metres on the streets along the quay that deliver / rate 2 (a rating of 2 also wants a run
    * along the quay that starts and ends at a mouth, where the lane is an alternative to the street), the
@@ -254,7 +254,7 @@ export const EVENTS = {
    * picking routes (no hills yet) a Hill Climb wants route metres on open ground, where a hill's
    * slopes fit: nodes this far (m) from the channel's bank top, the El and any roundabout.
    */
-  hillClimb: { some: 5, long: 10, riverClear: 130, elClear: 100, ringClear: 140, openSome: 100, openLong: 300, bias: 0.6 },
+  hillClimb: { some: 5, long: 10, channelClear: 130, elClear: 100, ringClear: 140, openSome: 100, openLong: 300, bias: 0.6 },
   /** Share of the route on boulevards, avenues and diagonals that rates 1 / 2. */
   downtownDash: { some: 0.3, long: 0.45, bias: 0.85 },
   /** Hill sample spacing along a route (m). */
@@ -297,13 +297,13 @@ interface Venue {
   channel: boolean;
   /** Total length of the channel floor edges (m). */
   channelLength: number;
-  /** Feet of the river's side ramps (ford feet where there are none): the dive's anchors. */
+  /** Feet of the channel's side ramps (ford feet where there are none): the dive's anchors. */
   feet: number[];
   alleyNodes: number[];
   elEdges: Set<number>;
   elNodes: number[];
-  /** River and El areas (channel profile, deck path), for the open ground a hill needs. */
-  rivers: Area[];
+  /** Channel and El areas (channel profile, deck path), for the open ground a hill needs. */
+  channels: Area[];
   elPaths: Vec2[][];
   rings: number[];
   /** The harbor's quay (the waterfront area, or its preview while the routes are picked) and the streets along it. */
@@ -341,7 +341,7 @@ function venue(g: RoadGraph, areas: readonly Area[], ctx?: SiteContext, preview?
     alleyNodes: [...alley].sort((a, b) => a - b),
     elEdges,
     elNodes: [...elNodes].sort((a, b) => a - b),
-    rivers: areas.filter((a) => a.kind === 'river'),
+    channels: areas.filter((a) => a.kind === 'channel'),
     // The El's line, and the highway's (its deck and ramps keep hills off too, hills.ts).
     elPaths: areas.filter((a) => a.kind === 'subway' || (a.kind === 'highway' && a.variant === 'deck')).map((a) => a.path),
     rings: g.nodes.filter((n) => n.ring).map((n) => n.id),
@@ -362,7 +362,7 @@ export function eventOffer(g: RoadGraph, areas: readonly Area[], harbor?: Area |
   const v = venue(g, areas, undefined, harbor);
   const can: Record<EventFlavourId, boolean> = {
     hillClimb: CITY.districts.hills.enabled,
-    riverRun: v.channel && v.feet.length > 0,
+    channelRun: v.channel && v.feet.length > 0,
     harborRun: v.shore !== null && v.shore.mouths.size > 0,
     alleySprint: v.alleyNodes.length > 0,
     underTheEl: v.elEdges.size > 0,
@@ -405,8 +405,8 @@ interface Wish {
 function featureRate(id: EventFlavourId, v: Venue, edges: number[], nodes: number[], closed: boolean): number {
   const g = v.g;
   switch (id) {
-    case 'riverRun':
-      return tier(metres(g, edges, (e) => g.edges[e].kind === 'channel'), EVENTS.riverRun.some, EVENTS.riverRun.long);
+    case 'channelRun':
+      return tier(metres(g, edges, (e) => g.edges[e].kind === 'channel'), EVENTS.channelRun.some, EVENTS.channelRun.long);
     case 'harborRun': {
       const shore = v.shore;
       if (!shore) return 0;
@@ -489,8 +489,8 @@ function wishOf(id: EventFlavourId, v: Venue, closed: boolean): Wish {
   const rate = (edges: number[], nodes: number[]) => featureRate(id, v, edges, nodes, closed);
   const kindBias = (kinds: readonly string[], f: number) => (e: number) => (kinds.includes(g.edges[e].kind) ? f : 1);
   switch (id) {
-    case 'riverRun':
-      return { rate, anchors: v.feet, bias: kindBias(['channel'], EVENTS.riverRun.bias) };
+    case 'channelRun':
+      return { rate, anchors: v.feet, bias: kindBias(['channel'], EVENTS.channelRun.bias) };
     case 'harborRun': {
       // The quay is planned after the routes (previewHarbor); the routes run along the streets beside it,
       // from one of its mouths, and the block ring behind it is drawn in a little.
@@ -549,11 +549,11 @@ function wishOf(id: EventFlavourId, v: Venue, closed: boolean): Wish {
   }
 }
 
-/** Per node: clear of the river channel, the El and the roundabouts by EVENTS.hillClimb's margins (room for a hill). */
+/** Per node: clear of the channel, the El and the roundabouts by EVENTS.hillClimb's margins (room for a hill). */
 function openGround(v: Venue): boolean[] {
   const c = EVENTS.hillClimb;
   return v.g.nodes.map((n) => {
-    for (const r of v.rivers) if (Math.abs(n.z - riverCenter(r.params, n.x)) < r.params.top + c.riverClear) return false;
+    for (const r of v.channels) if (Math.abs(n.z - channelCenter(r.params, n.x)) < r.params.top + c.channelClear) return false;
     for (const path of v.elPaths) for (let i = 0; i + 1 < path.length; i++) if (distToSegment(n.x, n.z, path[i].x, path[i].z, path[i + 1].x, path[i + 1].z) < c.elClear) return false;
     for (const id of v.rings) if (sqrt((v.g.nodes[id].x - n.x) ** 2 + (v.g.nodes[id].z - n.z) ** 2) < c.ringClear) return false;
     return true;
@@ -562,8 +562,8 @@ function openGround(v: Venue): boolean[] {
 
 /**
  * The route finders' preference for a flavour on this graph (findCircuitNodes /
- * findSprintNodes). Ratings: the flavour's own wish counts most, the river
- * dive (every flavour but River Run, where the channel exists), a run over
+ * findSprintNodes). Ratings: the flavour's own wish counts most, the channel
+ * dive (every flavour but Channel Run, where the channel exists), a run over
  * the bluff's level crossing (where there is one, districts/bluff.ts) add one
  * each, and a block that can hold the monument plaza (where the monument is
  * enabled) one for a turn round one of its corners, two for wrapping it (a
@@ -576,7 +576,7 @@ export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, close
   const g = ctx.graph;
   const v = venue(g, ctx.areas, ctx, harbor);
   const wish = wishOf(id, v, closed);
-  const dive = v.channel && id !== 'riverRun';
+  const dive = v.channel && id !== 'channelRun';
   const dives = (edges: number[]) => edges.some((e) => e >= 0 && g.edges[e].kind === 'channel');
   const cross = v.crossings.size > 0;
   const crosses = (edges: number[]) => edges.some((e) => v.crossings.has(e));

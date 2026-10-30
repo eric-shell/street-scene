@@ -166,8 +166,8 @@ export const carParkModule: DistrictModule = {
 };
 
 /**
- * The entry's shortcut treatment, as a river ramp top or an alley mouth gets
- * (districts/river.ts funnel, alleyDressing.ts constructionSite): two lines
+ * The entry's shortcut treatment, as a channel ramp top or an alley mouth gets
+ * (districts/channel.ts funnel, alleyDressing.ts constructionSite): two lines
  * of fence panels on the sidewalk splaying from the ends of the apron's
  * flared walls out to the curb, cones scattered inside them, a sawhorse at
  * each line's curb end, and strings of the shortcut bulbs across the mouth at

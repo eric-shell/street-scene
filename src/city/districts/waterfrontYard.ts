@@ -33,7 +33,7 @@
  * depth, height, run, top), 'quayLane' (points: the lane's middle end to end, for the maps).
  */
 import { CITY } from '../config';
-import { isBendNode, isRiverEdge } from '../roadGraph';
+import { isBendNode, isChannelEdge } from '../roadGraph';
 import { PROP_DEFS, type PropKind } from '../props';
 import { type Vec2, atan2, cos, distToSegment, sin, sqrt } from '../../sim/math';
 import { Rng, deriveSeed } from '../../sim/prng';
@@ -252,7 +252,7 @@ export function layFences(ctx: BuildContext, geo: YardGeo, rng: Rng, mouths: rea
   const reach = PROP_DEFS[kind].radius + FENCE_STREET_MARGIN;
   /** Whether a panel at q would overlap a street (its carriageway plus the panel's radius and a margin). */
   const onStreet = (q: Vec2): boolean =>
-    g.edges.some((e) => !isRiverEdge(e) && distToSegment(q.x, q.z, g.nodes[e.a].x, g.nodes[e.a].z, g.nodes[e.b].x, g.nodes[e.b].z) - e.width / 2 <= reach);
+    g.edges.some((e) => !isChannelEdge(e) && distToSegment(q.x, q.z, g.nodes[e.a].x, g.nodes[e.a].z, g.nodes[e.b].x, g.nodes[e.b].z) - e.width / 2 <= reach);
   const ends: number[] = [lo + 3];
   for (const m of mouths) if (taken.some((t) => t.what === 'mouth' && Math.abs((t.u0 + t.u1) / 2 - m.u) < 1e-6)) ends.push(m.u - m.w / 2 - Y.post, m.u + m.w / 2 + Y.post);
   ends.push(hi - 3);

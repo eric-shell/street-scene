@@ -10,8 +10,9 @@ import { CITY, PARKING } from '../../city/config';
 import { planParking, type ParkingRow } from '../../city/parking';
 import { World } from '../../city/world';
 import { type Hump, spreadJoints } from '../../city/roadProfile';
-import { bridgesOf } from '../../city/districts/river';
-import { type RoadEdge, isBendNode, isRiverEdge } from '../../city/roadGraph';
+import { bridgesOf } from '../../city/districts/channel';
+import { type RoadEdge, isChannelEdge } from '../../city/roadGraph';
+import { CROSSWALK, edgePaint } from './crosswalks';
 import { groundHeight } from '../../city/districts/carPark';
 import { Vec2 } from '../../sim/math';
 import { ROAD } from '../../sim/tuning';
@@ -111,14 +112,14 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;
     // Lowest height around each vertex, so the coarse ground never pokes through
-    // dips finer than its grid (the river channel, ramps). A tunnel's ridge is left
+    // dips finer than its grid (the channel, ramps). A tunnel's ridge is left
     // out: it rises too steeply beside its street for a grid this coarse, and the
     // tunnel renderer drapes its own rock over it (render/districts/tunnel.ts).
     const r = size / 96;
     const ridges = ridgeLift(world);
-    // The lowest level: under a river bridge the terrain is the deck, 4 m over the channel floor
-    // the river renderer drapes on, and a grid vertex at deck height there would slope the plane
-    // down through the banks, the piers and the floor beside every deck (render/districts/river.ts).
+    // The lowest level: under a channel bridge the terrain is the deck, 4 m over the channel floor
+    // the channel renderer drapes on, and a grid vertex at deck height there would slope the plane
+    // down through the banks, the piers and the floor beside every deck (render/districts/channel.ts).
     const low = (x: number, z: number) => world.heightAt(x, z, -Infinity);
     // Car park roofs are structures, not ground either (render/districts/carPark.ts draws them).
     const gh = groundHeight({ areas: world.areas, heightAt: ridges ? (x: number, z: number) => low(x, z) - ridges(x, z) : low });
@@ -228,14 +229,14 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       }
     }
   };
-  // The river draws its channel floor and ramps itself (render/districts/river.ts): no asphalt, markings,
+  // The channel draws its channel floor and ramps itself (render/districts/channel.ts): no asphalt, markings,
   // curbs or sidewalks on its edges, nor at the nodes that only join them. A loop mouth's dead end (the
   // foot of an expressway loop) has no junction either: the loop's road carries on from it.
   const islandRadius = new Map<number, number>();
   for (const a of world.areas) if (a.kind === 'roundabout') for (const ni of a.nodes) islandRadius.set(ni, a.params.island);
-  const riverOnly = g.nodes.map((n) => n.edges.every((eid) => isRiverEdge(g.edges[eid]) || g.edges[eid].kind === 'mouth'));
+  const channelOnly = g.nodes.map((n) => n.edges.every((eid) => isChannelEdge(g.edges[eid]) || g.edges[eid].kind === 'mouth'));
   g.nodes.forEach((n, ni) => {
-    if (riverOnly[ni]) return;
+    if (channelOnly[ni]) return;
     const ring: Vec2[] = [];
     for (const s of sectors[ni]) for (const p of s.curb) ring.push(p);
     let reach = 0;
@@ -435,7 +436,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     return { stations, across: (t) => (at.has(t) ? HUMP_ACROSS : crowned ? CROWN_ACROSS : undefined) };
   };
   g.edges.forEach((e, ei) => {
-    if (isRiverEdge(e)) return;
+    if (isChannelEdge(e)) return;
     const m = mouths[ei];
     if (cobbled(ei)) alignedStrip(cobble, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, COBBLE_TILE, edgeSteps(ei));
     else strip(road, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, ROAD_Y, 10, 6, edgeSteps(ei), roadEdgeRows(ei));
@@ -599,25 +600,21 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     else rowsOf.set(row.edge, [row]);
   }
   g.edges.forEach((e, ei) => {
-    if (isRiverEdge(e)) return;
+    if (isChannelEdge(e)) return;
     // No lane lines or crosswalk stripes on cobbles.
     if (cobbled(ei)) return;
-    const m = mouths[ei];
-    const a = { x: (m.aP.curb.x + m.aN.curb.x) / 2, z: (m.aP.curb.z + m.aN.curb.z) / 2 };
-    const b = { x: (m.bP.curb.x + m.bN.curb.x) / 2, z: (m.bP.curb.z + m.bN.curb.z) / 2 };
-    const len = Math.hypot(b.x - a.x, b.z - a.z);
-    if (len < 8) return;
-    const dx = (b.x - a.x) / len;
-    const dz = (b.z - a.z) / len;
-    // Keep markings clear of the crosswalks: a junction end has one, a bend node (where the street
-    // goes on, roadGraph.ts) none, so the lines run right up to it and meet the next piece's.
-    const clearA = isBendNode(g, e.a) ? 0 : 5;
-    const clearB = isBendNode(g, e.b) ? 0 : 5;
+    const paint = edgePaint(g, mouths, ei);
+    if (!paint) return;
+    const { a, b, len, dx, dz, offA, offB, crossA, crossB, clearA, clearB } = paint;
+    // Lines stop short of the crosswalks (clearA/clearB, crosswalks.ts); a street too short to leave any gets none.
+    const lines = len - clearA - clearB >= 2;
     const a2 = { x: a.x + dx * clearA, z: a.z + dz * clearA };
     const b2 = { x: b.x - dx * clearB, z: b.z - dz * clearB };
     const half = e.width / 2;
     humpsNow = world.roadProfile.humpsOn(ei);
-    if (e.lanes === 2) {
+    if (!lines) {
+      // no lane or edge lines on a street too short for them
+    } else if (e.lanes === 2) {
       addLine(a2, b2, 0, 0.16, 3, 5, white);
     } else {
       addLine(a2, b2, 0.18, 0.14, 0, 0, yellow);
@@ -625,7 +622,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       addLine(a2, b2, half / 2, 0.14, 3, 6, white);
       addLine(a2, b2, -half / 2, 0.14, 3, 6, white);
     }
-    for (const side of [1, -1]) {
+    for (const side of lines ? [1, -1] : []) {
       // The edge line: broken into dashes across each bay's (or path mouth's) mouth.
       const spans = bayOf[ei].filter((b) => b.side === side).map((b) => bayMouth(b, a, dx, dz)).sort((p, q) => p[0] - q[0]);
       const at = (s: number) => ({ x: a.x + dx * s, z: a.z + dz * s });
@@ -638,24 +635,22 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       addLine(from, b2, side * (half - 0.45), 0.14, 0, 0, white);
     }
     for (const row of rowsOf.get(ei) ?? []) drawParkingPaint(row, e);
-    // crosswalk stripes near each junction end
-    for (const [from, dir] of [
-      [a, 1],
-      [b, -1],
-    ] as [Vec2, number][]) {
-      if (isBendNode(g, dir > 0 ? e.a : e.b)) continue;
-      for (let o = -half + 0.8; o < half - 0.6; o += 1.1) {
-        const p0 = { x: from.x + dx * dir * 1.2, z: from.z + dz * dir * 1.2 };
-        const p1 = { x: from.x + dx * dir * 4.2, z: from.z + dz * dir * 4.2 };
-        addLine(dir > 0 ? p0 : p1, dir > 0 ? p1 : p0, o, 0.55, 0, 0, white);
-      }
+    // Crosswalk stripes near each junction end, laid from where the straight road starts (crosswalks.ts).
+    for (const [from, dir, off, cross] of [
+      [a, 1, offA, crossA],
+      [b, -1, offB, crossB],
+    ] as [Vec2, number, number, boolean][]) {
+      if (!cross) continue;
+      const p0 = { x: from.x + dx * dir * (off + CROSSWALK.from), z: from.z + dz * dir * (off + CROSSWALK.from) };
+      const p1 = { x: from.x + dx * dir * (off + CROSSWALK.to), z: from.z + dz * dir * (off + CROSSWALK.to) };
+      for (let o = -half + 0.8; o < half - 0.6; o += CROSSWALK.pitch) addLine(dir > 0 ? p0 : p1, dir > 0 ? p1 : p0, o, CROSSWALK.stripe, 0, 0, white);
     }
   });
   humpsNow = [];
   // A bridge deck's expansion joints (the sim's lips, DeckSpan.joint): a dark strip across the roadway on each abutment line and between.
   const jointDark = new THREE.Color(0x0c0c0f);
   for (const a of world.areas) {
-    if (a.kind !== 'river') continue;
+    if (a.kind !== 'channel') continue;
     for (const br of bridgesOf(g, a)) {
       const half = g.edges[br.edge].width / 2;
       const nx = -br.dz;
@@ -718,7 +713,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     }
   };
   g.edges.forEach((e, ei) => {
-    if (isRiverEdge(e)) return;
+    if (isChannelEdge(e)) return;
     const m = mouths[ei];
     const n = edgeSteps(ei);
     const pBays = sideBays(bayOf[ei], 1);
@@ -735,7 +730,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     }
   });
   g.nodes.forEach((_, ni) => {
-    if (riverOnly[ni]) return;
+    if (channelOnly[ni]) return;
     for (const s of sectors[ni]) {
       for (let i = 0; i + 1 < s.curb.length; i++) {
         const len = Math.max(Math.hypot(s.curb[i + 1].x - s.curb[i].x, s.curb[i + 1].z - s.curb[i].z), Math.hypot(s.outer[i + 1].x - s.outer[i].x, s.outer[i + 1].z - s.outer[i].z));

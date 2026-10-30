@@ -6,10 +6,10 @@
  * builds a Route from the nodes these return.
  */
 import { ROUTE } from './config';
-import { type RoadEdge, type RoadGraph, chainFrom, edgeBetween, isBendNode, isRiverEdge, otherNode } from './roadGraph';
+import { type RoadEdge, type RoadGraph, chainFrom, edgeBetween, isBendNode, isChannelEdge, otherNode } from './roadGraph';
 import { Rng, deriveSeed } from '../sim/prng';
 import { routeChains } from './districts/alleyPath';
-import { isChannelNode } from './districts/river';
+import { isChannelNode } from './districts/channel';
 import { DEG, abs, sqrt } from '../sim/math';
 import { dijkstra } from './graphSearch';
 import { DRAG_DISTANCE, cornerStats, polylineFrom, routeRuns, turnAngle, type CornerStats } from './route';
@@ -36,7 +36,7 @@ function randomWeights(g: RoadGraph, rng: Rng, bias?: (edge: number) => number):
   const w = new Float64Array(g.edges.length);
   g.edges.forEach((e, i) => {
     // Favor the wide fast roads a little so routes have long straights, raceway alleys so more races
-    // squeeze through one, and the river channel most of all: a race that can dive in, does.
+    // squeeze through one, and the channel most of all: a race that can dive in, does.
     const kindBias = e.kind === 'boulevard' ? 0.7 : e.kind === 'diagonal' ? 0.75 : e.kind === 'avenue' ? 0.85 : e.kind === 'alley' ? 0.78 : e.kind === 'channel' ? ROUTE.channelBias : 1;
     const r = rng.range(0.45, 1.9);
     // Back alley shortcuts and loop mouths are never part of a route (Infinity is never relaxed).
@@ -57,12 +57,12 @@ function score(stats: CornerStats, len: number, minLen: number, maxLen: number):
 
 /**
  * What the finders would rather pick (planRoads: what the seed's event
- * flavour wants, see events.ts, and a dive into the river channel). The
+ * flavour wants, see events.ts, and a dive into the channel). The
  * search goes on past acceptable routes until it finds one `prefer` likes
  * (one rated `goal` when `rate` grades them), and settles for the best plain
  * route only when none liked comes within ROUTE.preferSlack of it; among
  * liked ones the highest rated within that slack wins. Two in three attempts
- * start from one of the `anchors` (the feet of the river's side ramps, say:
+ * start from one of the `anchors` (the feet of the channel's side ramps, say:
  * a path leaving a foot by its ramp can only come back along the channel).
  */
 export interface RoutePreference {
@@ -189,14 +189,14 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
     if (!p2) continue;
     const p = p1.concat(p2.slice(1));
     // The first street (its pieces through bend nodes, up to the first junction) hosts the start grid,
-    // so it has to be long and straight enough; grid and finish stay on streets, never in the river
+    // so it has to be long and straight enough; grid and finish stay on streets, never in the channel
     // channel or on a ramp.
     const edges = polylineFrom(g, p, false);
     const firstRun = routeRuns(g, p, edges, false)[0];
     const first = firstRun.edges.map((e) => g.edges[e]);
     const last = g.edges[edges[edges.length - 1]];
     // Nor across a level crossing's tracks (districts/bluff.ts).
-    if (firstRun.length < 90 || first.some((e) => isRiverEdge(e) || e.crossing !== undefined) || isRiverEdge(last) || last.crossing !== undefined) continue;
+    if (firstRun.length < 90 || first.some((e) => isChannelEdge(e) || e.crossing !== undefined) || isChannelEdge(last) || last.crossing !== undefined) continue;
     const len = pathLength(g, p, false);
     const stats = cornerStats(g, p, false);
     if (stats.maxTurn > ROUTE.maxTurnDeg && best) continue;
@@ -215,7 +215,7 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
   return best;
 }
 
-/** Through streets a drag strip may run along: no alley, river floor, ramp or level crossing. */
+/** Through streets a drag strip may run along: no alley, channel floor, ramp or level crossing. */
 const DRAG_KINDS = new Set(['street', 'avenue', 'boulevard', 'diagonal']);
 
 /**
@@ -293,7 +293,7 @@ function straightestRun(g: RoadGraph, seed: number, edgeOk: (edge: number) => bo
 
 /**
  * The waypoint race: ROUTE.waypointCount waypoints (plain intersections, off
- * the river and the roundabouts) strung across town between a start and a
+ * the channel and the roundabouts) strung across town between a start and a
  * finish, and the suggested route through them, the shortest way leg by leg
  * that never crosses itself. The AI drives the suggestion; the player may take
  * any street (the world is open, see createWorld). Returns the route's nodes
@@ -340,13 +340,13 @@ export function findWaypointNodes(g: RoadGraph, seed: number, prefer?: (nodes: n
     }
     if (path.length < 3) continue;
     // Grid and finish on streets: a long enough first street (its pieces through bend nodes), never on
-    // the river or across the tracks.
+    // the channel or across the tracks.
     const edges = polylineFrom(g, path, false);
     const runs = routeRuns(g, path, edges, false);
     const first = runs[0].edges.map((e) => g.edges[e]);
     const lastRun = runs[runs.length - 1];
     const last = lastRun.edges.map((e) => g.edges[e]);
-    const bad = (es: RoadEdge[]) => es.some((e) => isRiverEdge(e) || e.crossing !== undefined);
+    const bad = (es: RoadEdge[]) => es.some((e) => isChannelEdge(e) || e.crossing !== undefined);
     if (runs[0].length < 90 || bad(first) || bad(last) || lastRun.length < 60) continue;
     // Never the long way round a route shortcut (districts/alley.ts): a back alley joining two of the
     // suggestion's nodes shorter than the stretch it skips makes the distance by road (World field)

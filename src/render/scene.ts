@@ -12,7 +12,7 @@ import { collectStreakEmitters } from './street/streakEmitters';
 import { fitLampPositions, LAMP_TONES, planLamps, toneColor } from './street/lampStyle';
 import { fadeSubPixel } from './materialFx';
 import { NightLighting } from './lighting';
-import { NEUTRAL_GRADE, POST_GRAIN, POST_LENS, POST_TAPS, PostFx, type GradeParams } from './post';
+import { NEUTRAL_GRADE, POST_GRAIN, POST_LENS, POST_STREAKS, POST_TAPS, PostFx, type GradeParams } from './post';
 import { FrameWatch } from './frameWatch';
 import { cityIdentity } from './cityIdentity';
 import { makeNightEnvironment } from './textures/textures';
@@ -105,7 +105,7 @@ export class GameRenderer {
   applySettings(s: Settings): void {
     this.settings = s;
     const q = this.profile;
-    this.post.configure({ bloom: q.bloom, bloomScale: q.bloomScale, bloomStrength: q.bloomStrength, retro: s.retro, msaa: q.antialias ? 4 : 0, taps: POST_TAPS[s.quality], grain: POST_GRAIN[s.quality], lens: POST_LENS[s.quality] });
+    this.post.configure({ bloom: q.bloom, bloomScale: q.bloomScale, bloomStrength: q.bloomStrength, retro: s.retro, msaa: q.antialias ? 4 : 0, taps: POST_TAPS[s.quality], grain: POST_GRAIN[s.quality], lens: POST_LENS[s.quality], streaks: POST_STREAKS[s.quality] });
     this.canvas.style.imageRendering = s.retro ? 'pixelated' : 'auto';
     this.resize();
   }
@@ -239,7 +239,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const barriers = classifyBarriers(world);
   const city = buildCityMeshes(world, { detail: settings.quality });
   scene.add(city.group);
-  // District dressing (lots, plazas, parks, river, roundabouts, subway) and the distant mountains.
+  // District dressing (lots, plazas, parks, channel, roundabouts, subway) and the distant mountains.
   const districts = buildDistrictMeshes(world, { quality: settings.quality, hazardLamp: city.barrierLampMaterial });
   scene.add(districts.group);
   const bounds = world.graph.bounds;
@@ -496,7 +496,7 @@ const CHUNK_LAYERS: Record<string, ChunkClass> = {
   districtFoliage: 'fog',
   districtTrees: 'fog',
   elevatedSteel: 'fog',
-  riverConcrete: 'fog',
+  channelConcrete: 'fog',
   signs: 'fog',
   roofNeon: 'fog',
   billboards: 'fog',
@@ -522,8 +522,8 @@ const GROUND_LIGHT_LAYERS = new Set([
   'streetStreaks',
   'lightSpill',
   'areaLights',
-  'riverLightPools',
-  'riverDecals',
+  'channelLightPools',
+  'channelDecals',
   'shortcutLightPools',
   'marketLight',
   'roadworksLightPools',

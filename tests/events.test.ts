@@ -3,7 +3,7 @@ import { Rng } from '../src/sim/prng';
 import { createCity, createWorld, planRoads } from '../src/city/world';
 import { buildRoute } from '../src/city/route';
 import { createTerrain } from '../src/city/terrain';
-import { isRiverEdge } from '../src/city/roadGraph';
+import { isChannelEdge } from '../src/city/roadGraph';
 import { harborShore } from '../src/city/districts/harborShore';
 import { quayCutProgress } from '../src/city/districts/harborCut';
 import { waterfrontRolled } from '../src/city/districts/waterfront';
@@ -62,11 +62,11 @@ describe('event flavours', () => {
       const offer = eventOffer(g, p.districts.areas);
       // A Harbor Run is drawn for the quay's preview, which a finished plan may not have kept (the area budget).
       if (p.event.drawn !== 'harborRun') expect(offer).toContain(p.event.drawn);
-      if (offer.includes('riverRun')) expect(g.edges.some((e) => e.kind === 'channel')).toBe(true);
+      if (offer.includes('channelRun')) expect(g.edges.some((e) => e.kind === 'channel')).toBe(true);
       if (offer.includes('alleySprint')) expect(g.edges.some((e) => e.kind === 'alley')).toBe(true);
       if (offer.includes('underTheEl')) expect(p.districts.areas.some((a) => a.kind === 'subway')).toBe(true);
       if (offer.includes('ringRush')) expect(g.nodes.filter((n) => n.ring).length).toBeGreaterThanOrEqual(2);
-      if (!g.edges.some((e) => e.kind === 'channel')) expect(offer).not.toContain('riverRun');
+      if (!g.edges.some((e) => e.kind === 'channel')) expect(offer).not.toContain('channelRun');
       if (!p.districts.areas.some((a) => a.kind === 'subway')) expect(offer).not.toContain('underTheEl');
       if (!p.districts.areas.some((a) => a.kind === 'waterfront')) expect(offer).not.toContain('harborRun');
     }
@@ -126,8 +126,8 @@ describe('event flavours', () => {
       for (const kind of ['circuit', 'sprint'] as const) {
         const route = buildRoute(a.graph, kind, a.routeNodes[kind]);
         expect(route.shortcuts.length, `${id} ${kind} ${seed}`).toBeGreaterThanOrEqual(1);
-        expect(isRiverEdge(a.graph.edges[route.edges[0]])).toBe(false);
-        if (kind === 'sprint') expect(isRiverEdge(a.graph.edges[route.edges[route.edges.length - 1]])).toBe(false);
+        expect(isChannelEdge(a.graph.edges[route.edges[0]])).toBe(false);
+        if (kind === 'sprint') expect(isChannelEdge(a.graph.edges[route.edges[route.edges.length - 1]])).toBe(false);
       }
     }
   });
@@ -213,7 +213,7 @@ describe('event flavours', () => {
    * nothing to do with it (Downtown Dash, or Hill Climb for Downtown Dash):
    * each flavour's routes have measurably more of what it is named for.
    */
-  it('routes match their flavour: River Run dives longer, Alley Sprint uses the alleys, Hill Climb climbs...', () => {
+  it('routes match their flavour: Channel Run dives longer, Alley Sprint uses the alleys, Hill Climb climbs...', () => {
     const seeds = seedsFrom(64, 12);
     const compare = (id: EventFlavourId, measure: (p: Plan, seed: number) => number[], offered: (p: Plan) => boolean = () => true) => {
       const base: EventFlavourId = id === 'downtownDash' ? 'hillClimb' : 'downtownDash';
@@ -230,9 +230,9 @@ describe('event flavours', () => {
     };
     const kind = (p: Plan, k: string) => (e: number) => p.graph.edges[e].kind === k;
 
-    const river = compare('riverRun', (p) => metres(p, kind(p, 'channel')), (p) => p.graph.edges.some((e) => e.kind === 'channel'));
-    expect(Math.min(...river.own)).toBeGreaterThan(0);
-    expect(mean(river.own)).toBeGreaterThan(mean(river.other) * 1.2);
+    const channel = compare('channelRun', (p) => metres(p, kind(p, 'channel')), (p) => p.graph.edges.some((e) => e.kind === 'channel'));
+    expect(Math.min(...channel.own)).toBeGreaterThan(0);
+    expect(mean(channel.own)).toBeGreaterThan(mean(channel.other) * 1.2);
 
     const alley = compare('alleySprint', (p) => metres(p, kind(p, 'alley')));
     expect(Math.min(...alley.own)).toBeGreaterThan(0);
@@ -275,7 +275,7 @@ describe('event flavours', () => {
     expect(mean(fast.own)).toBeGreaterThan(mean(fast.other) + 0.08);
 
     // Hills are planned after the routes, so they come to a Hill Climb's: the rise from the hills
-    // alone, and on the real terrain (its base roll, river ramps, park mounds and humps included).
+    // alone, and on the real terrain (its base roll, channel ramps, park mounds and humps included).
     const hills = compare('hillClimb', (p) => routesOf(p).map((r) => hillClimbAlong(p.graph, p.districts.areas, r.nodes, r.closed)));
     expect(mean(hills.own)).toBeGreaterThan(mean(hills.other) * 1.5);
     expect(mean(hills.own)).toBeGreaterThan(14);

@@ -127,7 +127,7 @@ export const CITY = {
 
   /**
    * District planning (src/city/districts). Roughly half the city stays plain
-   * downtown blocks; the special areas below (hills, parks, the river, the El,
+   * downtown blocks; the special areas below (hills, parks, the channel, the El,
    * alleys, roundabouts, a monument plaza...) share the rest. `chance` is per
    * city, `count` a [min, max] range. Areas are skipped once their combined
    * footprint would pass maxSpecialFraction of the block area (a cap, not a
@@ -135,7 +135,7 @@ export const CITY = {
    */
   districts: {
     maxSpecialFraction: 0.45,
-    river: {
+    channel: {
       enabled: true,
       chance: 0.9,
       /** Channel cross section: flat floor half width, sloped bank width, depth (m). */
@@ -266,7 +266,7 @@ export const CITY = {
       /** Clusters out on the floor itself (pallets, barrels, a water barrier) about every this far (m), on the side away from the trickle. */
       floorClutterSpacing: 55,
       /**
-       * Channel features (districts/riverFeatures.ts): count per seed [min, max]; each keeps `clear` m
+       * Channel features (districts/channelFeatures.ts): count per seed [min, max]; each keeps `clear` m
        * beyond its own span from every foot and deck edge and `gap` m from the others; a full width
        * feature fades out over the last edgeFade m before the floor edge. Sizes in m.
        */
@@ -275,7 +275,7 @@ export const CITY = {
         clear: 40,
         gap: 90,
         edgeFade: 1.4,
-        /** The hump's and bar's wedge: share of each grade eased at its foot and at the crest (riverFeatures.ts wedge). */
+        /** The hump's and bar's wedge: share of each grade eased at its foot and at the crest (channelFeatures.ts wedge). */
         wedgeEase: 0.25,
         /** Speed hump across the floor, a wedge: length along the channel, height (a 3% mean grade: a lift at 150 km/h, not a launch). */
         hump: { length: 14, height: 0.22 },
@@ -325,7 +325,7 @@ export const CITY = {
       /**
        * Swings: the line leaves its street column for the neighbouring one through the blocks, on an
        * S curve, this many times per seed [min, max] (one that does not fit is dropped: a diagonal
-       * avenue or the river in its blocks, a curve too tight). One spans [min, max] street rows: over
+       * avenue or the channel in its blocks, a curve too tight). One spans [min, max] street rows: over
        * two rows it crosses the street between them about 40 degrees off square, over three the two
        * streets about 25.
        */
@@ -798,7 +798,7 @@ export const CITY = {
      */
     hills: {
       enabled: true,
-      /** Hills asked for per city; fewer place when the river, the El and roundabouts leave no room. */
+      /** Hills asked for per city; fewer place when the channel, the El and roundabouts leave no room. */
       count: [2, 3],
       /** Adjacent blocks per hill [min, max]. */
       blocks: [2, 4],
@@ -813,7 +813,7 @@ export const CITY = {
       ridgeChance: 0.4,
       /** Share of hills that are a basin (the same profile, sunk) instead of a dome. */
       basinChance: 0.2,
-      /** The slopes keep this far from the river channel, roundabouts and the monument plaza (m). */
+      /** The slopes keep this far from the channel, roundabouts and the monument plaza (m). */
       clearance: 15,
       /** Two hills' slopes may overlap by this fraction of their widths, where both are nearly flat. */
       overlap: 0.2,
@@ -949,7 +949,7 @@ export const CITY = {
       maskRamp: 4.5,
       /** The ridge's flanks keep this far from other streets' sidewalks (m). */
       ridgeClear: 6,
-      /** Bores and ridges keep this far from the river channel, the El, hill slopes and roundabouts (m). */
+      /** Bores and ridges keep this far from the channel, the El, hill slopes and roundabouts (m). */
       siteClear: 14,
     },
     /**
@@ -1162,7 +1162,7 @@ export const CITY = {
      */
     waterfront: {
       enabled: true,
-      /** Chance per city, the first draw of the module's own stream; a city whose every side is crossed (the El, the river, the expressway) gets none. */
+      /** Chance per city, the first draw of the module's own stream; a city whose every side is crossed (the El, the channel, the expressway) gets none. */
       chance: 0.36,
       /**
        * The sea wall: the outer frontage's furthest reach within `dilate` m along the side, box smoothed
@@ -1182,7 +1182,7 @@ export const CITY = {
       shedHeight: [8, 12],
       /** The quay runs at least this far along its side (m). */
       minLength: 520,
-      /** The El and its run-off, the river's channel end, the expressway's deck: anything else past the frontage keeps this far along the side from the harbor (m). */
+      /** The El and its run-off, the channel end, the expressway's deck: anything else past the frontage keeps this far along the side from the harbor (m). */
       clearance: 45,
       /**
        * A side the races run along wins: its score gains `raceBonus` (m of quay) per route node (either route,
@@ -1418,10 +1418,10 @@ export const CITY = {
       freeboard: 1.1,
       depth: 2.5,
       /**
-       * The river keeps its band (bank top) this far off the shore (m): the lake is never between or
+       * The channel keeps its band (bank top) this far off the shore (m): the lake is never between or
        * along its bank streets. Hill slopes, the bluff and the El's swings keep `clearance` off (m).
        */
-      riverClear: 90,
+      channelClear: 90,
       clearance: 15,
       /** On a seed that rolls the expressway, the lake's shore keeps off the first this many rows its line is tried on. */
       highwayRows: 2,
@@ -1529,7 +1529,7 @@ export const ROUTE = {
   gridSlots: 10,
   maxAttempts: 400,
   /**
-   * Dijkstra weight factor of the river channel's edges (0.55: strongly preferred) and how much worse
+   * Dijkstra weight factor of the channel's edges (0.55: strongly preferred) and how much worse
    * (score points) a route that dives into the channel may be than the best plain one and still win.
    */
   channelBias: 0.5,
@@ -1635,8 +1635,8 @@ export const PARKING = {
   routeClear: 12,
   /** Walls and props must stay this clear (m) of a slot's footprint. */
   probePad: 0.3,
-  /** District areas a slot never stands in (World.areaAt at its centre): the river's banks and ramps, a tunnel or viaduct, a market, roadworks, the cable car's street. */
-  offAreas: ['river', 'tunnel', 'overpass', 'market', 'roadworks', 'roundabout', 'cableCar'] as const,
+  /** District areas a slot never stands in (World.areaAt at its centre): the channel's banks and ramps, a tunnel or viaduct, a market, roadworks, the cable car's street. */
+  offAreas: ['channel', 'tunnel', 'overpass', 'market', 'roadworks', 'roundabout', 'cableCar'] as const,
 } as const;
 
 /**
@@ -1654,7 +1654,7 @@ export const PARKING_LOT = {
   faceArea: [9000, 30000],
   maxGrade: 0.05,
   maxRise: 5,
-  /** The streets a lot may front: plain streets only (no alley, shortcut, bridge or river edge). */
+  /** The streets a lot may front: plain streets only (no alley, shortcut, bridge or channel edge). */
   edgeKinds: ['street', 'avenue', 'diagonal', 'boulevard'],
   /**
    * Where lots go: a site weighs baseWeight + edgeBoost at the edge of downtown (the downtown factor

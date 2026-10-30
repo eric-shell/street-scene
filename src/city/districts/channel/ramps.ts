@@ -1,5 +1,5 @@
 /**
- * The river's entrance ramps: how one is stored in the area params (rampsOf), its width with the bell mouth
+ * The channel's entrance ramps: how one is stored in the area params (rampsOf), its width with the bell mouth
  * and foot bell (rampHalf, rampOuter), the eased profile it climbs (rampProfile), where along the channel its
  * axis stands and the points on it (rampAlong, rampPoint), and where the bell mouths and foot bells are sampled
  * (mouthAlongs, footAlongs). A ramp is a trench (down into the channel floor) or a ford (the road dips through)
@@ -8,9 +8,9 @@
 import { CITY } from '../../config';
 import { Vec2 } from '../../../sim/math';
 import type { Area } from '../types';
-import { riverCenter } from './centerline';
+import { channelCenter } from './centerline';
 
-const CFG = CITY.districts.river;
+const CFG = CITY.districts.channel;
 
 /** Straight pieces of a side ramp's bell mouth and of every trench's foot bell, each side. */
 const MOUTH_STEPS = 8;
@@ -123,7 +123,7 @@ export function rampProfile(u: number): { f: number; df: number } {
 export function rampAlong(p: Record<string, number>, r: Ramp, al: number, lat = 0): number {
   const f = (t: number) => {
     const q = rampPoint(r, t, lat);
-    return Math.abs(q.z - riverCenter(p, q.x)) - al;
+    return Math.abs(q.z - channelCenter(p, q.x)) - al;
   };
   let lo = 0;
   let hi = al * 1.5 + 20;

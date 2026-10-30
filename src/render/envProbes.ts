@@ -1,7 +1,7 @@
 /**
  * Zone reflection probes: the car reflects the district it is in. At scene
  * build, once everything is added, a few small cubemaps are rendered from the
- * real scene at seeded representative points (downtown street level, the river
+ * real scene at seeded representative points (downtown street level, the channel
  * channel floor, the park or lake, the harbour quay), each 2 m above the
  * ground, and run through PMREM so they light the PBR materials like the
  * static panorama does. Per frame the car's zone (world.areaAt) picks the
@@ -49,12 +49,12 @@ export const ENV_PROBES = {
 /** The zones a probe can stand for. */
 type Zone = 0 | 1 | 2 | 3;
 const STREET: Zone = 0;
-const ZONE_NAMES = ['street', 'river', 'park', 'quay'] as const;
+const ZONE_NAMES = ['street', 'channel', 'park', 'quay'] as const;
 
 /** Zone of a district area kind (anything not listed is the street). */
 function zoneOfKind(kind: Area['kind'] | undefined): Zone {
   switch (kind) {
-    case 'river':
+    case 'channel':
       return 1;
     case 'park':
     case 'hills':
@@ -111,10 +111,10 @@ export function probePoints(world: World): ({ x: number; y: number; z: number } 
     }
   }
   out[STREET] = pts.length > 0 ? at(pts[bi].x, pts[bi].z) : at(cx, cz);
-  // River: the middle of the centerline, down on the channel floor (a very low y asks heightAt for the floor).
-  const river = world.areas.find((a) => a.kind === 'river' && a.path.length > 0);
-  if (river) {
-    const m = river.path[river.path.length >> 1];
+  // Channel: the middle of the centerline, down on the channel floor (a very low y asks heightAt for the floor).
+  const channel = world.areas.find((a) => a.kind === 'channel' && a.path.length > 0);
+  if (channel) {
+    const m = channel.path[channel.path.length >> 1];
     out[1] = at(m.x, m.z, -1000);
   }
   // Park, else the lake.

@@ -1,6 +1,6 @@
 /**
  * A fireworks display on about three seeds in ten: a barge's show over the water (the harbor's open sea, else the
- * lake, else the river's far end, else past downtown's far edge) a minute or so into the night. Render and audio
+ * lake, else the channel's far end, else past downtown's far edge) a minute or so into the night. Render and audio
  * only and a pure function of the seed and the scene clock, so a race and its replay see the same show:
  *  - the plan (`fireworksPlan`, its own stream): a start 20 to 90 s in, a run of 2 to 4 minutes, a shell every 4 to
  *    12 s and a finale salvo of three; each shell has a launch, a rise, a burst height and spot across the water, a
@@ -156,7 +156,7 @@ export interface FireworksSite {
   scale: number;
 }
 
-/** Where the show is held: the harbor's sea, else the lake, else the river's far end, else off downtown's far edge. */
+/** Where the show is held: the harbor's sea, else the lake, else the channel's far end, else off downtown's far edge. */
 export function fireworksSite(world: World, plan: FireworksPlan): FireworksSite {
   const b = world.graph.bounds;
   const cx = (b.minX + b.maxX) / 2;
@@ -175,10 +175,10 @@ export function fireworksSite(world: World, plan: FireworksPlan): FireworksSite 
     const d = Math.hypot(c.x - cx, c.z - cz) || 1;
     return { x: c.x, y: lake.params.water, z: c.z, tx: -(c.z - cz) / d, tz: (c.x - cx) / d, span: 25, scale: 0.5 };
   }
-  const river = world.areas.find((a) => a.kind === 'river' && a.path.length > 1);
-  if (river) {
-    const p0 = river.path[0];
-    const p1 = river.path[river.path.length - 1];
+  const channel = world.areas.find((a) => a.kind === 'channel' && a.path.length > 1);
+  if (channel) {
+    const p0 = channel.path[0];
+    const p1 = channel.path[channel.path.length - 1];
     const far = Math.hypot(p0.x - cx, p0.z - cz) > Math.hypot(p1.x - cx, p1.z - cz) ? p0 : p1;
     const d = Math.hypot(far.x - cx, far.z - cz) || 1;
     return { x: far.x, y: world.heightAt(far.x, far.z), z: far.z, tx: -(far.z - cz) / d, tz: (far.x - cx) / d, span: 40, scale: 0.6 };

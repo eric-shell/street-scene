@@ -36,7 +36,7 @@ import { PARKING_LOT as C } from '../../config';
 import type { BlockFace } from '../../blocks';
 import { computeMouths } from '../../blocks';
 import { edgeSides } from '../../props';
-import { downtownFactor, edgeBetween, isRiverEdge } from '../../roadGraph';
+import { downtownFactor, edgeBetween, isChannelEdge } from '../../roadGraph';
 import { type Terrain, createTerrain } from '../../terrain';
 import { stripEdgeOk } from '../../dragStrip';
 import { findDragNodes } from '../../routeSearch';
@@ -238,7 +238,7 @@ function shapeOn(ctx: PlanContext, f: BlockFace, run: Run, d: { shape: number; s
   const m = poly.length;
   const uv = poly.map((p): Vec2 => ({ x: (p.x - o.x) * u.x + (p.z - o.z) * u.z, z: wOf(p) }));
 
-  // The ground under it: mild, and nobody else's (a hill's slope, the river's bank, a highway's footprint).
+  // The ground under it: mild, and nobody else's (a hill's slope, the channel's bank, a highway's footprint).
   {
     const bb = polygonBounds(poly);
     let lo = Infinity;
@@ -260,7 +260,7 @@ function shapeOn(ctx: PlanContext, f: BlockFace, run: Run, d: { shape: number; s
   // The streets round the block that are not plain (an alley, the El's, a highway's) and the junctions other districts hold are kept clear of.
   for (const e of f.edges) {
     const E = g.edges[e];
-    const plain = (C.edgeKinds as readonly string[]).includes(E.kind) && !E.shortcut && !E.bridge && E.crossing === undefined && !isRiverEdge(E) && !ctx.claims.edge.has(e);
+    const plain = (C.edgeKinds as readonly string[]).includes(E.kind) && !E.shortcut && !E.bridge && E.crossing === undefined && !isChannelEdge(E) && !ctx.claims.edge.has(e);
     if (plain) continue;
     const A = g.nodes[E.a];
     const B = g.nodes[E.b];

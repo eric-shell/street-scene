@@ -1,13 +1,26 @@
 /**
- * What an account carries between devices, read from and written to the local store: the garage, its prefs
- * and the settings, as one small document (the `players.save` column). Replays, ghosts, bests, the music
- * player and the debug panels' tuning stay on the device; they are larger, or only make sense on it.
+ * What an account carries between devices, read from and written to the local store: the garage, its prefs,
+ * the settings and the player's progress (the points ledger, the stats and the parts bought), as one small
+ * document (the `players.save` column). Replays, ghosts, bests, the music player and the debug panels' tuning
+ * stay on the device; they are larger, or only make sense on it. The progress keys only grow (counters, a
+ * ledger, a set of parts), so a download merges them with this device's (max per field, union) instead of
+ * writing over them: docs/economy.md.
  */
 import { mergePoints, POINTS_KEY } from '../shared/points';
+import { mergeStats, STATS_KEY } from '../shared/stats';
+import { grandfathered, mergePurchases, PURCHASES_KEY } from '../shared/purchases';
+import { validateBuild } from '../shared/carBuild';
+import { FEATURES } from '../shared/features';
 import { loadText, onSaved, saveText } from '../shared/store';
 
 /** The store keys an account syncs. */
-const SYNCED: readonly string[] = ['garage.v1', 'garage.prefs.v1', 'settings.v1', POINTS_KEY];
+const SYNCED: readonly string[] = ['garage.v1', 'garage.prefs.v1', 'settings.v1', POINTS_KEY, STATS_KEY, PURCHASES_KEY];
+/** The progress keys and how two devices' copies merge (each rule only grows, so merging never loses or double counts). */
+const PROGRESS: readonly [string, (a: unknown, b: unknown) => unknown][] = [
+  [POINTS_KEY, mergePoints],
+  [STATS_KEY, mergeStats],
+  [PURCHASES_KEY, mergePurchases],
+];
 /** Settings that describe this device rather than the player: kept when another device's settings arrive. */
 const DEVICE_SETTINGS = ['quality', 'autoQuality', 'showFps'] as const;
 
@@ -89,17 +102,28 @@ export function joinLocalBuilds(blob: SaveBlob): number {
 }
 
 /**
- * Folds this device's points into the downloaded save, keeping the larger of the total and the best (points
- * only grow, so max never double counts). True when this device was ahead, so the caller uploads the result.
+ * Folds this device's progress into the downloaded save: the points ledger and the stats keep the larger of
+ * each field, the purchases every part either side owns (all only grow, so this never double counts). True
+ * when this device was ahead on any of them, so the caller uploads the result.
  */
 export function mergeLocalPoints(blob: SaveBlob): boolean {
-  const local = parse(loadText(POINTS_KEY));
-  if (!local) return false;
-  const cloud = blob.keys?.[POINTS_KEY];
-  const merged = mergePoints(local, cloud);
-  const was = mergePoints(cloud, undefined);
-  blob.keys = { ...blob.keys, [POINTS_KEY]: merged };
-  return merged.total !== was.total || merged.best !== was.best;
+  let ahead = false;
+  // An account saved before the economy has a garage but no purchases: its builds are grandfathered here, as a
+  // device's garage is on its first load, or this device's ledger would strip them when the save lands.
+  const cloudGarage = blob.keys?.[GARAGE_KEY] as { slots?: unknown } | undefined;
+  if (FEATURES.economy && blob.keys?.[PURCHASES_KEY] === undefined && Array.isArray(cloudGarage?.slots)) {
+    blob.keys = { ...blob.keys, [PURCHASES_KEY]: grandfathered(cloudGarage.slots.map(validateBuild)) };
+    ahead = true;
+  }
+  for (const [key, merge] of PROGRESS) {
+    const local = parse(loadText(key));
+    if (!local) continue;
+    const cloud = blob.keys?.[key];
+    const merged = merge(local, cloud);
+    if (JSON.stringify(merged) !== JSON.stringify(merge(cloud, undefined))) ahead = true;
+    blob.keys = { ...blob.keys, [key]: merged };
+  }
+  return ahead;
 }
 
 /** Calls `fn` whenever the game writes one of the synced keys. */

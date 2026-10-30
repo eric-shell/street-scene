@@ -57,7 +57,7 @@ import type { BlockFace } from '../blocks';
 import { emptyBuild } from './types';
 import { circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonCentroid, smooth01, type Smooth } from './geom';
 import { convexRing } from './park';
-import { riverCenter } from './river';
+import { channelCenter } from './channel';
 import { type PlazaLamp, dressMonument } from './plazaDressing';
 
 /** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
@@ -594,7 +594,7 @@ export function plazaPasses(g: RoadGraph, area: Area): RoutePass[] {
  * Blocks that can hold the plaza, nearest the center first, with their
  * centroid's distance from it (m): unclaimed, convex, sized for it, no
  * bridge, shortcut, claimed street or roundabout on their ring, clear of the
- * river and within `reach` of the center. Event flavours (events.ts) ask it
+ * channel and within `reach` of the center. Event flavours (events.ts) ask it
  * before the monument is planned.
  */
 export function monumentSites(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims' | 'faces'>, reach: number): { f: BlockFace; d: number }[] {
@@ -602,7 +602,7 @@ export function monumentSites(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims
   // Round downtown's centre (CityPlan.downtown), wherever the seed put it.
   const cx0 = g.plan.downtown.x;
   const cz0 = g.plan.downtown.z;
-  const rivers = ctx.areas.filter((a) => a.kind === 'river');
+  const channels = ctx.areas.filter((a) => a.kind === 'channel');
   return ctx
     .faces()
     .filter((f) => {
@@ -612,7 +612,7 @@ export function monumentSites(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims
       if (!convexRing(f.ring)) return false;
       const c = polygonCentroid(f.ring);
       if (sqrt((c.x - cx0) ** 2 + (c.z - cz0) ** 2) > reach) return false;
-      for (const r of rivers) if (f.ring.some((p) => Math.abs(p.z - riverCenter(r.params, p.x)) < r.params.top + CITY.districts.river.clearance + 4)) return false;
+      for (const r of channels) if (f.ring.some((p) => Math.abs(p.z - channelCenter(r.params, p.x)) < r.params.top + CITY.districts.channel.clearance + 4)) return false;
       return true;
     })
     .map((f) => ({ f, d: (() => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createCity, createWorld } from '../src/city/world';
-import { isRiverEdge } from '../src/city/roadGraph';
+import { isChannelEdge } from '../src/city/roadGraph';
 import { createRace, stepRace, RaceConfig, RaceState } from '../src/sim/race';
 import { TrafficCar, trafficNet, trafficTuning } from '../src/sim/traffic';
 import { TRAFFIC } from '../src/sim/tuning';
@@ -39,7 +39,7 @@ function circleGap(a: TrafficCar, b: TrafficCar): number {
 const withTraffic = (cfg: RaceConfig): RaceConfig => ({ ...cfg, traffic: true });
 
 describe('traffic network', () => {
-  it('keeps off the route, its shortcuts, closed side streets, alleys and the river in a race, and has no dead ends', () => {
+  it('keeps off the route, its shortcuts, closed side streets, alleys and the channel in a race, and has no dead ends', () => {
     // Two cities, and the first whose roadworks have a lane bending round the plant (a closure can sit
     // clear of every lane, and on most cities every one does).
     const merges = (seed: number) => {
@@ -63,7 +63,7 @@ describe('traffic network', () => {
           expect(routeNodes.has(p.from) || routeNodes.has(p.to)).toBe(false);
           if (!p.lane) continue;
           const e = w.graph.edges[p.edge];
-          expect(routeEdges.has(e.id) || closed.has(e.id) || !!e.shortcut || isRiverEdge(e) || e.kind === 'alley' || e.kind === 'backAlley').toBe(false);
+          expect(routeEdges.has(e.id) || closed.has(e.id) || !!e.shortcut || isChannelEdge(e) || e.kind === 'alley' || e.kind === 'backAlley').toBe(false);
           // Every lane has a way in and a way on.
           expect(p.in.length).toBeGreaterThan(0);
           expect(p.out.length).toBeGreaterThan(0);

@@ -23,7 +23,7 @@ const KIND_NOUNS: Partial<Record<Area['kind'], string>> = {
   subway: 'Under the El',
   highway: 'Expressway',
   bluff: 'Bluff',
-  river: 'River channel',
+  channel: 'Flood channel',
   roundabout: 'Roundabout',
   hills: 'Hills',
   monument: 'Monument',
@@ -58,8 +58,8 @@ export function placeKind(a: Area | null): string {
   return KIND_NOUNS[a.kind] ?? '';
 }
 
-/** The El, the river and the expressway cross many neighbourhoods: they belong to none, and their line on a card says only what they are. */
-export const crossesTown = (a: Area): boolean => a.kind === 'subway' || a.kind === 'river' || a.kind === 'highway';
+/** The El, the channel and the expressway cross many neighbourhoods: they belong to none, and their line on a card says only what they are. */
+export const crossesTown = (a: Area): boolean => a.kind === 'subway' || a.kind === 'channel' || a.kind === 'highway';
 
 /** The line under a place's name on the cards: what it is and which neighbourhood ("Park · Ironside"); `what` stands in for the kind (a drift zone). */
 export function placeLine(world: World, a: Area, what = placeKind(a)): string {

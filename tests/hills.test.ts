@@ -8,7 +8,7 @@ import { distToPolygonEdge, pointInPolygon } from '../src/city/districts/geom';
 import { distToSegment } from '../src/sim/math';
 import { hillAt, hillOutline, plateauDistance, shapeOf } from '../src/city/districts/hills';
 import { TOUR_REACH, plazaPasses } from '../src/city/districts/monument';
-import { riverCenter } from '../src/city/districts/river';
+import { channelCenter } from '../src/city/districts/channel';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import type { Contact } from '../src/city/world';
 
@@ -27,7 +27,7 @@ describe('hills', () => {
     for (let i = 0; i < 24; i++) {
       const c = createCity(rng.int(0, 0x7fffffff));
       const hs = c.districts.areas.filter((a) => a.kind === 'hills');
-      // The river across the whole map, the El and a bluff (on about four cities in ten) leave some cities room for one cluster only.
+      // The channel across the whole map, the El and a bluff (on about four cities in ten) leave some cities room for one cluster only.
       expect(hs.length).toBeGreaterThanOrEqual(1);
       if (hs.length < HILLS.count[0]) short++;
       expect(hs.length).toBeLessThanOrEqual(HILLS.count[1]);
@@ -170,7 +170,7 @@ describe('hills', () => {
     expect(tried).toBeGreaterThan(rolled);
   });
 
-  it('plans the same hills every time, clear of the river channel, roundabouts, the El and each other', () => {
+  it('plans the same hills every time, clear of the channel, roundabouts, the El and each other', () => {
     const rng = new Rng(44);
     for (let i = 0; i < 10; i++) {
       const seed = rng.int(0, 0x7fffffff);
@@ -181,8 +181,8 @@ describe('hills', () => {
       const g = a.graph;
       for (const h of hills(a)) {
         const s = shapeOf(h);
-        for (const r of a.districts.areas.filter((x) => x.kind === 'river')) {
-          for (let x = r.params.x0; x <= r.params.x1; x += 10) expect(plateauDistance(s, x, riverCenter(r.params, x)).d).toBeGreaterThanOrEqual(s.w + r.params.top);
+        for (const r of a.districts.areas.filter((x) => x.kind === 'channel')) {
+          for (let x = r.params.x0; x <= r.params.x1; x += 10) expect(plateauDistance(s, x, channelCenter(r.params, x)).d).toBeGreaterThanOrEqual(s.w + r.params.top);
         }
         for (const sub of a.districts.areas.filter((x) => x.kind === 'subway')) for (const p of sub.path) expect(plateauDistance(s, p.x, p.z).d).toBeGreaterThanOrEqual(s.w);
         for (const n of g.nodes) {

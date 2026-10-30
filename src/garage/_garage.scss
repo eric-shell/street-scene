@@ -142,6 +142,28 @@ $step-rise: 0.58s, 0.45s, 0.32s;
       @include mixins.ellipsis;
     }
   }
+  /* Customize's build name with the economy on (the header's right is the points counter): a quiet line over
+     the tabs, in the kicker's small caps, so the build in hand still reads. */
+  &__build-name {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-shadow: var(--halo);
+    > svg {
+      flex: none;
+      color: var(--hue);
+    }
+  }
+  &__build-label {
+    @include mixins.ellipsis;
+  }
   /* Customize's work area: the rail of categories (_garage-tab.scss) down its left edge beside the open tab's
      groups, so the groups start at the top and keep the column's height. One scrolling row over them on a phone,
      whose sheet is too short for the rail. */

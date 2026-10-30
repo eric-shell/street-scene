@@ -684,7 +684,7 @@ export class FullMap {
       c.beginPath();
       for (let i = 0; i < pts.length; i++) (i ? c.lineTo(mapX(v, pts[i].x), mapY(v, pts[i].z)) : c.moveTo(mapX(v, pts[i].x), mapY(v, pts[i].z)));
       if (o.route.closed) c.closePath();
-      // A soft road as wide as the featured course's, then a dark casing, so a line reads over a district in its own color (the waypoint race's cyan on the river).
+      // A soft road as wide as the featured course's, then a dark casing, so a line reads over a district in its own color (the waypoint race's cyan on the channel).
       c.strokeStyle = rgba(o.ink, 0.16 + 0.12 * lit);
       c.lineWidth = (7 + 5 * lit) * dpr;
       c.stroke();

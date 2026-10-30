@@ -7,7 +7,7 @@
  * Where they drive (the network, built once per World and cached): one lane
  * per direction on every plain street kind (street, avenue, diagonal,
  * boulevard), keeping right; never alleys, back alley shortcuts, the
- * river's channel and ramps or a night market's street. In a race nothing
+ * channel and ramps or a night market's street. In a race nothing
  * touches a route node either, so the route's edges, its shortcuts and every
  * closed side street (whose cyan closure and street meet stand at the route
  * end) are out: traffic loops in the off-route network and is seen crossing
@@ -462,7 +462,7 @@ export function stepTraffic(r: RaceState): void {
     bd.x += bd.vx * DT;
     bd.z += bd.vz * DT;
     bd.yaw = wrapAngle(bd.yaw + bd.yawRate * DT);
-    // On the street level (traffic never drives the river channel): over a deck's piers, held by its parapets.
+    // On the street level (traffic never drives the channel): over a deck's piers, held by its parapets.
     bd.y = world.heightAt(bd.x, bd.z);
     collideCarWithWorld(bd, trafficTuning(c.kind), world, undefined, undefined, r.tick);
     bd.speed = sqrt(bd.vx * bd.vx + bd.vz * bd.vz);

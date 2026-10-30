@@ -5,7 +5,7 @@
  * _setting-row.scss (rows, notes, the controls list).
  */
 import { h, keyCaps, link, scrollHint, segmented, selectTab, tab } from '../kit/dom';
-import { CircleUser, Code, Gamepad2, Heart, Keyboard, Monitor, ShieldCheck, Smartphone, Volume2, type IconNode } from '../kit/icons';
+import { ChartColumn, CircleUser, Code, Gamepad2, Heart, Keyboard, Monitor, ShieldCheck, Smartphone, Volume2, type IconNode } from '../kit/icons';
 import type { Quality, Settings } from '../settings';
 import { MUSIC_CATALOG, type MusicPlayer } from '../../audio/musicPlayer';
 import trafficModels from '../../assets/trafficModels.json';
@@ -13,6 +13,7 @@ import plantModels from '../../assets/plantModels.json';
 import { BUILD_VERSION } from '../../version';
 import { accountsEnabled } from '../../account/account';
 import { accountPage } from './accountPage';
+import { statsPage } from './statsPage';
 import { privacyPage } from './privacyPage';
 import { FEATURES } from '../../shared/features';
 
@@ -28,7 +29,7 @@ interface SettingsPage {
 let lastPage: string | null = null;
 
 /**
- * Settings: a row of tabs (account when the build has accounts, display, sound, controls, developer, privacy, credits) over
+ * Settings: a row of tabs (stats, account when the build has accounts, display, sound, controls, developer, privacy, credits) over
  * the open page, so nothing needs a long scroll and the panel fits the rail's
  * column; a page that still runs past the card (credits, controls) scrolls
  * inside it with the kit's fades and chevrons (scrollHint). Race options (rivals, difficulty, gearbox, traction control) live on
@@ -47,6 +48,8 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     return r;
   };
   const all: (SettingsPage | false)[] = [
+    // The player's numbers first: what they have earned and driven, and what there is to spend on parts.
+    { id: 'stats', label: 'Stats', icon: ChartColumn, rows: statsPage },
     accountsEnabled() && { id: 'account', label: 'Account', icon: CircleUser, rows: () => accountPage(s, onChange) },
     {
       id: 'display',

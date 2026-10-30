@@ -25,7 +25,7 @@
  * An edge may carry a bus bay and mouths, on either side.
  */
 import type { RoadGraph } from './roadGraph';
-import { chainOf, isRiverEdge } from './roadGraph';
+import { chainOf, isChannelEdge } from './roadGraph';
 import type { EdgeMouths } from './blocks';
 import { edgeSides, lightStations } from './props';
 import { Rng, deriveSeed } from '../sim/prng';
@@ -190,7 +190,7 @@ function outline(b: BusBay): Vec2[] {
   return pts;
 }
 
-/** Edge kinds that can have a bay: the plain streets (no alleys, river edges or shortcuts). */
+/** Edge kinds that can have a bay: the plain streets (no alleys, channel edges or shortcuts). */
 const BAY_KINDS = new Set(['street', 'avenue', 'diagonal', 'boulevard']);
 
 /**
@@ -209,7 +209,7 @@ export function planBusBays(seed: number, g: RoadGraph, mouths: EdgeMouths[], re
   const bays: BusBay[] = [];
   g.edges.forEach((e, ei) => {
     // A street is a chain of pieces through bend nodes (roadGraph.ts): the length that qualifies it is the street's.
-    if (!BAY_KINDS.has(e.kind) || e.shortcut || e.bridge || isRiverEdge(e) || chainOf(g, ei).length < C.minEdge) return;
+    if (!BAY_KINDS.has(e.kind) || e.shortcut || e.bridge || isChannelEdge(e) || chainOf(g, ei).length < C.minEdge) return;
     // Draw first so the stream does not depend on which edges qualify further down.
     const want = rng.chance(C.chance);
     const first = rng.int(0, 1);

@@ -28,17 +28,17 @@ export type LitterQuality = 'low' | 'medium' | 'high';
 
 /** Per kind of scrap, in atlas order: paper, leaf, cup, bag. */
 export const LITTER = {
-  /** Live pieces at once per quality; the oldest are overwritten first. Low draws none. */
-  pool: { low: 0, medium: 192, high: 384 } as Record<LitterQuality, number>,
+  /** Live pieces at once per quality; the oldest are overwritten first. Low draws none. Sized to the trickle (a few cars near the camera, a scrap or two a second between them, 1.5-3 s each), so the ring is not mostly dead pieces. */
+  pool: { low: 0, medium: 40, high: 64 } as Record<LitterQuality, number>,
   /** Lifetime range (s). */
   life: [1.5, 3],
   /** Only cars this close to the camera (m) shed litter, and only above this speed (m/s). */
   range: 60,
-  minSpeed: 12,
+  minSpeed: 16,
   /** Speed (m/s) where the rate reaches its full value. */
   fullSpeed: 45,
-  /** Pieces per second per car at full speed on the most littered street, at Medium (scaled by the pool). */
-  perSecond: 2.4,
+  /** Pieces per second per car at full speed on the most littered street, at Medium (scaled by the pool): one scrap every two seconds, a garnish you notice now and then and never a wake (it was 2.4, a stream). */
+  perSecond: 0.5,
   /** The least a street sheds, as a share of the most (side streets away from downtown and the route). */
   minLitter: 0.25,
   /** Share of each kind among the pieces (paper, leaf, cup, bag; sums to 1). */

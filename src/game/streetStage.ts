@@ -33,6 +33,7 @@
 import * as THREE from 'three';
 import { CityAmbience, ambienceTraits } from '../audio/cityAmbience';
 import { TrainRumble } from '../audio/sceneVoices';
+import { ChannelWaterFeed } from './session/channelWater';
 import type { World } from '../city/world';
 import { routeSample, type Route } from '../city/route';
 import { createNightScene, type GameRenderer, type NightScene } from '../render/scene';
@@ -78,7 +79,7 @@ interface StreetCar {
   /** Body lean (rad) and its rates: the springs the pitch and roll ride on. */
   lean: { pitch: number; pitchV: number; roll: number; rollV: number };
   /**
-   * Height last frame (m), the level the car is on under a river bridge (World.heightAt): the
+   * Height last frame (m), the level the car is on under a channel bridge (World.heightAt): the
    * route dives under the decks, so the car stays on the channel floor beneath one. Unset before
    * the first pose (the route never starts in the channel).
    */
@@ -136,6 +137,8 @@ export class StreetStage {
   /** The city's ambience bed (audio/cityAmbience.ts), made on the first step after a user gesture. */
   private ambience: CityAmbience | null = null;
   private ambienceTried = false;
+  /** The concrete channel's running water, heard when the cruising car dives in (a home-screen gate keeps it silent behind the menus). */
+  private readonly water: ChannelWaterFeed;
   private readonly sample = newPathSample();
   private readonly focus = new THREE.Vector3();
   /** Eye adaptation to tunnels and cover under the cruising car (render/exposure.ts). */
@@ -164,6 +167,7 @@ export class StreetStage {
   ) {
     this.night = createNightScene(world, gr, settings);
     this.cruise = new Cruise(world);
+    this.water = new ChannelWaterFeed(world);
     this.path = this.cruise.path;
     this.broken = new Uint8Array(world.props.length);
     for (const id of world.coveredProps ?? []) this.broken[id] = 2;
@@ -334,7 +338,7 @@ export class StreetStage {
 
   /**
    * The level (World.heightAt) `offset` m along the lane from the picked car,
-   * walked there in 2 m steps, so a car placed on or under a river deck
+   * walked there in 2 m steps, so a car placed on or under a channel deck
    * stands on the deck or the channel floor it would have driven to.
    */
   private levelAt(offset: number): number | undefined {
@@ -393,6 +397,7 @@ export class StreetStage {
     // The menu and the garage's Street view keep the bed only: no passing sirens, horns or dogs behind the menus.
     if (this.ambience) this.ambience.oneShots = false;
     this.ambience?.update(this.time, dt, opts.focus?.y ?? this.pose.y, 0, this.night.weather.live);
+    this.water.update(p.x, p.y, p.z, 0, dt);
     // The street furniture's own clock: the traffic signals, the props the cars knock over, debris and spray.
     this.knockProps();
     this.night.props.update(dt, this.time, this.broken, this.motions);
@@ -562,6 +567,7 @@ export class StreetStage {
     this.lead.view?.dispose();
     this.lead.view = null;
     this.ambience?.dispose();
+    this.water.dispose();
     this.night.dispose();
   }
 }

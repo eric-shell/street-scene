@@ -20,6 +20,7 @@ import { CityAmbience, ambienceTraits } from '../../audio/cityAmbience';
 import { engineSpecFor } from '../../render/car/carAssets';
 import type { Snap } from './snap';
 import { StreetIron } from './streetIron';
+import { ChannelWaterFeed } from './channelWater';
 
 /** A crowd section's heard excitement crossing this cheers out loud, at most every SECTION_CHEER_GAP s. */
 const SECTION_CHEER_LEVEL = 0.7;
@@ -44,6 +45,8 @@ export class SessionAudio {
   /** The player's wheels over the street's iron (covers, grates, tram rails); its camera knock waits here for the session. */
   private readonly iron: StreetIron;
   streetKnock = 0;
+  /** The concrete channel's running water, heard when the player's car is in or beside it. */
+  private readonly water: ChannelWaterFeed;
 
   constructor(
     settings: Settings,
@@ -52,6 +55,7 @@ export class SessionAudio {
     private readonly night: NightScene,
   ) {
     this.iron = new StreetIron(night.street, race.cars[0].tuning.geometry.wheels);
+    this.water = new ChannelWaterFeed(race.world);
     this.crowdCars = race.cars.map(() => ({ x: 0, z: 0, yaw: 0, speed: 0 }));
     // Engine sound: the player's car loud and centered, rivals by distance.
     const hub = audioHub();
@@ -86,7 +90,10 @@ export class SessionAudio {
       this.ambience = CityAmbience.create(ambienceTraits(w.seed, this.night.weather.mood, w.areas, this.night.weather.timeline.turn?.to));
       this.ambienceTried = this.ambience !== null || !TrainRumble.blocked();
     }
-    if (!paused) this.ambience?.update(time, dt, camera.position.y, poses[0].throttle, this.night.weather.live);
+    if (!paused) {
+      this.ambience?.update(time, dt, camera.position.y, poses[0].throttle, this.night.weather.live);
+      this.water.update(poses[0].x, poses[0].y, poses[0].z, right.z, dt);
+    }
     this.sfx?.updateCars(cars, this.race.world, dt, paused);
     const listener = { x: camera.position.x, z: camera.position.z, rx: right.x, rz: right.z };
     this.alarms?.update(this.race, listener, paused);
@@ -161,5 +168,6 @@ export class SessionAudio {
     this.alarms?.dispose();
     this.horns?.dispose();
     this.ambience?.dispose();
+    this.water.dispose();
   }
 }

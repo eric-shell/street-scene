@@ -139,17 +139,17 @@ export interface CameraParams {
 
 export const CAMERA_DEFAULTS: CameraParams = {
   chase: {
-    dist: 5.8,
-    height: 2.15,
-    lookHeight: 1.1,
-    lookAhead: 2.5,
-    speedPullback: 0.015,
-    speedPullbackMax: 1.2,
+    dist: 5.2,
+    height: 2.5,
+    lookHeight: 0.85,
+    lookAhead: 3.6,
+    speedPullback: 0.03,
+    speedPullbackMax: 2.4,
     nitroPullback: 1.3,
     gearPullback: 0.9,
-    fov: 62,
-    speedFovGain: 0.14,
-    speedFovMax: 12,
+    fov: 70,
+    speedFovGain: 0.26,
+    speedFovMax: 16,
     nitroFov: 11,
     followStiffness: 7,
     lookStiffness: 14,
@@ -157,17 +157,17 @@ export const CAMERA_DEFAULTS: CameraParams = {
     driftSwing: 0.45,
   },
   close: {
-    dist: 4.1,
-    height: 1.6,
-    lookHeight: 0.95,
-    lookAhead: 2.5,
-    speedPullback: 0.015,
-    speedPullbackMax: 1.2,
+    dist: 3.6,
+    height: 1.95,
+    lookHeight: 0.85,
+    lookAhead: 3.2,
+    speedPullback: 0.03,
+    speedPullbackMax: 2.4,
     nitroPullback: 1.3,
     gearPullback: 0.7,
-    fov: 62,
-    speedFovGain: 0.14,
-    speedFovMax: 12,
+    fov: 73,
+    speedFovGain: 0.26,
+    speedFovMax: 16,
     nitroFov: 11,
     followStiffness: 7,
     lookStiffness: 14,
@@ -552,7 +552,7 @@ export class ChaseCamera {
    * lifting it by `lift` m at full pull, and keep it `clearance` m above the ground
    * and out of anything overhead (render/camera/ceilings.ts). `ay` is the car
    * body's height: with it the walls of the other level under a bridge deck
-   * over the river (the parapets above a car on the channel floor, the piers
+   * over the channel (the parapets above a car on the channel floor, the piers
    * below one on the deck) are ignored and the ground is the car's level, so
    * the camera follows the car under the deck instead of popping up onto it.
    */
@@ -567,7 +567,7 @@ export class ChaseCamera {
       out.y += (1 - t) * lift;
     }
     out.y = Math.max(out.y, this.world.heightAt(out.x, out.z, ay) + clearance);
-    // Never inside a tunnel's roof, a viaduct's deck, the expressway's deck or a ramp, or a river bridge's slab.
+    // Never inside a tunnel's roof, a viaduct's deck, the expressway's deck or a ramp, or a channel bridge's slab.
     clampCeiling(this.world, out);
   }
 

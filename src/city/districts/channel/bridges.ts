@@ -1,18 +1,18 @@
 /**
- * The river's bridges: one street through the band, followed through its bend nodes into a deck polyline
+ * The channel's bridges: one street through the band, followed through its bend nodes into a deck polyline
  * (bridgesOf, in crossing x order), with the frame at the crossing, the pier bents beneath the deck
  * (pierReach, pierOffsets) and the deck's offset lines and boxes clipped to the channel (bridgePoint, deckLine,
  * deckBox). The planner finds the chains (chainOf, crossingT, crosses) before the graph is rebuilt around them.
  */
 import { CITY } from '../../config';
 import type { RoadGraph, RoadEdge } from '../../roadGraph';
-import { isRiverEdge, otherNode } from '../../roadGraph';
+import { isChannelEdge, otherNode } from '../../roadGraph';
 import { Vec2, sqrt } from '../../../sim/math';
 import { distToPath } from '../geom';
 import type { Area } from '../types';
-import { riverL } from './centerline';
+import { channelL } from './centerline';
 
-const CFG = CITY.districts.river;
+const CFG = CITY.districts.channel;
 
 /** Street kinds that may cross the channel (alleys and shortcuts are planned later and never do). */
 export const STREET_KINDS = new Set<RoadEdge['kind']>(['street', 'avenue', 'boulevard', 'diagonal']);
@@ -39,7 +39,7 @@ export interface Bridge {
 
 /** Parameter along a -> b where the segment crosses l = target, by bisection on l(t). */
 export function crossingT(p: Record<string, number>, a: Vec2, b: Vec2, target: number): number {
-  const lAt = (t: number) => riverL(p, a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t) - target;
+  const lAt = (t: number) => channelL(p, a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t) - target;
   let lo = 0;
   let hi = 1;
   const sLo = lAt(0) < 0;
@@ -52,7 +52,7 @@ export function crossingT(p: Record<string, number>, a: Vec2, b: Vec2, target: n
 }
 
 /** True when the segment a -> b crosses the centerline. */
-export const crosses = (p: Record<string, number>, a: Vec2, b: Vec2): boolean => riverL(p, a.x, a.z) * riverL(p, b.x, b.z) < 0;
+export const crosses = (p: Record<string, number>, a: Vec2, b: Vec2): boolean => channelL(p, a.x, a.z) * channelL(p, b.x, b.z) < 0;
 
 /**
  * The street through the band that edge `e` (crossing the centerline) is part
@@ -69,11 +69,11 @@ export function chainOf(g: RoadGraph, p: Record<string, number>, e: RoadEdge, al
     let node = end === 0 ? e.a : e.b;
     for (let guard = 0; guard < 8; guard++) {
       const n = g.nodes[node];
-      if (n.edges.length !== 2 || Math.abs(riverL(p, n.x, n.z)) >= T + DECK_REACH) break;
+      if (n.edges.length !== 2 || Math.abs(channelL(p, n.x, n.z)) >= T + DECK_REACH) break;
       const nextId = n.edges[0] === cur.id ? n.edges[1] : n.edges[0];
       if (allowed && !allowed.has(nextId)) break;
       const next = g.edges[nextId];
-      if (!STREET_KINDS.has(next.kind) || next.shortcut || isRiverEdge(next)) return null;
+      if (!STREET_KINDS.has(next.kind) || next.shortcut || isChannelEdge(next)) return null;
       const far = otherNode(next, node);
       if (end === 0) {
         edges.unshift(next);
@@ -92,7 +92,7 @@ export function chainOf(g: RoadGraph, p: Record<string, number>, e: RoadEdge, al
 function makeBridge(g: RoadGraph, p: Record<string, number>, e: RoadEdge, chain: { edges: RoadEdge[]; nodes: number[] }): Bridge {
   let pts = chain.nodes.map((id) => ({ x: g.nodes[id].x, z: g.nodes[id].z }));
   // Toward +l.
-  if (riverL(p, pts[0].x, pts[0].z) > 0) pts = pts.reverse();
+  if (channelL(p, pts[0].x, pts[0].z) > 0) pts = pts.reverse();
   const a = g.nodes[e.a];
   const b = g.nodes[e.b];
   const t = crossingT(p, a, b, 0);
@@ -101,14 +101,14 @@ function makeBridge(g: RoadGraph, p: Record<string, number>, e: RoadEdge, chain:
   const len = e.length || 1;
   let dx = (b.x - a.x) / len;
   let dz = (b.z - a.z) / len;
-  if (riverL(p, b.x, b.z) < 0) {
+  if (channelL(p, b.x, b.z) < 0) {
     dx = -dx;
     dz = -dz;
   }
   return { edge: e.id, edges: chain.edges.map((x) => x.id), pts, dk: e.width / 2 + e.sidewalk, cx, cz, dx, dz, nx: -dz, nz: dx };
 }
 
-/** The bridges of a river area, in crossing x order. */
+/** The bridges of a channel area, in crossing x order. */
 export function bridgesOf(g: RoadGraph, area: Area): Bridge[] {
   const p = area.params;
   const allowed = new Set(area.edges);
@@ -139,7 +139,7 @@ export function pierReach(br: Bridge): number {
  * Offsets across the deck (w, m) of the pier columns of one bent: the outer
  * ones at +-pierReach, the rest evenly between about pierSpacing apart (one
  * on the axis when only one fits). The renderer's girders follow them
- * (render/districts/river.ts).
+ * (render/districts/channel.ts).
  */
 export function pierOffsets(br: Bridge): number[] {
   const reach = pierReach(br);
@@ -173,14 +173,14 @@ export function bridgePoint(p: Record<string, number>, br: Bridge, off: number, 
     let hi = i === m - 1 ? 1 + 60 / len : 1;
     const q0 = at(i, lo);
     const q1 = at(i, hi);
-    const l0 = riverL(p, q0.x, q0.z) - lTarget;
-    const l1 = riverL(p, q1.x, q1.z) - lTarget;
+    const l0 = channelL(p, q0.x, q0.z) - lTarget;
+    const l1 = channelL(p, q1.x, q1.z) - lTarget;
     if (l0 * l1 > 0 && i < m - 1) continue;
     const sLo = l0 < 0;
     for (let k = 0; k < 50; k++) {
       const mid = (lo + hi) / 2;
       const q = at(i, mid);
-      if (riverL(p, q.x, q.z) - lTarget < 0 === sLo) lo = mid;
+      if (channelL(p, q.x, q.z) - lTarget < 0 === sLo) lo = mid;
       else hi = mid;
     }
     return at(i, (lo + hi) / 2);
@@ -198,7 +198,7 @@ export function deckLine(p: Record<string, number>, br: Bridge, off: number, l0:
   const out: Vec2[] = [bridgePoint(p, br, off, l0)];
   for (let i = 1; i + 1 < br.pts.length; i++) {
     const q = br.pts[i];
-    const l = riverL(p, q.x, q.z);
+    const l = channelL(p, q.x, q.z);
     if (l <= l0 || l >= l1) continue;
     // Offset along the bisector of the two segments at the bend.
     const a = br.pts[i - 1];

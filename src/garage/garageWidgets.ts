@@ -4,8 +4,11 @@
  * shared palette of swatches), the paint picker (that color over a finish, and
  * the matches a surface can wear instead: the body's paint, the wheel's, the
  * center cap's), the link toggle, labelled sliders, the choice
- * list, and the stat lines the build card and the Power and Tune tabs share. Plain DOM
- * built with the kit's helpers; the garage partials beside this file style them.
+ * list, and the stat lines the build card and the Power and Tune tabs share; and the parts
+ * economy's two pieces (shared/economy.ts): a part's tag (owned, its price, or
+ * the races that unlock it) and the points counter that rolls down on a buy.
+ * Plain DOM built with the kit's helpers; the garage partials beside this file
+ * style them.
  */
 import { CHROME_COLOR, CarBuild, Paint, AccentPaint, AccentFinish } from '../shared/carBuild';
 import { SETUP_SLIDERS } from '../sim/tuning';
@@ -15,7 +18,13 @@ import { measureStats, statBars } from '../sim/stats';
 import type { CarStats } from '../sim/stats';
 import { btn, cycler, h, prefersReducedMotion, selectMenu, sheen, specChip } from '../ui/kit/dom';
 import { KMH_PER_MPH, horsepower, pounds } from '../ui/kit/units';
-import type { IconNode } from '../ui/kit/icons';
+import { Coins, Lock, icon, type IconNode } from '../ui/kit/icons';
+import { formatPoints } from '../ui/kit/format';
+import type { PartEntry } from '../shared/parts';
+import { priceOf, racesToUnlock } from '../shared/economy';
+import { owns, type PurchasesSave } from '../shared/purchases';
+import type { StatsSave } from '../shared/stats';
+import { FEATURES } from '../shared/features';
 
 /** A label from a lower case id: "metallic" reads "Metallic". */
 export const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -368,3 +377,84 @@ export function choiceList<T extends string | number | null>(items: Choice<T>[],
 export const cm = (x: number) => `${Math.round(x * 100)} cm`;
 export const mm = (x: number) => `${Math.round(x * 1000)} mm`;
 export const percent = (x: number) => `${Math.round(x * 100)}%`;
+
+// ---------------------------------------------------------------------------
+// The parts economy: what a part costs this car, and the balance
+// ---------------------------------------------------------------------------
+
+/** Where a part stands for a car: owned (stock included), buyable at its price, or locked for some more races. */
+export type PartTag = { state: 'owned' } | { state: 'buy'; price: number } | { state: 'locked'; races: number; price: number };
+
+/** A part's standing for `carId`, from the ledgers read once per render (`saved`, `stats`). */
+export function partTag(carId: string, part: PartEntry, saved: PurchasesSave, stats: StatsSave): PartTag {
+  if (owns(carId, part.id, saved)) return { state: 'owned' };
+  const price = priceOf(part, carId);
+  const races = racesToUnlock(part, stats);
+  return races > 0 ? { state: 'locked', races, price } : { state: 'buy', price };
+}
+
+/** "3 more races" / "1 more race". */
+export const moreRaces = (n: number) => `${n} more ${n === 1 ? 'race' : 'races'}`;
+
+/**
+ * A part's tag as a pick shows it (_part-tag.scss): nothing for an owned part in the wheel grid (`quiet`), "Owned"
+ * in a list, the price, or a lock with the races still to finish. Null with the economy off: no prices anywhere.
+ */
+export function partTagEl(tag: PartTag, quiet = false): HTMLElement | null {
+  if (!FEATURES.economy) return null;
+  if (tag.state === 'owned') return quiet ? null : h('span', { class: 'part-tag part-tag--owned' }, 'Owned');
+  if (tag.state === 'locked') return h('span', { class: 'part-tag part-tag--locked', title: `Finish ${moreRaces(tag.races)} to unlock` }, icon(Lock, { size: 12 }), moreRaces(tag.races));
+  return h('span', { class: 'part-tag part-tag--price' }, formatPoints(tag.price));
+}
+
+/** How long the counter takes to roll to a new balance (s), and how long its flash lasts after (s). */
+const COUNTER = { roll: 0.9, flash: 0.9 } as const;
+
+/**
+ * The points balance as a live counter (_points-counter.scss): the coin, the number in tabular figures, "pts".
+ * `set` rolls the number to a new balance on an eased count (timed, so every frame rate rolls alike) with a
+ * brief flash in the accent, red going down (a buy) and green going up; reduced motion jumps straight there.
+ */
+export class PointsCounter {
+  readonly el: HTMLElement;
+  private readonly num: HTMLElement;
+  private shown: number;
+  private raf = 0;
+  private flashTimer = 0;
+
+  constructor(value: number, cls = '') {
+    this.shown = value;
+    this.num = h('b', { class: 'points-counter__value' }, value.toLocaleString());
+    this.el = h('span', { class: `points-counter${cls ? ` ${cls}` : ''}`, title: 'Points to spend on parts', 'aria-label': `${value.toLocaleString()} points to spend` }, icon(Coins, { size: 16 }), this.num, h('span', { class: 'points-counter__unit' }, 'pts'));
+  }
+
+  set(to: number): void {
+    const from = this.shown;
+    cancelAnimationFrame(this.raf);
+    this.el.setAttribute('aria-label', `${to.toLocaleString()} points to spend`);
+    if (to === from) return;
+    this.el.classList.remove('is-spent', 'is-earned');
+    void this.el.offsetWidth;
+    this.el.classList.add(to < from ? 'is-spent' : 'is-earned');
+    clearTimeout(this.flashTimer);
+    this.flashTimer = window.setTimeout(() => this.el.classList.remove('is-spent', 'is-earned'), (COUNTER.roll + COUNTER.flash) * 1000);
+    if (prefersReducedMotion()) {
+      this.shown = to;
+      this.num.textContent = to.toLocaleString();
+      return;
+    }
+    const start = performance.now();
+    const step = (now: number) => {
+      const k = Math.min(1, (now - start) / (COUNTER.roll * 1000));
+      const e = 1 - Math.pow(1 - k, 3);
+      this.shown = Math.round(from + (to - from) * e);
+      this.num.textContent = this.shown.toLocaleString();
+      if (k < 1 && this.el.isConnected) this.raf = requestAnimationFrame(step);
+      else {
+        this.shown = to;
+        this.num.textContent = to.toLocaleString();
+      }
+    };
+    this.raf = requestAnimationFrame(step);
+  }
+}

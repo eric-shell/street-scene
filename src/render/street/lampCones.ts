@@ -18,7 +18,7 @@
  *    when that is closer than the reach, so a lamp enters or leaves the pick at zero brightness: nothing pops.
  *  - The mood decides the air: mist 1, drizzle 0.6, rain 0.5, haze 0.35, clear none (nothing is built). The strength
  *    is fixed at build, like the mood itself.
- * Cones are fogged with the shared height fog (heightFog.ts), so one in the river channel's haze is softer.
+ * Cones are fogged with the shared height fog (heightFog.ts), so one in the channel's haze is softer.
  *
  * The slots are stable: a lamp that stays in the pick keeps its instance, so view() writes the matrices only of the
  * lamps that enter, and nothing when the pick has not changed. A broken lamp (setLampOn) drops its cone at once.

@@ -167,7 +167,7 @@ const TYPE_INFO: Record<RaceType, { label: string; icon: IconNode; sub: string; 
  * district's map ink, so the chips read as a legend of the map above them.
  */
 const FEATURES: { kind: AreaKind; icon: IconNode; one: string; many?: (n: number) => string }[] = [
-  { kind: 'river', icon: Waves, one: 'River channel' },
+  { kind: 'channel', icon: Waves, one: 'Flood channel' },
   { kind: 'lake', icon: Waves, one: 'Lake' },
   { kind: 'subway', icon: TrainFront, one: 'The El' },
   { kind: 'highway', icon: Gauge, one: 'The expressway' },

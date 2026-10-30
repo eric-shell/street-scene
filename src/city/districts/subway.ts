@@ -28,7 +28,7 @@
  *    blocks (a swing, a missing street, a bluff's detour), with a pier on
  *    each sidewalk of every street the deck crosses. Never on a road, never
  *    where two streets' corridors merge, clear of every junction's closure
- *    reach and of the river channel;
+ *    reach and of the channel;
  *  - stations: one or two street blocks on straight stretches (the platform
  *    and the track's swing-outs on street the deck follows, never on a swing
  *    or a bluff's detour) get a station house under the deck with a stair
@@ -59,7 +59,7 @@ import { Rng } from '../../sim/prng';
 import type { Area, AreaBuild, BuildContext, DistrictModule, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { circlePolygon, distToPolygonEdge, pointInPolygon, solidWalls } from './geom';
-import { riverCenter } from './river';
+import { channelCenter } from './channel';
 import { bluffGround, bluffOf, bluffShape } from './bluff';
 import { createTerrain } from '../terrain';
 import { RAIL, RailCurve, buildRailCurve, curvePoint, projectOnCurve, sampleCurve } from '../railCurve';
@@ -83,8 +83,8 @@ const STATION_CROSSING_CLEAR = 250;
 const CROSS_NODE_CLEAR = 30;
 /** A swing keeps this far from a diagonal avenue (m): its junctions with the grid lie inside the swing's blocks. */
 const DIAGONAL_CLEAR = 40;
-/** A swing keeps this far beyond a river channel's top edge (m): the line crosses the river straight, on its street (a bridge, never a ford: planLine). */
-const RIVER_CLEAR = 25;
+/** A swing keeps this far beyond a channel's top edge (m): the line crosses the channel straight, on its street (a bridge, never a ford: planLine). */
+const CHANNEL_CLEAR = 25;
 /** The deck's exclusion strip starts this far into an off-street run (m, still inside the junction it leaves). */
 const STRIP_IN = 6;
 /** A crossed street's piers are looked for up to this far along the deck from the crossing (m). */
@@ -483,8 +483,8 @@ export const subwayModule: DistrictModule = {
       if (last && last.jb === j) last.jb = j + 1;
       else offRuns.push({ ja: j, jb: j + 1 });
     }
-    const rivers = ctx.areas.filter((a) => a.kind === 'river');
-    const inChannel = (x: number, z: number) => rivers.some((rv) => Math.abs(z - riverCenter(rv.params, x)) < rv.params.top + CITY.districts.river.bridgeBody + 2);
+    const channels = ctx.areas.filter((a) => a.kind === 'channel');
+    const inChannel = (x: number, z: number) => channels.some((rv) => Math.abs(z - channelCenter(rv.params, x)) < rv.params.top + CITY.districts.channel.bridgeBody + 2);
     /**
      * Clear of every road surface by `margin` beyond its curb, and out of the sidewalks of every
      * street but `own`'s edges (the ones it stands beside): where a diagonal meets the line at a
@@ -733,12 +733,12 @@ function planSwings(ctx: PlanContext, rng: Rng, c0: number, side: number, want: 
  * The path of a line with the given column per row and swings, or null when
  * it does not fit: a claimed node on its way, too many missing streets, a
  * swing whose curve is too tight, crosses a row street near a junction or a
- * bridge, runs near a diagonal avenue, the river or the lake.
+ * bridge, runs near a diagonal avenue, the channel or the lake.
  */
 function planLine(ctx: PlanContext, side: number, cols: readonly number[], swings: readonly Swing[]): LinePlan | null {
   const g = ctx.graph;
   const H = g.plan.gridH;
-  const rivers = ctx.areas.filter((a) => a.kind === 'river');
+  const channels = ctx.areas.filter((a) => a.kind === 'channel');
   // A swing crosses blocks diagonally: never over the lake (its line's own columns meet the lake's claimed shore nodes).
   const lakes = ctx.areas.filter((a) => a.kind === 'lake');
   const chains = new Map<number, Chain | null>();
@@ -856,14 +856,14 @@ function planLine(ctx: PlanContext, side: number, cols: readonly number[], swing
         }
       }
     }
-    // Off every diagonal avenue and clear of the river.
+    // Off every diagonal avenue and clear of the channel.
     for (const e of g.edges) {
       if (e.kind !== 'diagonal') continue;
       const a = g.nodes[e.a];
       const c = g.nodes[e.b];
       for (const p of pts) if (distToSegment(p.x, p.z, a.x, a.z, c.x, c.z) < DIAGONAL_CLEAR) return null;
     }
-    for (const rv of rivers) for (const p of pts) if (Math.abs(p.z - riverCenter(rv.params, p.x)) < rv.params.top + RIVER_CLEAR) return null;
+    for (const rv of channels) for (const p of pts) if (Math.abs(p.z - channelCenter(rv.params, p.x)) < rv.params.top + CHANNEL_CLEAR) return null;
     for (const lk of lakes) for (const p of pts) if (pointInPolygon(p.x, p.z, lk.polygon) || distToPolygonEdge(p.x, p.z, lk.polygon) < CITY.districts.lake.clearance) return null;
     return { pts, at, crossed };
   };
@@ -896,11 +896,11 @@ function planLine(ctx: PlanContext, side: number, cols: readonly number[], swing
     if (j + 1 < H) {
       const ch = streetAt(c, j);
       if (!ch) {
-        // No street under the deck here. Across the river that is not an option: the chain breaks at a
+        // No street under the deck here. Across the channel that is not an option: the chain breaks at a
         // ford street's ramp edges, and its dip runs on under the track line for the length of both
-        // ramps, far past what the deck's terrain window spans; the line crosses the river on a bridge.
+        // ramps, far past what the deck's terrain window spans; the line crosses the channel on a bridge.
         const m = gridNode(g, c, j + 1);
-        for (const rv of rivers) if ((n.z - riverCenter(rv.params, n.x)) * (m.z - riverCenter(rv.params, m.x)) < 0) return null;
+        for (const rv of channels) if ((n.z - channelCenter(rv.params, n.x)) * (m.z - channelCenter(rv.params, m.x)) < 0) return null;
         missing++;
       } else {
         for (let k = 1; k + 1 < ch.nodes.length; k++) {
@@ -934,7 +934,7 @@ function planLine(ctx: PlanContext, side: number, cols: readonly number[], swing
  * Pick the station blocks and add their stairs. Long street blocks the deck
  * follows, with straight deck under the whole platform (never a swing or a
  * bluff's detour; the track's swing-outs may reach into a curve's easing),
- * away from the map ends, the river and a bluff's crossing, spaced apart, in
+ * away from the map ends, the channel and a bluff's crossing, spaced apart, in
  * a seeded order.
  */
 /** Cosine of the most the track turns under a station's platform and 8 m past either end (3.5 degrees: a curved street bends a degree or two at each bend node). */
@@ -1025,7 +1025,7 @@ function planStations(
     const nx = side * dz;
     const nz = -side * dx;
     const mid = { x: m.x, z: m.z };
-    // The platform (and its approach) stays clear of the river channel.
+    // The platform (and its approach) stays clear of the channel.
     let wet = false;
     for (let s = -70; s <= 70 && !wet; s += 10) wet = inChannel(mid.x + dx * s, mid.z + dz * s);
     if (wet) continue;

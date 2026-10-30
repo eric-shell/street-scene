@@ -18,7 +18,7 @@ const roam = (seed: number, start?: RaceConfig['start']): RaceConfig => ({ ...ra
 
 /**
  * Where the stage car would be: a point on the cruise path, with its heading and the ground height
- * it is on, followed along the path from its start as the stage does (under a river bridge the route
+ * it is on, followed along the path from its start as the stage does (under a channel bridge the route
  * may run on the channel floor beneath the deck).
  */
 function onPath(cruise: Cruise, s: number) {

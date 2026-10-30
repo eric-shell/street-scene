@@ -2,7 +2,7 @@
  * What hangs over the streets, for the cameras: tunnel ceilings and the mass
  * above them (an air rights building, a ridge's rock), viaduct decks, a car
  * park garage's levels over its drivable floor and ramp, the bridge decks
- * over the river channel (slab and girders over the floor), and the elevated
+ * over the channel (slab and girders over the floor), and the elevated
  * highway: its deck between the end loops, widened over the interchanges'
  * lanes (a camera under it stays under, one following a car up there stays
  * above), and its ramps and loops (an embankment: out over the top).
@@ -26,8 +26,8 @@ import { CITY } from '../../city/config';
 import { boreRoad, bridgeTop, ceilingAbove, coverOf, deckLine, ridgeShape, rockAt, tunnelShape, viaductShape } from '../districts/structureShapes';
 import { carParkGeo } from '../../city/districts/carPark';
 import { garageSpan } from '../districts/carPark';
-import { bridgesOf, distToBridge, riverL } from '../../city/districts/river';
-import { deckUndersideAt } from '../districts/river';
+import { bridgesOf, distToBridge, channelL } from '../../city/districts/channel';
+import { deckUndersideAt } from '../districts/channel';
 import { pointInPolygon } from '../../city/districts/geom';
 
 /** Room kept between the camera and a ceiling or a deck (m): the near plane and a little air. */
@@ -123,7 +123,7 @@ function build(world: World): Overhead[] {
       // The garage's levels over its drivable floor and the covered ramp's roof (render/districts/carPark.ts).
       const g = carParkGeo(a);
       out.push({ ...bbox([...g.deck, ...g.ramp], 1), at: (x, z, s) => garageSpan(g, world.heightAt, x, z, s) });
-    } else if (a.kind === 'river') {
+    } else if (a.kind === 'channel') {
       // Each bridge deck over the channel: the footprint of its slab (the deck's half width, the band
       // plus the parapets' reach across it); the deck is the terrain's height there (World.heightAt
       // without a body height), the floor beneath is the lower level. The structure hangs deeper
@@ -134,7 +134,7 @@ function build(world: World): Overhead[] {
         out.push({
           ...bbox(br.pts, half + 1),
           at(x, z, s) {
-            if (distToBridge(br, x, z) > half || Math.abs(riverL(a.params, x, z)) > reach) return false;
+            if (distToBridge(br, x, z) > half || Math.abs(channelL(a.params, x, z)) > reach) return false;
             const deck = world.heightAt(x, z);
             // Only a real two level spot: over the banks beyond the floor the deck is the ground itself.
             if (deck - world.heightAt(x, z, -Infinity) < 1) return false;

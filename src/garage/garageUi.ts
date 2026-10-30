@@ -29,6 +29,14 @@
  * stat bars in the palette, a sheen on whatever is hovered, and the rail's parts
  * rising in as the roller door rolls up on the garage.
  *
+ * Parts cost points (shared/economy.ts, docs/economy.md). The Builds header
+ * shows the balance and Customize's header is a live counter of it that rolls
+ * down on a buy; the build's name sits quietly over the tabs. A part the car
+ * does not own previews on the car while its buy dialog (or, locked, the races
+ * still to finish) is up, and goes back if it is declined, so a build only
+ * keeps owned parts and Save never has to refuse. An imported code loses the
+ * parts its car does not own, with a dialog saying which.
+ *
  * This file is the screen: its steps, the build card and slots, saving, dialogs
  * and input. The pieces beside it are garageWidgets.ts (the pickers, sliders and
  * stat lines every tab is made of), garageTabs.ts (what each tab shows and the
@@ -52,11 +60,18 @@ import { specBadges } from '../shared/carSpec';
 import { btn, chip, h, iconBtn, isTyping, scrollHint, segmented, sheen, specChip, toast } from '../ui/kit/dom';
 import { door, transitioning } from '../ui/transitions/transitions';
 import { openSignInDialog, onSignedIn, wantsSignIn } from '../ui/screens/signIn';
-import { Car, Check, ChevronRight, CircleUser, CloudOff, Copy, Download, Gauge, Hammer, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
+import { Car, Check, ChevronRight, CircleUser, CloudOff, Coins, Copy, Download, Gauge, Hammer, Lock, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
+import type { PartEntry } from '../shared/parts';
+import { priceOf, racesToUnlock, unlockRaces } from '../shared/economy';
+import { buy } from '../shared/purchases';
+import { pointsBalance } from '../shared/points';
+import { loadStats } from '../shared/stats';
+import { formatPoints } from '../ui/kit/format';
+import { strippedText } from './ownershipNotice';
 import { GarageScene } from './garageScene';
 import { track } from '../analytics/telemetry';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, importBuild, loadGaragePrefs, randomBuild, saveGaragePrefs, shareUrl } from './storage';
-import { revealNew, section, statLines } from './garageWidgets';
+import { PointsCounter, moreRaces, revealNew, section, statLines } from './garageWidgets';
 import type { Child } from './garageWidgets';
 import { AUTHORS, renderTabContent, TABS } from './garageTabs';
 import type { PaintSurface, Tab, TabHost } from './garageTabs';
@@ -141,8 +156,12 @@ export class GarageScreen implements TabHost {
   private readonly revertBtn: HTMLButtonElement;
   /** Whether the Save button shows unsaved changes, so it only changes look when that flips. */
   private shownDirty: boolean | null = null;
-  /** The garage's dialog while one is up (unsaved changes, share, delete). */
+  /** The garage's dialog while one is up (unsaved changes, share, delete, a part's buy). */
   private dialog: HTMLElement | null = null;
+  /** What closing the dialog without its yes does (a declined buy takes the previewed part back); cleared by a yes. */
+  private dialogClosed: (() => void) | null = null;
+  /** Customize's points counter while that step is up (null with the economy off). */
+  private counter: PointsCounter | null = null;
   selectedDecal = -1;
   placing: { shape: VinylShape; index: number } | null = null;
   private devMode = new URLSearchParams(location.search).has('dev');
@@ -416,7 +435,14 @@ export class GarageScreen implements TabHost {
     this.updateCarCard();
     this.updateSlots();
     return [
-      screenHead({ icon: Wrench, title: 'Garage', back: () => this.exit(), backLabel: 'Back to menu (Esc)', aside: progress(1, iconBtn(Upload, 'Import a build code', () => this.openShare(true), '--small --ghost')) }),
+      screenHead({
+        icon: Wrench,
+        title: 'Garage',
+        back: () => this.exit(),
+        backLabel: 'Back to menu (Esc)',
+        // The balance, so the player knows what there is to spend before Customize.
+        aside: progress(1, FEATURES.economy ? new PointsCounter(pointsBalance(), 'points-counter--quiet').el : null, iconBtn(Upload, 'Import a build code', () => this.openShare(true), '--small --ghost')),
+      }),
       this.carCard,
       section(`Builds · ${this.garage.slots.length} of ${MAX_SLOTS}`, this.slotsEl),
       ...[this.signInNote()].filter((n) => n !== null),
@@ -440,10 +466,103 @@ export class GarageScreen implements TabHost {
     return note;
   }
 
-  /** Step two: the build's name, the tabs and the open tab's groups. */
+  /**
+   * Step two: the tabs and the open tab's groups. With the economy on the header's right is the live points
+   * counter and the build's name moves to a quiet line over the tabs; off, it is the step pips and the name's chip.
+   */
   private buildStep(): HTMLElement[] {
     this.setTab(this.tab);
-    return [screenHead({ icon: Hammer, title: 'Customize', back: () => this.backToBuilds(), backLabel: 'Back to your builds (Esc)', aside: progress(2, chip(this.build.name, undefined, '--accent garage__build-chip')) }), h('div', { class: 'garage__work' }, this.tabBar, this.bodyView)];
+    const head = (aside: HTMLElement) => screenHead({ icon: Hammer, title: 'Customize', back: () => this.backToBuilds(), backLabel: 'Back to your builds (Esc)', aside });
+    if (!FEATURES.economy) {
+      this.counter = null;
+      return [head(progress(2, chip(this.build.name, undefined, '--accent garage__build-chip'))), h('div', { class: 'garage__work' }, this.tabBar, this.bodyView)];
+    }
+    this.counter = new PointsCounter(pointsBalance());
+    return [
+      head(h('span', { class: 'screen-head__aside' }, this.counter.el)),
+      h('div', { class: 'garage__build-name', title: 'The build being customized' }, icon(Car, { size: 14 }), h('span', { class: 'garage__build-label' }, this.build.name)),
+      h('div', { class: 'garage__work' }, this.tabBar, this.bodyView),
+    ];
+  }
+
+  /**
+   * TabHost.offer: a part this car does not own is on the car to preview. Locked, a note of the races still to
+   * finish; unlocked, the buy dialog (its price, the balance and what is left after). The dialog leaves the scene
+   * undimmed so the part shows on the car; anything but Buy takes it back off.
+   */
+  offer(part: PartEntry, revert: () => void): void {
+    const b = this.build;
+    const car = manifestCar(b.carId).displayName;
+    const name = part.slot === 'wheels' ? `${part.displayName} wheels` : `${part.displayName} ${SLOT_LABELS[part.slot].toLowerCase()}`;
+    const back = () => {
+      revert();
+      void this.changed(true);
+    };
+    const left = racesToUnlock(part, loadStats());
+    if (left > 0) {
+      const ok = btn(Check, 'OK', () => this.closeDialog(), '--primary');
+      this.openDialog(
+        Lock,
+        'Locked',
+        h('div', { class: 'muted' }, `The ${name} unlock once you have finished ${unlockRaces(part)} races: ${moreRaces(left)} to go. It comes off the ${car} when you close this.`),
+        h('div', { class: 'row' }, ok),
+      );
+      this.preview(back);
+      ok.focus();
+      return;
+    }
+    const price = priceOf(part, b.carId);
+    const balance = pointsBalance();
+    const short = balance < price;
+    const line = (label: string, value: string, cls = '') => h('div', { class: `garage-buy__line${cls}` }, h('span', {}, label), h('b', {}, value));
+    const buyBtn = btn(Coins, short ? `${formatPoints(price - balance)} short` : `Buy for ${formatPoints(price)}`, () => this.purchase(part, name, car), '--primary');
+    buyBtn.disabled = short;
+    const later = btn(null, 'Not now', () => this.closeDialog());
+    this.openDialog(
+      Coins,
+      'Buy part',
+      h(
+        'div',
+        { class: 'garage-buy' },
+        h('div', { class: 'garage-buy__part' }, name, h('span', { class: 'muted' }, ` · ${car}`)),
+        line('Price', formatPoints(price)),
+        line('Balance', formatPoints(balance)),
+        line('After', short ? '–' : formatPoints(balance - price), ' garage-buy__line--after'),
+      ),
+      h('div', { class: 'muted garage-note' }, short ? 'Finish races to earn the points. It comes off the car when you close this.' : 'Bought parts belong to this car, for every build of it. Save keeps it on this build.'),
+      h('div', { class: 'row' }, buyBtn, later),
+    );
+    this.preview(back);
+    (short ? later : buyBtn).focus();
+  }
+
+  /** The dialog up is over a preview: the scene stays undimmed, and closing it any way but its yes runs `back`. */
+  private preview(back: () => void): void {
+    this.dialog?.classList.remove('screen--dim');
+    this.dialogClosed = back;
+  }
+
+  /** Buy the part on preview: the points go, the counter rolls down and the part stays on (the build still saves on Save). */
+  private purchase(part: PartEntry, name: string, car: string): void {
+    const r = buy(this.build.carId, part);
+    if (r !== 'bought' && r !== 'owned') return toast(r === 'locked' ? 'That part is not unlocked yet' : 'Not enough points', Lock);
+    this.dialogClosed = null;
+    this.closeDialog();
+    this.counter?.set(pointsBalance());
+    toast(`Bought the ${name} for the ${car}`, Coins);
+    void this.changed(true);
+  }
+
+  /** TabHost.confirm: a yes / cancel dialog; closing it any other way is cancel. */
+  confirm(ico: IconNode, title: string, text: string, yes: string, go: () => void, cancel: () => void): void {
+    const ok = btn(ico, yes, () => {
+      this.dialogClosed = null;
+      this.closeDialog();
+      go();
+    }, '--primary');
+    this.openDialog(ico, title, h('div', { class: 'muted' }, text), h('div', { class: 'row' }, ok, btn(null, 'Cancel', () => this.closeDialog())));
+    this.dialogClosed = cancel;
+    ok.focus();
   }
 
   /**
@@ -828,8 +947,11 @@ export class GarageScreen implements TabHost {
   }
 
   private closeDialog(): void {
+    const closed = this.dialogClosed;
+    this.dialogClosed = null;
     this.dialog?.remove();
     this.dialog = null;
+    closed?.();
   }
 
   /**
@@ -986,12 +1108,17 @@ export class GarageScreen implements TabHost {
           this.closeDialog();
           // A new slot while there is room, else it replaces the build in use: either way the build in use is left.
           this.whenSaved(() => {
-            importBuild(this.garage, imported);
+            // Parts its car does not own here come off on the way in, and a dialog says which.
+            const stripped = importBuild(this.garage, imported);
             track('build_import', { carId: imported.carId });
             this.selectedDecal = -1;
             this.persist();
             void this.changed(true);
             toast(`Loaded "${imported.name}" into slot ${this.garage.current + 1}`, Check);
+            if (!stripped.length) return;
+            const ok = btn(Check, 'OK', () => this.closeDialog(), '--primary');
+            this.openDialog(Lock, 'Parts not unlocked', h('div', { class: 'muted' }, strippedText(manifestCar(imported.carId).displayName, stripped)), h('div', { class: 'row' }, ok));
+            ok.focus();
           });
         }, '--small'),
       ),
@@ -1066,6 +1193,8 @@ export class GarageScreen implements TabHost {
     clearTimeout(this.arriveTimer);
     this.doorWatch?.disconnect();
     if (this.isDirty()) this.garage.slots[this.garage.current] = JSON.parse(this.savedJson) as CarBuild;
+    // The draft is gone already: a preview's take-back has nothing left to undo.
+    this.dialogClosed = null;
     this.closeDialog();
     this.abort.abort();
     document.body.classList.remove('is-garage-open');

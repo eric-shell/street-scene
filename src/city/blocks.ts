@@ -11,12 +11,12 @@
  * takes that look; any other gap is a void. Void runs are handed to the late
  * district modules (infill: lots, plazas, planters, fountains), and what is
  * left becomes a low 'boundary' wall that the infill renderer draws. The
- * river's channel and ramp edges are not streets: no curbs, sidewalks,
+ * channel and ramp edges are not streets: no curbs, sidewalks,
  * buildings or furniture, and the frontage along them is open ground (the
- * river's own trench and bank walls are the collision there).
+ * channel's own trench and bank walls are the collision there).
  */
 import { CITY } from './config';
-import { Chain, RoadGraph, RoadEdge, RoadNode, downtownFactor, isBendNode, isMouthEdge, isRiverEdge, otherNode, sectorAngle } from './roadGraph';
+import { Chain, RoadGraph, RoadEdge, RoadNode, downtownFactor, isBendNode, isMouthEdge, isChannelEdge, otherNode, sectorAngle } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
 import { Prop, PoleContext, edgeSides, generateProps, lightStations } from './props';
@@ -75,8 +75,8 @@ export interface Wall {
   top?: number;
   /**
    * World height (m) of a wall's underside: a car whose body is below it (CarState.y < bottom)
-   * passes under it, the mirror of `top`. Used by the parapets of a bridge deck over the river
-   * channel, which cars on the channel floor beneath drive under (districts/river.ts), and by the
+   * passes under it, the mirror of `top`. Used by the parapets of a bridge deck over the channel
+   * channel, which cars on the channel floor beneath drive under (districts/channel.ts), and by the
    * elevated highway's barriers (districts/highway/).
    */
   bottom?: number;
@@ -666,8 +666,8 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
   };
 
   g.edges.forEach((e, ei) => {
-    // Back alleys run between the backs of the street buildings; the river's edges and loop mouths are not streets.
-    if (e.kind === 'backAlley' || isRiverEdge(e) || isMouthEdge(e)) return;
+    // Back alleys run between the backs of the street buildings; the channel's edges and loop mouths are not streets.
+    if (e.kind === 'backAlley' || isChannelEdge(e) || isMouthEdge(e)) return;
     const m = mouths[ei];
     const a = g.nodes[e.a];
     const b = g.nodes[e.b];
@@ -731,8 +731,8 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
     for (const id of bscratch) if (insideBuilding(buildings[id], x, z, margin)) return true;
     return false;
   };
-  /** Nodes on the river's channel or a ramp, and a loop mouth's dead end: their sector corners are open ground too. */
-  const riverNode = g.nodes.map((n) => n.edges.some((eid) => isRiverEdge(g.edges[eid])) || (n.edges.length === 1 && isMouthEdge(g.edges[n.edges[0]])));
+  /** Nodes on the channel or a ramp, and a loop mouth's dead end: their sector corners are open ground too. */
+  const channelNode = g.nodes.map((n) => n.edges.some((eid) => isChannelEdge(g.edges[eid])) || (n.edges.length === 1 && isMouthEdge(g.edges[n.edges[0]])));
   /** Per face, per ring segment: sample classes. */
   const classes: Int16Array[][] = faces.map((f) =>
     f.ring.map((p, i) => {
@@ -741,10 +741,10 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
       const n = Math.max(1, Math.round(len / FRONT_STEP));
       const out = new Int16Array(n);
       if (len < 1e-6) return out;
-      // Along a channel or ramp edge, or around a corner of one: the river draws its own walls there. Across
+      // Along a channel or ramp edge, or around a corner of one: the channel draws its own walls there. Across
       // a loop mouth: the loop's walls carry on from it.
       const se = f.segEdge[i];
-      if (se >= 0 ? isRiverEdge(g.edges[se]) || isMouthEdge(g.edges[se]) : riverNode[f.vertNode[i]]) {
+      if (se >= 0 ? isChannelEdge(g.edges[se]) || isMouthEdge(g.edges[se]) : channelNode[f.vertNode[i]]) {
         out.fill(OPEN);
         return out;
       }
@@ -936,7 +936,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
     edgeGrid.query(x - 1, z - 1, x + 1, z + 1, lightScratch);
     for (const id of lightScratch) {
       const e = g.edges[id];
-      if (isRiverEdge(e)) continue;
+      if (isChannelEdge(e)) continue;
       const a = g.nodes[e.a];
       const b = g.nodes[e.b];
       if (distToSegment(x, z, a.x, a.z, b.x, b.z) < e.width / 2 + 0.3) return true;
@@ -944,7 +944,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
     return false;
   };
   g.edges.forEach((e, ei) => {
-    if (e.kind === 'backAlley' || isRiverEdge(e) || isMouthEdge(e)) return;
+    if (e.kind === 'backAlley' || isChannelEdge(e) || isMouthEdge(e)) return;
     const A = g.nodes[e.a];
     const B = g.nodes[e.b];
     for (const side of edgeSides(g, mouths, ei)) {

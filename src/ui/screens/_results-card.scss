@@ -100,6 +100,13 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
     box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.5);
+    /* Ten racers scroll in the well, not the page: what is left of the viewport after the rest of the screen. */
+    max-height: max(132px, calc(100vh - 430px));
+    @include mixins.scroll-y;
+    /* Stacked on a phone the whole screen has to fit, so the well shows a few rows. */
+    @include media.narrow {
+      max-height: 88px;
+    }
   }
   /* The rows' label size, so Retry reads as one of them, like Resume on the pause card. */
   &__go {

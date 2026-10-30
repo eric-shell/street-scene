@@ -16,7 +16,7 @@ music (an <audio> element, its own volume)
 |---|---|---|
 | engine | every `EngineVoice` (player and rivals) | Engine |
 | effects | impacts (car, wall, barrier, rail, props), scrapes, nitrous, horn, countdown beeps, fireworks, car alarms and the horns of traffic passed close | Effects |
-| ambience | crowd beds and cheers, train rumble, helicopters, thunder, the crossing bell, the cable car bell, the city bed (hum, wind, distant one-shots), the garage's workshop bed (fan, compressor, impact gun, ratchet, the customer's dyno pull, the welder) | Ambience |
+| ambience | crowd beds and cheers, train rumble, the channel's running water, helicopters, thunder, the crossing bell, the cable car bell, the city bed (hum, wind, distant one-shots), the garage's workshop bed (fan, compressor, impact gun, ratchet, the customer's dyno pull, the welder) | Ambience |
 | interface | menu ticks, presses, blips, whooshes, the wipe, the garage door | Interface |
 | master | the four above | Master |
 | music | the player | Music (in the player and here) |
@@ -59,6 +59,7 @@ Measured at the output with every level at its default, each source alone and ri
 | crowd bed (adjacent stand, full) | −14 | −22 | −21 | it was louder than the engine; the recording is now ridden to a steady level, since a loop fell 15 dB into its fading tail |
 | crowd cheer (finish, beside you) | −12.5 (peak −1) | −17 | −18 | it drowned the finish |
 | train rumble (at the tracks) | −24 | −24 | −24 | a bed |
+| channel water (down on the floor of the concrete channel) | none | about −27 (estimated, not yet measured) | −27 | a bed 3 dB under the train rumble: filtered noise, a swirling gurgle and a little sparkle at `WATER.level` 0.4 (`ChannelWater`, `sceneVoices.ts`; the train's is 0.5). `game/session/channelWater.ts` feeds it from the player's car: full on the floor, 0.18 on a bridge deck or at the bank's top edge, falling to 1/e 12 m past it and silent past 50 m, fading out over the channel's ends |
 | helicopter (overhead) | −30 | −27 | −28 | a bed |
 | thunder, 200 m | −11 (peak −2) | −19 | −18 | level with the engine, the loudest thing it should be |
 | thunder, 1800 m | −13 | −25 | −25 | it was as loud as near; the distance curve now falls to a tenth at three times `near` |

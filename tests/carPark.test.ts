@@ -154,7 +154,7 @@ function driveThrough(seed: number, bias: number) {
 describe('car park shortcut', () => {
   it('plans car parks on a fair share of seeds, deterministically, chute on the landing street and its landing straight clear', () => {
     // Measured share over this sweep (README decisions log): about a quarter of the seeds before the
-    // river channel ran the whole map, a tenth since (routes spend their corners on long dives), and
+    // channel ran the whole map, a tenth since (routes spend their corners on long dives), and
     // two or three in a hundred on the curved grid (few corners leave a block square behind them), one or two
     // since the expressway's loop mouths became junctions and re-rolled those cities' routes.
     expect(WITH.length / SWEEP.length).toBeGreaterThan(0.01);

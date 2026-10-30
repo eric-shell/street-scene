@@ -32,7 +32,7 @@ import { PROP_DEFS, PropKind } from '../props';
 import type { DistrictModule } from './types';
 import { emptyBuild } from './types';
 import { circlePolygon, polyWalls, smooth01, type Smooth, solidWalls } from './geom';
-import { riverCenter } from './river';
+import { channelCenter } from './channel';
 import { PLAZA_HINT } from './plazaDressing';
 
 /** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
@@ -54,7 +54,7 @@ export const roundaboutModule: DistrictModule = {
     const rng = ctx.rng;
     // Mostly the usual two to four; a city sometimes gets just the one (Ring Rush needs two: events.ts eventOffer).
     const count = rng.chance(CFG.singleChance) ? 1 : rng.int(CFG.count[0], CFG.count[1]);
-    const rivers = ctx.areas.filter((a) => a.kind === 'river');
+    const channels = ctx.areas.filter((a) => a.kind === 'channel');
     const candidates = g.nodes
       .filter((n) => {
         const m = n.edges.length;
@@ -70,9 +70,9 @@ export const roundaboutModule: DistrictModule = {
           if (g.nodes[street.nodes[street.nodes.length - 1]].ring) return false;
           if (sectorAngle(g, n, k) < CFG.minSectorDeg * DEG) return false;
         }
-        // Keep clear of the river channel.
-        for (const r of rivers) {
-          const zc = riverCenter(r.params, n.x);
+        // Keep clear of the channel.
+        for (const r of channels) {
+          const zc = channelCenter(r.params, n.x);
           if (Math.abs(n.z - zc) < r.params.top + CFG.outerRadius[1] + CITY.sidewalk + 12) return false;
         }
         return true;

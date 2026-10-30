@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Rng, hashString, seedFromString } from '../src/sim/prng';
-import { generateRoadGraph, graphIsConnected, edgeBetween, chains, isBendNode, isRiverEdge, otherNode, sectorAngle, turnAt } from '../src/city/roadGraph';
+import { generateRoadGraph, graphIsConnected, edgeBetween, chains, isBendNode, isChannelEdge, otherNode, sectorAngle, turnAt } from '../src/city/roadGraph';
 import { buildRoute, routeSample } from '../src/city/route';
 import { createCity, createWorld, planRoads } from '../src/city/world';
 import { CITY, ROUTE } from '../src/city/config';
@@ -10,7 +10,7 @@ import type { Vec2 } from '../src/sim/math';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import { insideBuilding, BUILDING_SETBACK } from '../src/city/blocks';
 import { distToPath, pointInPolygon, polygonCentroid } from '../src/city/districts/geom';
-import { riverCenter } from '../src/city/districts/river';
+import { channelCenter } from '../src/city/districts/channel';
 import { LOST, createRace, stepRace } from '../src/sim/race';
 import { NEUTRAL_INPUT } from '../src/sim/input';
 import { DT } from '../src/sim/constants';
@@ -77,7 +77,7 @@ describe('city generation', () => {
     expect(c.blocks.buildings.length).toBeGreaterThan(300);
     expect(c.blocks.walls.length).toBeGreaterThan(400);
     expect(c.blocks.streetlights.length).toBeGreaterThan(200);
-    // No dead ends, except the stubs of the river channel's floor past its last entrance and an expressway
+    // No dead ends, except the stubs of the channel's floor past its last entrance and an expressway
     // loop's mouth, whose foot the loop carries on from.
     for (const n of c.graph.nodes) if (!n.edges.every((e) => c.graph.edges[e].kind === 'channel' || c.graph.edges[e].kind === 'mouth')) expect(n.edges.length).toBeGreaterThanOrEqual(2);
   });
@@ -189,7 +189,7 @@ describe('city generation', () => {
           const surf = w.surfaceAt(g.x, g.z);
           // A circuit starting on a race pass (route.passStart) lines its grid up on the plaza's paving.
           if (surf !== 'road' && surf !== 'cobble' && !(w.route.passStart && surf === 'concrete')) failures.push(`seed ${seed} ${mode} slot ${k}: on ${surf}`);
-          // A car standing on the slot (at street level: on a bridge deck the river's piers are beneath it).
+          // A car standing on the slot (at street level: on a bridge deck the channel's piers are beneath it).
           if (w.collideCircle(g.x, g.z, 1.2, [], w.heightAt(g.x, g.z))) failures.push(`seed ${seed} ${mode} slot ${k}: touches a wall`);
           for (const o of w.route.grid.slice(k + 1)) if (Math.hypot(o.x - g.x, o.z - g.z) < 3.4) failures.push(`seed ${seed} ${mode} slot ${k}: overlaps another`);
         });
@@ -380,19 +380,19 @@ describe('city generation', () => {
         }
       }
       // Off the drivable road with room for the prop's radius (back alley dumpsters and bags, and the
-      // barrels along the river channel's floor edges, are obstacles on purpose; raceway alley clutter
+      // barrels along the channel's floor edges, are obstacles on purpose; raceway alley clutter
       // sits on the alley's own sidewalk, which a diagonal avenue leaving the alley's end junction can
       // overlap: the alley module keeps its clutter clear of the alley's ends only). Lane closures stand
       // in the curb lane on purpose (roadworks.ts; their own test keeps the rest of the street open), and
       // the night market's fruit crates spill off the curb onto the road edge (checked in market.test.ts).
       // A car park's shortcut street is dressed like a back alley's (fence panels, cones and sawhorses at its mouths, on the street it claims).
       // A roundabout island's clutter stands where its spokes' edges run on to the node (the island test
-      // keeps it off the ring road). The river's channel and ramp edges run beneath the bridge decks,
+      // keeps it off the ring road). The channel and ramp edges run beneath the bridge decks,
       // whose sidewalks carry the crossing streets' lights a level above them.
       for (const p of props) {
-        if (p.area !== undefined && ['backAlley', 'carPark', 'river', 'alley', 'roadworks', 'market', 'roundabout'].includes(w.areas[p.area].kind)) continue;
+        if (p.area !== undefined && ['backAlley', 'carPark', 'channel', 'alley', 'roadworks', 'market', 'roundabout'].includes(w.areas[p.area].kind)) continue;
         for (const e of w.graph.edges) {
-          if (isRiverEdge(e)) continue;
+          if (isChannelEdge(e)) continue;
           const a = w.graph.nodes[e.a];
           const b = w.graph.nodes[e.b];
           expect(distToSegment(p.x, p.z, a.x, a.z, b.x, b.z) - e.width / 2).toBeGreaterThan(p.radius);
@@ -519,7 +519,7 @@ describe('districts', () => {
       expect(claimed.length).toBe(c.blocks.faces.filter((f) => !f.outer).length);
     }
     expect(shareSum / 24).toBeLessThan(0.9);
-    for (const k of ['downtown', 'park', 'river', 'roundabout', 'alley', 'backAlley', 'subway', 'infill', 'hills', 'monument']) expect(seen.has(k)).toBe(true);
+    for (const k of ['downtown', 'park', 'channel', 'roundabout', 'alley', 'backAlley', 'subway', 'infill', 'hills', 'monument']) expect(seen.has(k)).toBe(true);
   });
 
   it('city walls always match visible geometry and never stand on a road', () => {
@@ -528,8 +528,8 @@ describe('districts', () => {
       const seed = rng.int(0, 0x7fffffff);
       // Known issue (README): on this seed a block ring beside a 5-way junction runs about 10 m into
       // the carriageway of the diagonal that clips its corner, so the infill planter strip and the
-      // frontage boundary laid along it stand on the road at (20, 436). Face geometry, not river code;
-      // the river's presence only changes which districts the seed gets.
+      // frontage boundary laid along it stand on the road at (20, 436). Face geometry, not channel code;
+      // the channel's presence only changes which districts the seed gets.
       if (seed === 917028945) continue;
       const w = createWorld(seed, i % 2 ? 'sprint' : 'circuit');
       const g = w.graph;
@@ -580,7 +580,7 @@ describe('districts', () => {
     let lots = 0;
     let plazas = 0;
     let parks = 0;
-    let rivers = 0;
+    let channels = 0;
     for (let i = 0; i < 12; i++) {
       const w = createWorld(rng.int(0, 0x7fffffff), 'circuit');
       for (const a of w.areas) {
@@ -602,13 +602,13 @@ describe('districts', () => {
           // No building in a park.
           expect(w.blocks.buildings.some((b) => pointInPolygon(b.x, b.z, a.polygon))).toBe(false);
         }
-        if (a.kind === 'river') {
-          rivers++;
+        if (a.kind === 'channel') {
+          channels++;
           const x = (w.graph.bounds.minX + w.graph.bounds.maxX) / 2 + 37;
-          const z = riverCenter(a.params, x);
+          const z = channelCenter(a.params, x);
           // Every street crossing the channel is a bridge at street level or a ford dipping through it
           // (two ramp edges meeting at a foot on the centerline); the channel floor is well below the street.
-          const crossing = w.graph.edges.filter((e) => (w.graph.nodes[e.a].z - riverCenter(a.params, w.graph.nodes[e.a].x)) * (w.graph.nodes[e.b].z - riverCenter(a.params, w.graph.nodes[e.b].x)) < 0);
+          const crossing = w.graph.edges.filter((e) => (w.graph.nodes[e.a].z - channelCenter(a.params, w.graph.nodes[e.a].x)) * (w.graph.nodes[e.b].z - channelCenter(a.params, w.graph.nodes[e.b].x)) < 0);
           for (const e of crossing) expect(e.bridge === true || e.kind === 'ramp').toBe(true);
           expect(a.edges.filter((eid) => w.graph.edges[eid].bridge).length).toBeGreaterThan(0);
           const bridges = a.edges.filter((eid) => w.graph.edges[eid].bridge);
@@ -634,7 +634,7 @@ describe('districts', () => {
       }
     }
     expect(parks).toBeGreaterThan(8);
-    expect(rivers).toBeGreaterThan(2);
+    expect(channels).toBeGreaterThan(2);
     expect(lots + plazas).toBeGreaterThan(10);
   });
 
@@ -1117,7 +1117,7 @@ describe('route shortcuts', () => {
         }
       }
     }
-    // Many routes get a second one (fewer since the river channel runs the whole map: a dive is a long
+    // Many routes get a second one (fewer since the channel runs the whole map: a dive is a long
     // stretch with no street corner to cut; 163 of 240 before, 130 after; about 90 on the curved grid,
     // where a mouth keeps its acute corner and its flare off the street's bend nodes).
     expect(two).toBeGreaterThan(80);

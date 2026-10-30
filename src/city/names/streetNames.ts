@@ -35,7 +35,7 @@ export interface Street {
 
 export interface StreetNames {
   streets: Street[];
-  /** Street of each graph edge by edge id (-1: alleys, ramps, the river and anything the district modules added). */
+  /** Street of each graph edge by edge id (-1: alleys, ramps, the channel and anything the district modules added). */
   ofEdge: Int32Array;
   /** The streets through a junction, the biggest first (empty for a bend or a node no street runs through). */
   at(node: number): Street[];

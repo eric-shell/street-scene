@@ -9,7 +9,7 @@
  *  - steel H columns on concrete footings (the footing is the sim's pillar
  *    wall) with a bent cap under the deck and knee braces out to the
  *    cantilevered street side; a through truss where the line crosses the
- *    river channel and the columns cannot stand; a gravel yard on the
+ *    channel and the columns cannot stand; a gravel yard on the
  *    ground wherever the deck cuts through a block (the strip the sim keeps
  *    buildings off), so the lamps' pools land on lit ground there;
  *  - stations: an island platform the street side track swings out around,
@@ -40,7 +40,7 @@
  */
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
-import { riverCenter } from '../../city/districts/river';
+import { channelCenter } from '../../city/districts/channel';
 import type { Area } from '../../city/districts/types';
 import type { Vec2 } from '../../sim/math';
 import { GeoBuilder } from '../geoBuilder';
@@ -638,12 +638,12 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
   runOff(c.portalA + RAIL.ramp * 0.3, c.cityA - 30);
   runOff(c.cityB + 30, c.portalB - RAIL.ramp * 0.3);
 
-  // ----- Truss spans over the river channel (no columns there).
-  const rivers = kit.world.areas.filter((x) => x.kind === 'river');
-  if (rivers.length) {
+  // ----- Truss spans over the channel (no columns there).
+  const channels = kit.world.areas.filter((x) => x.kind === 'channel');
+  if (channels.length) {
     const wet = (s: number) => {
       sampleCurve(c, s, P0);
-      return rivers.some((rv) => Math.abs(P0.z - riverCenter(rv.params, P0.x)) < rv.params.top + CITY.districts.river.bridgeBody + 2);
+      return channels.some((rv) => Math.abs(P0.z - channelCenter(rv.params, P0.x)) < rv.params.top + CITY.districts.channel.bridgeBody + 2);
     };
     let s = c.cityA;
     while (s < c.cityB) {

@@ -30,7 +30,7 @@
  */
 import type { World } from '../../city/world';
 import type { Area, AreaKind } from '../../city/districts/types';
-import { isRiverEdge } from '../../city/roadGraph';
+import { isChannelEdge } from '../../city/roadGraph';
 import { HIGHWAY_HALF, deckCurve, deckPoint, highwayRamp } from '../../city/districts/highway/shape';
 import { axisAt } from '../../city/districts/highway/rampAxis';
 import { pointInPolygon } from '../../city/districts/geom';
@@ -57,7 +57,7 @@ export interface KindStyle {
 
 export const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   park: { ink: PALETTE.green, fill: rgba('green', 0.3), width: 1.5, tag: true },
-  river: { ink: PALETTE.cyan, fill: rgba('cyan', 0.26), width: 1.5, tag: true },
+  channel: { ink: PALETTE.cyan, fill: rgba('cyan', 0.26), width: 1.5, tag: true },
   lake: { ink: PALETTE.cyan, fill: rgba('cyan', 0.3), width: 1.5, tag: true },
   waterfront: { ink: PALETTE.cyan, fill: rgba('cyan', 0.22), width: 1.5, tag: true },
   monument: { ink: PALETTE.yellow, fill: rgba('yellow', 0.3), width: 1.5, tag: true },
@@ -410,7 +410,7 @@ export class CityLayers {
       p.lineTo(b.x + ux * hw + uz * hd, b.z + uz * hw - ux * hd);
       p.closePath();
     }
-    // Streets at their real widths: the channel floor in the river's color, shortcuts and alleys in theirs.
+    // Streets at their real widths: the channel floor in the channel's color, shortcuts and alleys in theirs.
     const shortcutEdges = new Set<number>();
     for (const a of world.areas) {
       if (a.kind !== 'backAlley' || a.variant !== 'routeShortcut') continue;
@@ -422,7 +422,7 @@ export class CityLayers {
     for (const e of g.edges) {
       const A = g.nodes[e.a];
       const B = g.nodes[e.b];
-      const ink: StreetGroup['ink'] = isRiverEdge(e) ? 'channel' : shortcutEdges.has(e.id) ? 'shortcut' : e.kind === 'alley' ? 'alley' : e.kind === 'backAlley' ? 'backAlley' : 'road';
+      const ink: StreetGroup['ink'] = isChannelEdge(e) ? 'channel' : shortcutEdges.has(e.id) ? 'shortcut' : e.kind === 'alley' ? 'alley' : e.kind === 'backAlley' ? 'backAlley' : 'road';
       const width = Math.round(e.width * 2) / 2;
       const key = `${ink}:${width}`;
       let grp = groups.get(key);
@@ -776,9 +776,9 @@ function line(p: Path2D, pts: readonly Vec2[]): void {
   pts.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
 }
 
-/** Tag priority: area for the filled kinds, length for the linear ones (the river, the El and the harbor always first). */
+/** Tag priority: area for the filled kinds, length for the linear ones (the channel, the El and the harbor always first). */
 export function tagWeight(a: Area): number {
-  if (a.kind === 'river' || a.kind === 'subway' || a.kind === 'highway' || a.kind === 'waterfront') return 1e9;
+  if (a.kind === 'channel' || a.kind === 'subway' || a.kind === 'highway' || a.kind === 'waterfront') return 1e9;
   if (a.polygon.length < 3) return 0;
   let s = 0;
   for (let i = 0; i < a.polygon.length; i++) {
@@ -792,7 +792,7 @@ export function tagWeight(a: Area): number {
 /** Where an area's tag goes: along a linear area's path, the middle of an alley, out on a harbor's water off the middle of its quay, the centroid of anything else. */
 export function tagAnchor(world: World, a: Area): Vec2 | null {
   if (a.kind === 'waterfront') return coastPoint(a, (a.params.pa + a.params.pb) / 2, 70);
-  if (a.kind === 'river' || a.kind === 'subway' || a.kind === 'highway') return along(a.kind === 'highway' ? highwayLine(a) : a.path, a.kind === 'river' ? 0.3 : a.kind === 'highway' ? 0.4 : 0.7);
+  if (a.kind === 'channel' || a.kind === 'subway' || a.kind === 'highway') return along(a.kind === 'highway' ? highwayLine(a) : a.path, a.kind === 'channel' ? 0.3 : a.kind === 'highway' ? 0.4 : 0.7);
   if (a.kind === 'alley') {
     const g = world.graph;
     const e = g.edges[a.edges[a.edges.length >> 1]];
@@ -844,7 +844,7 @@ export interface NearPoint {
 }
 
 /**
- * The point of an area nearest to (x, z), for "how far is the river": the
+ * The point of an area nearest to (x, z), for "how far is the channel": the
  * point itself inside the area's footprint (the expressway's: its drivable
  * deck, deckOutline), else the closest point of its outline, or of its
  * centerline when it has no footprint. Infinitely far for an area with
@@ -889,7 +889,7 @@ export function nearestOnArea(a: Area, x: number, z: number, out: NearPoint = { 
 /**
  * The road node (a junction, a bend or a roundabout, World.graph) nearest
  * (x, z): where the full map locks a waypoint, so a pin dropped on a roof or
- * in the river still marks a place on the streets a car can drive to. (x, z)
+ * in the channel still marks a place on the streets a car can drive to. (x, z)
  * itself on a city without streets.
  */
 export function nearestRoadNode(world: World, x: number, z: number): Vec2 {

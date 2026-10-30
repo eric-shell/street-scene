@@ -321,7 +321,7 @@ export function groundLine(kit: DistrictKit, gb: GeoBuilder, a: Vec2, b: Vec2, w
   gb.quadFacing(v[0], v[1], v[2], v[3], 0, 1, 0);
 }
 
-/** Route shortcut bulbs: hot pink with amber, the shortcut sign's colours (the alleys, the river's ramp mouths, the car parks' entries). */
+/** Route shortcut bulbs: hot pink with amber, the shortcut sign's colours (the alleys, the channel's ramp mouths, the car parks' entries). */
 export const SHORTCUT_BULBS = [col(0xff4fd8, 2.2), col(0xffb35c, 2.3), col(0xff2bd6, 2), col(0xffd08a, 2.1)];
 const STRING_POOL = col(0xff7ab8, 1);
 

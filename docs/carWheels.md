@@ -141,14 +141,14 @@ Open:
 
 | Group | Maker | Wheels (donor) |
 |---|---|---|
-| Byakko | HRE | Tora (P200) |
-| Genbu | Volk | Iwa (Rays 21C) |
-| Hiryu | SSR | Homura (Koenig) |
-| Hotaru | Fifteen52 | Tsuchi (Rally Sport) |
-| Kaito | Work | the twelve above, Gekko (LS Chiarezza SUV, `bolts: 0`: its rivets sit in pairs and the histogram read three) |
-| Mizuchi | Rotiform | Nami (ZMO), Shizuku (Aerodisc), Uzu (VCE), Kawa (SIX), Taki (AVS), Minato (KB1), Kiri (USF), Shio (MLW), Ame (OZR), Yuki (BM1), Shigure (WRO), Umi (CCV), Hyo (LHR), Tsuyu (LSR), Kori (KLU), Mio (SNA), Fubuki (KPS), Seseragi (PNT) |
-| Seiryu | Vossen | Aoi (LC104T), Sora (LC109T), Hikari (VPS302), Kagami (VPS301), Seiun (ERA3), Getsuei (GNS-1), Kirameki (VPS 315T), Hisui (CG203) |
-| Suzaku | BBS | Hane (E52, `normals: 'geometry'`) |
+| Kitsune | HRE | Tora (P200) |
+| Nue | Volk | Iwa (Rays 21C) |
+| Seiryu | SSR | Homura (Koenig) |
+| Kappa | Fifteen52 | Tsuchi (Rally Sport) |
+| Yamabiko | Work | the twelve above, Gekko (LS Chiarezza SUV, `bolts: 0`: its rivets sit in pairs and the histogram read three) |
+| Oni | Rotiform | Nami (ZMO), Shizuku (Aerodisc), Uzu (VCE), Kawa (SIX), Taki (AVS), Minato (KB1), Kiri (USF), Shio (MLW), Ame (OZR), Yuki (BM1), Shigure (WRO), Umi (CCV), Hyo (LHR), Tsuyu (LSR), Kori (KLU), Mio (SNA), Fubuki (KPS), Seseragi (PNT) |
+| Tanuki | Vossen | Aoi (LC104T), Sora (LC109T), Hikari (VPS302), Kagami (VPS301), Seiun (ERA3), Getsuei (GNS-1), Kirameki (VPS 315T), Hisui (CG203) |
+| Fujin | BBS | Hane (E52, `normals: 'geometry'`) |
 
 Retired names (`kiba`, `hoshi`, `rensa`, `tsuki`, `ginga`, `hibana`, `senko`, `arashi`, and `kozue`, the 326 yabaking spoke, removed 2026-10-28 with its Kirin group) are never reused, so an old save never shows a different wheel under its name. The one check that found a wheel the sheet hid: the mean shading normal of each wheel's front facing `Rim` faces along +X, 0.75 to 0.97 on a good wheel, 0.19 on the E52 before `normals: 'geometry'`.
 
@@ -158,8 +158,8 @@ The user sent five links; three were refused before import: a TE37 Ultra Track E
 
 | Group | Maker | Wheel (donor, author) | Recipe |
 |---|---|---|---|
-| Kohaku | Enkei (new group) | Kiseki (Enkei Nt03+m Wheels, flathat3d) | `drop` its three stacked logo caps and the lip lettering (a flat 4,500 face piece); `normals: 'geometry'` |
-| Suzaku | BBS | Hien (BBS CH-R + Goodyear Eagle F1 Supercar 3, MozzarellaARC) | `dark: 0.25` |
+| Kamaitachi | Enkei (new group) | Kiseki (Enkei Nt03+m Wheels, flathat3d) | `drop` its three stacked logo caps and the lip lettering (a flat 4,500 face piece); `normals: 'geometry'` |
+| Fujin | BBS | Hien (BBS CH-R + Goodyear Eagle F1 Supercar 3, MozzarellaARC) | `dark: 0.25` |
 
 - **Kiseki**: one welded mesh, wheel only, 71,000 faces: read as a one-piece wheel, its stepped lip turned from 20 points; 9,158 triangles. Its authored normals lean off the spokes (the front facing score 0.14 by face normals), so it shades from geometry: 0.55 on the shading normal score, where the set reads 0.47 to 0.63.
 - **Hien**: a 20,700 face low poly model with its tire welded to the wheel in one mesh and one textured material, UVs overlapping: neither islands, names nor UVs separate them, the texture's colour does. 8,716 triangles, score 0.57. Its centre cap logo is only in the texture, which the game does not use.
@@ -185,9 +185,9 @@ Learnings:
 
 ### Fifty-six more (2026-10-28)
 
-56 donor models from jonver87 (37), dermaks (17), portfoliorodrigues (the Fifteen52 Turbomac) and alexanderlyreo (a Work Meister S1 3P) became **54 wheels**, 100 in the set, 5,418 to 11,381 triangles each (under the 12,000 budget; the smallest is `sagi`, a four spoke whose face is 2,258 of them, the largest `tsubaki`). Names are new pseudo-Japanese words (retired and taken names skipped: `tsubasa` belongs to another file); 13 makers got fictional groups (Advan Kitsune, Avant Garde Tengu, Brixton Forged Oni, Kyusha Shoes Tanuki, Velare Yamabiko, VIP Modular Baku, Weds Fujin, 326 Power Kirin, Brabus Nue, Budnik Orochi, Devil Japan Shuten, Kansei Nekomata, MAE Kamaitachi); Rays goes under Volk's Genbu and Vossen-x-Work under Seiryu (`GROUPS` maps the real maker, so a collaboration or a sister brand needs only a key).
+56 donor models from jonver87 (37), dermaks (17), portfoliorodrigues (the Fifteen52 Turbomac) and alexanderlyreo (a Work Meister S1 3P) became **54 wheels**, 100 in the set, 5,418 to 11,381 triangles each (under the 12,000 budget; the smallest is `sagi`, a four spoke whose face is 2,258 of them, the largest `tsubaki`). Names are new pseudo-Japanese words (retired and taken names skipped: `tsubasa` belongs to another file); 13 makers got fictional groups (Advan Baku, Avant Garde Byakko, Brixton Forged Hiryu, Kyusha Shoes Mizuchi, Velare Shuten, VIP Modular Suzaku, Weds Tengu, 326 Power Kirin, Brabus Genbu, Budnik Hotaru, Devil Japan Kaito, Kansei Kodama, MAE Nekomata); Rays goes under Volk's Nue and Vossen-x-Work under Tanuki (`GROUPS` maps the real maker, so a collaboration or a sister brand needs only a key).
 
-**Byakko** (HRE)
+**Kitsune** (HRE)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
@@ -195,13 +195,13 @@ Learnings:
 | Hasu | HRE FF04 | jonver87 | no overrides |
 | Kanade | HRE 522M | jonver87 | `pick`: the scene holds two wheels side by side; the one on +X (906k faces for both) |
 
-**Fujin** (Weds; new group)
+**Tengu** (Weds; new group)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
 | Uguisu | Weds Kranze Bazreia | dermaks | no overrides |
 
-**Genbu** (Rays, Volk)
+**Nue** (Rays, Volk)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
@@ -210,7 +210,7 @@ Learnings:
 | Tomoe | Volk Rays 21A | jonver87 | no overrides |
 | Zan | RAYS nismo LMGT1 | dermaks | no overrides |
 
-**Hiryu** (SSR)
+**Seiryu** (SSR)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
@@ -221,13 +221,13 @@ Learnings:
 | Tsukushi | SSR Collection Mk2 | dermaks | `pick` on y: Mk2 spokes on the shared lip |
 | Yuzu | SSR Minerva | dermaks | no overrides |
 
-**Hotaru** (Fifteen52)
+**Kappa** (Fifteen52)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
 | Wakaba | fifteen52 Turbomac | portfoliorodrigues | 986k faces by portfoliorodrigues; the 5x108 render model reduces to 10,344 triangles |
 
-**Kaito** (Work)
+**Yamabiko** (Work)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
@@ -236,26 +236,26 @@ Learnings:
 | Yamabuki | Work Meister S1 3P | alexanderlyreo | by alexanderlyreo; one welded mesh, its brake rotor and hat with it: deleted by hand after `wheel()` (the islands behind the spokes), or the game's brake sits behind a second rotor |
 | Yoake | WORK MEISTER CR01 | dermaks | Work badge sticker and black spoke faces stay `Black` |
 
-**Kamaitachi** (MAE; new group)
+**Nekomata** (MAE; new group)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
 | Mikazuki | O.Z MAE | dermaks | no overrides |
 | Minamo | MAE CROWN JEWEL | dermaks | `face: 1` (0.76 down the barrel, 0.39 turned; the same template as the MAE above reads 0.44 on the vote) |
 
-**Kitsune** (Advan; new group)
+**Baku** (Advan; new group)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
 | Ayame | Advan A3A | jonver87 | no overrides |
 
-**Kohaku** (Enkei)
+**Kamaitachi** (Enkei)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
 | Tsutsuji | Enkei Riverge | jonver87 | `face: -1` (0.56 down the barrel, 0.39 turned); FBX upload |
 
-**Mizuchi** (Rotiform)
+**Oni** (Rotiform)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
@@ -266,19 +266,19 @@ Learnings:
 | Ogi | Rotiform RSC | jonver87 | `face: -1` (0.73 down the barrel, 0.05 turned) |
 | Sakura | Rotiform EMA | jonver87 | `face: -1` (0.85 down the barrel, 0.09 turned) |
 
-**Nekomata** (Kansei; new group)
+**Kodama** (Kansei; new group)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
 | Sazanka | KANSEI TANDEM | dermaks | no overrides |
 
-**Nue** (Brabus; new group)
+**Genbu** (Brabus; new group)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
 | Yuhi | BRABUS MONOBLOCK M | dermaks | no overrides |
 
-**Oni** (Brixton Forged; new group)
+**Hiryu** (Brixton Forged; new group)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
@@ -287,13 +287,13 @@ Learnings:
 | Kaen | Brixton Forged PF6 | jonver87 | no overrides |
 | Shirube | Brixton Forged CM16 | jonver87 | `face: 1` (0.73 down the barrel, 0.17 turned) |
 
-**Orochi** (Budnik; new group)
+**Hotaru** (Budnik; new group)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
 | Sagi | Budnik Tusk | dermaks | no overrides |
 
-**Baku** (VIP Modular; new group, renamed from Raijin on 2026-10-28, which is the brake brand on the calipers)
+**Suzaku** (VIP Modular; new group, renamed from Raijin on 2026-10-28, which is the brake brand on the calipers)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
@@ -301,7 +301,7 @@ Learnings:
 | Sazanami | VIP MODULAR VX510 | jonver87 | no overrides |
 | Tsubaki | VIP Modular VXS610 | jonver87 | FBX upload; the normal vote kept (0.58 down the barrel, 0.49 the other way: a deep dished plate) |
 
-**Seiryu** (Vossen, Vossen-x-Work)
+**Tanuki** (Vossen, Vossen-x-Work)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
@@ -315,26 +315,26 @@ Learnings:
 | Ukigumo | VOSSEN VFS1 | jonver87 | no overrides |
 | Usagi | Vossen HC-1 | jonver87 | no overrides |
 
-**Shuten** (Devil Japan; new group)
+**Kaito** (Devil Japan; new group)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
 | Asagi | Devil Japan IF | dermaks | deep dish (0.64); same lip and bolt flange as the Longchamp XR4 |
 
-**Tanuki** (Kyusha Shoes; new group)
+**Mizuchi** (Kyusha Shoes; new group)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
 | Enishi | Kyusha Shoes Meteor FF | jonver87 | no overrides |
 
-**Tengu** (Avant Garde; new group)
+**Byakko** (Avant Garde; new group)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
 | Genki | Avant Garde F450 | jonver87 | no overrides |
 | Haruka | Avant Garde F142 | jonver87 | no overrides |
 
-**Yamabiko** (Velare; new group)
+**Shuten** (Velare; new group)
 
 | Wheel | Donor | Author | Recipe and notes |
 |---|---|---|---|
@@ -393,22 +393,22 @@ The user: "ame, uzu, yuki, sazanka and taki need to be rescanned, the outer sect
 
 ### Twelve from other authors (2026-10-28)
 
-The user sent 30 links; 12 were refused before import (no licence or not downloadable: the Mini JCW BBS LM-R, HRE 501, zakuro_inc's BBS FI-R, a TE37 style, BBS Super RS, Volk 21A, Fikse AR and 701; tagged `noai`: Dream_Labs' Car Wheel Sport and Race; Editorial: mozzarellaARC's BBS FI-R and CI-R, TinoD2's SSR Professor TF1) and 6 skipped (already shipped from the same uid: the T5R 2P, Longchamp XR4 and Minerva; a third TE37 beside `tamashii`; TinoD2's Equip 03, which its author calls not true to the original, against `yari`; blakebella's unfinished T5R beside `inazuma`). Twelve became wheels, 111 in the set, 5,511 to 10,645 triangles. Spoon is a new maker: **Kappa**.
+The user sent 30 links; 12 were refused before import (no licence or not downloadable: the Mini JCW BBS LM-R, HRE 501, zakuro_inc's BBS FI-R, a TE37 style, BBS Super RS, Volk 21A, Fikse AR and 701; tagged `noai`: Dream_Labs' Car Wheel Sport and Race; Editorial: mozzarellaARC's BBS FI-R and CI-R, TinoD2's SSR Professor TF1) and 6 skipped (already shipped from the same uid: the T5R 2P, Longchamp XR4 and Minerva; a third TE37 beside `tamashii`; TinoD2's Equip 03, which its author calls not true to the original, against `yari`; blakebella's unfinished T5R beside `inazuma`). Twelve became wheels, 111 in the set, 5,511 to 10,645 triangles. Spoon is a new maker: **Orochi**.
 
 | Wheel | Donor | Author | Group | Recipe and notes |
 |---|---|---|---|---|
-| Kawasemi | Spoon SW388 | TinoD2 | Kappa (Spoon; new) | `drop: 'LowPoly\|Tire'`: a stand scene with a low poly copy, both on tires |
-| Kazakiri | Work Emotion CR-KAI | gordeykomark | Kaito | `drop` its tire and valve; a 4.3k game-ready model, so the face keeps every triangle (5,523 in all) |
-| Tatsumaki | Rotiform DAB | blakebella | Mizuchi | `drop` its tire (the rotor goes as junk); 450k triangles of lip rivets became 40 house heads; 24 s a build |
-| Kogane | BBS LM Gold Wheels | zxargon | Suzaku | no overrides; a 7.1k low poly model without a tire, 20 lip bolts |
-| Namida | S13 Teardrops Rims | Once_a_goat_death | Hotaru (filed under Fifteen52 at the user's call; its page calls it the Nissan S13's stock wheel) | no overrides; tagged `createdwithai` by its uploader (not `noai`) |
-| Akane | SSR Hasemi Prot-S | techtackofficial | Hiryu | `face: 1`: the vote put the spokes deep in the barrel, the center cap and lip bolts face +X |
-| Tsukimi | Rotiform CVT | niev | Mizuchi | `drop` the valve (`Nipel`) |
-| Himawari | WEDS Kranze LXZ | blakebella | Fujin | `drop` its tire (material `Material`) |
-| Hibiki | RAYS GramLights 57DR | ilvskf | Genbu | `drop` the stickers, `keep: '^DISK\.'` |
-| Kaminari | Rays Gramlights 57CR | ilvskf | Genbu | `drop` the stickers, `chunks`: without it the face stood 18 cm proud of barrel scraps read as the lip, and 109k triangles of spoke went as bolts |
-| Fuuga | RAYS G025 | ilvskf | Genbu | `drop` the sticker, `chunks` |
-| Hinoko | RAYS HOMURA 2x7 | ilvskf | Genbu | `chunks` |
+| Kawasemi | Spoon SW388 | TinoD2 | Orochi (Spoon; new) | `drop: 'LowPoly\|Tire'`: a stand scene with a low poly copy, both on tires |
+| Kazakiri | Work Emotion CR-KAI | gordeykomark | Yamabiko | `drop` its tire and valve; a 4.3k game-ready model, so the face keeps every triangle (5,523 in all) |
+| Tatsumaki | Rotiform DAB | blakebella | Oni | `drop` its tire (the rotor goes as junk); 450k triangles of lip rivets became 40 house heads; 24 s a build |
+| Kogane | BBS LM Gold Wheels | zxargon | Fujin | no overrides; a 7.1k low poly model without a tire, 20 lip bolts |
+| Namida | S13 Teardrops Rims | Once_a_goat_death | Kappa (filed under Fifteen52 at the user's call; its page calls it the Nissan S13's stock wheel) | no overrides; tagged `createdwithai` by its uploader (not `noai`) |
+| Akane | SSR Hasemi Prot-S | techtackofficial | Seiryu | `face: 1`: the vote put the spokes deep in the barrel, the center cap and lip bolts face +X |
+| Tsukimi | Rotiform CVT | niev | Oni | `drop` the valve (`Nipel`) |
+| Himawari | WEDS Kranze LXZ | blakebella | Tengu | `drop` its tire (material `Material`) |
+| Hibiki | RAYS GramLights 57DR | ilvskf | Nue | `drop` the stickers, `keep: '^DISK\.'` |
+| Kaminari | Rays Gramlights 57CR | ilvskf | Nue | `drop` the stickers, `chunks`: without it the face stood 18 cm proud of barrel scraps read as the lip, and 109k triangles of spoke went as bolts |
+| Fuuga | RAYS G025 | ilvskf | Nue | `drop` the sticker, `chunks` |
+| Hinoko | RAYS HOMURA 2x7 | ilvskf | Nue | `chunks` |
 
 - **Check what a scan is made of.** ilvskf's four are 3D scans (376k to 704k triangles) that Sketchfab's processing cut into chunks of about 100k, each running from the hub to the lip; the islands the classifier sorts by radius are then pieces of one surface, not parts. Each also carries a node named `WORK_VS_XX_obj_cleaner_materialmerger_gles` (Sketchfab's name for a downloaded model) holding the barrel: it looks taken from jonver87's WORK VS-XX (CC BY 4.0, our `ryusei`), which ilvskf does not credit; the README credits it.
 - **Lugs.** `fit_lugs` found no circle on akane, hibiki, himawari, kazakiri and namida: a center cover hides them on akane, kazakiri and namida, and the pockets on hibiki and himawari sit at 0.28 to 0.34 of the lip, past `LUG['band']`, with too much noise for a blob even when the band is widened. They ship without house nuts.
@@ -416,12 +416,12 @@ The user sent 30 links; 12 were refused before import (no licence or not downloa
 
 ### Two more (2026-10-28)
 
-Two links, both CC BY 4.0 and downloadable; 113 wheels. **Konig** is a new maker: **Kodama**.
+Two links, both CC BY 4.0 and downloadable; 113 wheels. **Konig** is a new maker: **Kohaku**.
 
 | Wheel | Donor | Author | Group | Recipe and notes |
 |---|---|---|---|---|
-| Shirabe | Konig Countergram 5x120 Wheel / FREE MODEL | shevchenkovisuals | Kodama (Konig; new) | `drop: 'Tire\|Text\|Lug Nuts'`, `lugs: (5, 0.2217, {'at': 0})`; 1.08M faces, 45 s a build, 10,928 triangles |
-| Asahi | Enkie Rpf1 (Enkei RPF1) | astrubal | Kohaku | `face: -1, chunks: True`, `lugs: (5, 0.2207, {'at': 0})`, `drop` of the corner's other materials; 5,347 triangles |
+| Shirabe | Konig Countergram 5x120 Wheel / FREE MODEL | shevchenkovisuals | Kohaku (Konig; new) | `drop: 'Tire\|Text\|Lug Nuts'`, `lugs: (5, 0.2217, {'at': 0})`; 1.08M faces, 45 s a build, 10,928 triangles |
+| Asahi | Enkie Rpf1 (Enkei RPF1) | astrubal | Kamaitachi | `face: -1, chunks: True`, `lugs: (5, 0.2207, {'at': 0})`, `drop` of the corner's other materials; 5,347 triangles |
 
 - **Shirabe**: a one-piece nine spoke, so no lip bolts and a `rim` stock lip. Its tire, valve, the lettering on the dish wall and the nuts are separate nodes; the faces, the stepped lip and the black center cap all arrive as one island and one cap, and the lip is turned from 29 points. The donor's nuts were tall closed ones standing on a bare chrome hub round the cap (no hole, no pocket), so `fit_lugs` found no circle; its recipe gives the five nuts' own circle (read from the dropped mesh: r 45.9 mm, the first straight up), and `_seat_x` seats them on the hub (x 38 mm). Checked with 16 mm hex prisms at the catalog positions: all five stand on the hub clear of the cap.
 - **Asahi**: the model is a whole corner (wheel, 17,881 face tire, calipers, rotor, hub, pad clips), and the tire is the biggest round thing in it, so the first build took it for the lip (scale x0.80, a wheel with a barrel 0.45 m long). The wheel is the one `Metal` mesh; the recipe drops everything else by material name. It is two islands, a face that carries the lip's front flange and a barrel behind it, so a `ring` island's front edge sat 0.2 m behind the face and the face stood detached in front of the lathe; `chunks: True` merges them and the lip is turned out of both (96 faces turned, no sliver). The vote was wrong (`face: 1` put the spokes at 0.93 of the way down the barrel); `face: -1` reads 0.12 (`checkWheelFacing`, front 1.00). The five stud holes are 16 mm deep pockets round a recessed plate; the house cap's disc covers the inner edge of two, so the depth image split one pocket in two and lost another (r .192 and .244 against .21 to .22), and no circle of five formed. The new `lugs` option `at` places the circle from the donor's own holes (measured on the mesh: r 45.7 mm, 11.7 mm holes).
@@ -483,7 +483,7 @@ The user, after several tries: homura, hari, minamo, shirabe and natsu paint too
 
 ### Dark chrome lips (2026-10-28)
 
-The user, after several fixes that did not hold: most of the Seiryu (Vossen) wheels showed a dark ring where the lip should be. In the garage with a chrome lip, madoka's and aoi's whole lip band was near black and read as part of the tire, so the wheel looked an inch smaller; with the stock lip (`rim` on 15 of the 17, so the face's satin silver) the same lip was bright.
+The user, after several fixes that did not hold: most of the Tanuki (Vossen) wheels showed a dark ring where the lip should be. In the garage with a chrome lip, madoka's and aoi's whole lip band was near black and read as part of the tire, so the wheel looked an inch smaller; with the stock lip (`rim` on 15 of the 17, so the face's satin silver) the same lip was bright.
 
 - **Not the geometry or the pipeline** (each ruled out on the shipped GLBs, `npx tsx` over glTF Transform). The ring is `RimLip`: the Vossen GLBs carry only `Rim`, `RimLip`, `RimCap` and `Tire` (seiun and momiji add a few `Chrome` heads and bits), no `Black`. Every `RimLip` triangle's shading normals agree with its winding (dot over 0.5 on 100% of the area, none flipped), the same as kumo's and yari's, which look right. Lip shards (non-lip islands of 12 faces or fewer within 2.5 mm of the lathe, Valve stems and lip shards, above) are 0 on aoi, madoka, mizore, kagami, hikari, seiun, kirameki, hisui, karasu, rin, sumire, ukigumo and usagi, 2 to 10 faces on sora, getsuei and momiji, 73 on nagi: too few to make a ring, and the dark wheels have none.
 - **The cause is the mirror.** A chrome finish is the `Chrome` look (metalness 1, roughness 0.12, `CHROME`), which shows only what the environment holds in the reflected direction, and both environments the cars carry are dark stand-ins: the showroom's (`studioEnvironment`) is a 0x0c0c0f room with a few batten strips and neon panels, the street's a night panorama. A lip turned to the viewer mirrors the room or road behind the camera, which is black. Rays down the axle over every wheel (the first surface each ray meets, and the shading normal's axial share where it is `RimLip`) show why Vossen and not the rest: their stepped lips are wide, flat cones facing the viewer. On madoka, mizore, aoi and sora the lip is 54 to 59% of the visible disc and 45 to 53% of the disc is lip with its normal within 25 degrees of the axle; the set's median is 17% (114 wheels), kumo 20% (a narrow lip that rolls from 0.77 to 0.04 axial, so its band sweeps past the battens and catches them), getsuei 33%. A flat ring mirrors one direction over its whole width, so it is all dark at once; a rolled lip is dark with bright streaks, which reads as chrome.
@@ -491,6 +491,36 @@ The user, after several fixes that did not hold: most of the Seiryu (Vossen) whe
 - **A floor did not hold either** (tried and removed the same day). The first fix kept the dark map and gave chrome a floor: the reflection `max`ed with a grey sky to ground gradient (0.4 sky, 0.25 ground). Every lip was bright, but the floor dominated wherever the map was dark, which is nearly everywhere, so chrome became flat grey satin with no edges in it. The user: "chrome looks like it got compromised ... we just need pure reflective shiny chrome". A mirror reads as chrome through contrast, sharp bright reflections next to dark ones, and a floor removes exactly that.
 - **Fix: give chrome something to mirror** (runtime only, no GLB or catalog change). `chromeEnv.ts` builds one HDR studio panorama from numbers (512 x 256, half float): a dark floor (0.02 to 0.06), a bright horizon band (1.7) with a hard lower edge, a dim cool sky (0.24 to 0.07) and six softboxes and strips (3.5 to 6, brighter than white). A chrome wheel surface (`Rim`, `RimLip`, `RimCap`, lug nuts and hardware, both axles) reflects it instead of the car's environment: `applyPaint` swaps the material's `envMap` to the studio for the chrome finish and back to the car's (kept in a `WeakMap`) for any other finish, at `envMapIntensity` 0.45 (`CHROME.wheelEnv`, scaled with the room's lights like the paint's reflections). The surface itself is unchanged, the `Chrome` polish (metalness 1, roughness 0.12). A flat lip now mirrors the horizon band and the floor, bright with a dark band and a hard line between them; a rolled lip carries the horizon line round its curve and the softboxes as sharp highlights. Judged in the garage on madoka and aoi (chrome lip) and kumo (stock chrome), and in the Street view at night: polished chrome, neither grey nor black. Cost: nothing per frame. GPU memory: the 1 MB source plus a 384 x 512 half float PMREM that three makes once per renderer the first time a chrome surface draws (1.5 MB), about 2.5 MB in all, shared by every car. Switching a surface into or out of chrome compiles one more program variant once (the PMREM size is in the shader's defines).
 - **Chrome has no colour** (the same request). Chrome is one look, `CHROME.color`: `applyPaint` ignores a chrome paint's colour, `validPaint` stores `CHROME_COLOR` for any chrome finish, so old saves and share codes with a gold, black, red or blue chrome (and the legacy lug nut names) read plain chrome, the garage's paint picker hides the colour picker while chrome is chosen, and the random build's black lug nuts are gloss black.
+
+### Fictional makers remapped (2026-10-30)
+
+The fictional maker names were reassigned so that sorting them alphabetically gives the same order as sorting the real makers. The garage lists makers alphabetically, so the list now runs in the same order whichever names you read. Real maker to fictional name:
+
+| Real maker | Fictional name |
+|---|---|
+| Advan | Baku |
+| Avant Garde | Byakko |
+| BBS | Fujin |
+| Brabus | Genbu |
+| Brixton Forged | Hiryu |
+| Budnik | Hotaru |
+| Devil Japan | Kaito |
+| Enkei | Kamaitachi |
+| Fifteen52 | Kappa |
+| HRE | Kitsune |
+| Kansei | Kodama |
+| Konig | Kohaku |
+| Kyusha Shoes | Mizuchi |
+| MAE | Nekomata |
+| Rays (and Volk, a Rays brand) | Nue |
+| Rotiform | Oni |
+| Spoon | Orochi |
+| SSR | Seiryu |
+| Velare | Shuten |
+| VIP Modular | Suzaku |
+| Vossen (and Vossen-x-Work) | Tanuki |
+| Weds | Tengu |
+| Work | Yamabiko |
 
 ## Credits
 

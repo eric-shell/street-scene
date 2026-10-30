@@ -1,5 +1,5 @@
 /**
- * River: an LA River style concrete flood channel running east-west across
+ * Channel: an LA River style concrete flood channel running east-west across
  * the whole map between two street rows, and a race venue end to end: its
  * floor is one chain of 'channel' edges in the road graph from one tunnel
  * portal to the other, routes dive in anywhere along it and run its length,
@@ -8,7 +8,7 @@
  * Centerline: the midline between the two bank rows, sampled column by
  * column from the grid nodes (so it follows a warped grid) and smoothed, plus
  * a slow meander whose amplitude swells and fades along the length; stored
- * as samples in the area params (riverCenter / riverSlope interpolate them),
+ * as samples in the area params (channelCenter / channelSlope interpolate them),
  * the swing scaled down until every junction clears the band. Nothing here
  * assumes rows are straight or that one edge joins two grid nodes: a
  * crossing street is any edge whose segment crosses the centerline, followed
@@ -24,7 +24,7 @@
  * car body nearer the floor than the deck. The deck's parapets carry a
  * `bottom` (channel cars pass under them); the piers on the channel floor
  * edges and the abutment boxes on the banks are solids with a `top` (deck
- * cars pass over them), set by settleRiver once the terrain exists.
+ * cars pass over them), set by settleChannel once the terrain exists.
  *
  * Entrances (6-8 per seed, at least one in every quarter of the length, the
  * outer quarters served first, banks alternating): a ford is two ramps
@@ -47,11 +47,11 @@
  * to one side of the racing line; barrels, crates, pallets and bags litter the
  * floor edges with clusters out on the floor; a few set pieces per seed (a
  * hump, a water bar, a tabletop jump, a ledge, a split median:
- * riverFeatures.ts) break up the run; the channel ends in tunnel walls
+ * channelFeatures.ts) break up the run; the channel ends in tunnel walls
  * ('channelEnd') well outside the city. The renderer
- * (render/districts/river.ts) draws all of it.
+ * (render/districts/channel.ts) draws all of it.
  *
- * The parts live in river/: centerline (the channel's centerline samples), ramps (the entrance ramps), bridges
+ * The parts live in channel/: centerline (the channel's centerline samples), ramps (the entrance ramps), bridges
  * (the street crossings and their decks) and plan (the planner). This module is the district itself (its
  * build, the funnel at a ramp top, the terrain settling) and the public surface the rest of the city imports.
  */
@@ -65,31 +65,31 @@ import type { PropKind } from '../props';
 import type { Area, AreaBuild, DistrictModule, HeightSample } from './types';
 import { emptyBuild } from './types';
 import { polyWalls, smooth01, type Smooth, solidWalls } from './geom';
-import { type FeatureSample, featureHeight, featureSpan, featuresOf, medianBarrierXs } from './riverFeatures';
-import { riverCenter, riverL, riverSlope } from './river/centerline';
-import { type Ramp, footAlongs, mouthAlongs, rampAlong, rampHalf, rampOuter, rampPoint, rampProfile, rampsOf } from './river/ramps';
+import { type FeatureSample, featureHeight, featureSpan, featuresOf, medianBarrierXs } from './channelFeatures';
+import { channelCenter, channelL, channelSlope } from './channel/centerline';
+import { type Ramp, footAlongs, mouthAlongs, rampAlong, rampHalf, rampOuter, rampPoint, rampProfile, rampsOf } from './channel/ramps';
 import { type Lip, lipSpread } from '../roadProfile';
-import { bridgePoint, bridgesOf, deckBox, deckLine, distToBridge, pierOffsets } from './river/bridges';
-import { planRiver } from './river/plan';
+import { bridgePoint, bridgesOf, deckBox, deckLine, distToBridge, pierOffsets } from './channel/bridges';
+import { planChannel } from './channel/plan';
 
-export { channelWidth, riverCenter, riverFrame, riverL, riverSlope } from './river/centerline';
-export { type Ramp, footAlongs, mouthAlongs, rampAlong, rampHalf, rampOuter, rampPoint, rampProfile, rampsOf } from './river/ramps';
-export { type Bridge, bridgePoint, bridgesOf, distToBridge, pierOffsets, pierReach } from './river/bridges';
+export { channelWidth, channelCenter, channelFrame, channelL, channelSlope } from './channel/centerline';
+export { type Ramp, footAlongs, mouthAlongs, rampAlong, rampHalf, rampOuter, rampPoint, rampProfile, rampsOf } from './channel/ramps';
+export { type Bridge, bridgePoint, bridgesOf, distToBridge, pierOffsets, pierReach } from './channel/bridges';
 
 /** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
 const SMOOTH: Smooth = { v: 0, d: 0 };
 
-const CFG = CITY.districts.river;
+const CFG = CITY.districts.channel;
 /** The parapets, deck openings and span footprints reach this far beyond the band's top edge (m). */
 const DECK_END = 2.5;
 
 // ---------------------------------------------------------------------------
 // The module
 
-export const riverModule: DistrictModule = {
-  kind: 'river',
+export const channelModule: DistrictModule = {
+  kind: 'channel',
   phase: 'graph',
-  plan: planRiver,
+  plan: planChannel,
 
   build(ctx, area) {
     const b = emptyBuild();
@@ -106,7 +106,7 @@ export const riverModule: DistrictModule = {
     const spans = features.map((f) => featureSpan(f, F));
     const feat: FeatureSample = { h: 0, hx: 0, hl: 0 };
     const lip: Lip = { h: 0, dh: 0 };
-    const zc = (x: number) => riverCenter(p, x);
+    const zc = (x: number) => channelCenter(p, x);
     const at = (x: number, l: number): Vec2 => ({ x, z: zc(x) + l });
     const band = (xa: number, xb: number, la: number, lb: number, step = 16): Vec2[] => {
       const top: Vec2[] = [];
@@ -127,7 +127,7 @@ export const riverModule: DistrictModule = {
      * lower of the two wins); `flat` also flattens it under the bridge decks (the terrain: the deck).
      */
     const profile = (x: number, z: number, out: HeightSample, flat: boolean): void => {
-      const s = riverSlope(p, x);
+      const s = channelSlope(p, x);
       const l = z - zc(x);
       const sg = l >= 0 ? 1 : -1;
       const al = l * sg;
@@ -151,7 +151,7 @@ export const riverModule: DistrictModule = {
           gl = ((D * pr.df) / (r.topL - F)) * sg;
         }
       }
-      // The set pieces on the floor (riverFeatures.ts): partials in x and l, l's gradient being (-slope, 1).
+      // The set pieces on the floor (channelFeatures.ts): partials in x and l, l's gradient being (-slope, 1).
       for (let i = 0; i < features.length; i++) {
         if (Math.abs(x - features[i].x) >= spans[i]) continue;
         featureHeight(features[i], F, x, l, feat);
@@ -254,12 +254,12 @@ export const riverModule: DistrictModule = {
     for (let x = p.x0; x < p.x1; x += 24) b.exclusions.push(band(x, Math.min(p.x1, x + 24), -clear, clear, 24));
     b.surfaces.push({ surface: 'concrete', polygon: area.polygon, priority: 1, area: id });
     // The trickle outranks the road classification of the channel edges, so it stays slippery; it runs
-    // on under the decks (World.surfaceAt keeps the river's patches off the deck level).
+    // on under the decks (World.surfaceAt keeps the channel's patches off the deck level).
     for (let x = p.x0; x < p.x1 - 2; x += 48) b.surfaces.push({ surface: 'water', polygon: band(x, Math.min(p.x1, x + 48), CFG.waterOffset - CFG.waterHalf, CFG.waterOffset + CFG.waterHalf), priority: 6, area: id });
 
     // Bridges: parapets along the deck edges (channel cars pass under them), the deck's frontage opened
     // over the band so the city draws no wall there, an abutment box on each bank and pier rows along
-    // the floor edges under the deck (deck cars pass over them, their tops set by settleRiver).
+    // the floor edges under the deck (deck cars pass over them, their tops set by settleChannel).
     const gapsBySide: Record<number, [number, number][]> = { 1: [], [-1]: [] };
     for (const br of bridges) {
       const W = br.dk + body;
@@ -425,7 +425,7 @@ export const riverModule: DistrictModule = {
       if (f.kind !== 'median') continue;
       let k = 0;
       for (const x of medianBarrierXs(f)) {
-        const yaw = Math.atan2(-riverSlope(p, x), 1);
+        const yaw = Math.atan2(-channelSlope(p, x), 1);
         b.destructibles.push({ kind: k++ % 2 ? 'sandbags' : 'waterBarrier', x, z: zc(x), yaw, lift: 0, area: id });
       }
     }
@@ -445,7 +445,7 @@ export const riverModule: DistrictModule = {
  * car turning in has the whole flare leading into the bell mouth.
  */
 function funnel(g: RoadGraph, b: AreaBuild, rng: Rng, r: Ramp, aTop: number, aCurb: number, area: number): void {
-  // Side ramps: the bank street's pieces at the T. It runs along the river, not always square to the
+  // Side ramps: the bank street's pieces at the T. It runs along the channel, not always square to the
   // ramp's axis, so a point is pulled back toward the mouth until it stands behind the curb.
   const street: { a: Vec2; b: Vec2; half: number }[] = [];
   if (!r.ford)
@@ -537,9 +537,9 @@ function funnel(g: RoadGraph, b: AreaBuild, rng: Rng, r: Ramp, aTop: number, aCu
  * profile; the base terrain rolls along and across a bridge, so each wall
  * takes the deck right above it.
  */
-export function settleRiver(g: RoadGraph, areas: readonly Area[], builds: readonly AreaBuild[], terrain: Terrain): void {
+export function settleChannel(g: RoadGraph, areas: readonly Area[], builds: readonly AreaBuild[], terrain: Terrain): void {
   for (const area of areas) {
-    if (area.kind !== 'river') continue;
+    if (area.kind !== 'channel') continue;
     const p = area.params;
     const bridges = bridgesOf(g, area);
     if (!bridges.length) continue;
@@ -559,7 +559,7 @@ export function settleRiver(g: RoadGraph, areas: readonly Area[], builds: readon
       // The deck under the wall, at its lowest along it: a long skewed abutment face (a diagonal over
       // the band) spans a deck that climbs with the ground, and a car on the deck must clear all of it.
       const deckAt = (x: number, z: number) => {
-        const l = riverL(p, x, z);
+        const l = channelL(p, x, z);
         const c = bridgePoint(p, br, 0, l);
         const wv = Math.max(-br.dk, Math.min(br.dk, (x - c.x) * br.nx + (z - c.z) * br.nz));
         const q = bridgePoint(p, br, wv, l);

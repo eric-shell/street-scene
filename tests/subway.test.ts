@@ -3,7 +3,7 @@ import { CITY } from '../src/city/config';
 import { createCity, planRoads } from '../src/city/world';
 import { distToSegment } from '../src/sim/math';
 import { Rng } from '../src/sim/prng';
-import { riverCenter } from '../src/city/districts/river';
+import { channelCenter } from '../src/city/districts/channel';
 import { RAIL, buildRailCurve, dirOn, projectOnCurve, sampleCurve, curvePoint, trackFor, trackLateral } from '../src/city/railCurve';
 import type { RailCurve } from '../src/city/railCurve';
 import { TRAIN, buildRun, makeService, runAt, trackS, trainLength, tripsAt } from '../src/city/railTimetable';
@@ -222,9 +222,9 @@ describe('elevated railway (city)', () => {
           expect(distToSegment(w.ax, w.az, A.x, A.z, B.x, B.z)).toBeGreaterThan(e.width / 2);
         }
       }
-      // Stairs stay out of the river channel.
-      const rivers = c.districts.areas.filter((a) => a.kind === 'river');
-      for (const s of stairs) for (const rv of rivers) expect(Math.abs(s.z - riverCenter(rv.params, s.x))).toBeGreaterThan(rv.params.top);
+      // Stairs stay out of the channel.
+      const channels = c.districts.areas.filter((a) => a.kind === 'channel');
+      for (const s of stairs) for (const rv of channels) expect(Math.abs(s.z - channelCenter(rv.params, s.x))).toBeGreaterThan(rv.params.top);
     }
     // (Most cities have a station: curved streets leave some with no block straight enough for one.)
     expect(stations).toBeGreaterThanOrEqual(cities.length * 0.75);
@@ -246,7 +246,7 @@ describe('elevated railway (city)', () => {
 });
 
 describe('elevated railway (track curve)', () => {
-  it('keeps the deck at full height over the city, smooth and gentle, over the river too', () => {
+  it('keeps the deck at full height over the city, smooth and gentle, over the channel too', () => {
     for (const c of cities) {
       const area = c.districts.areas.find((a) => a.kind === 'subway')!;
       const curve = elCurve(area, c.districts.builds[area.id], c.terrain.heightAt);

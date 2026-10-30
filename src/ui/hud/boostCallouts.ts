@@ -2,7 +2,7 @@
  * Nitrous callouts, Burnout style: every way of earning nitrous pops up over
  * the dial cluster with what it is paying, so the style that fills the tank
  * is named the moment it pays and racers go looking for more. A drift, a
- * wall skim (near miss) and a slipstream each get one live callout that
+ * wall skim (near miss), a slipstream and airtime each get one live callout that
  * counts up while it pays and holds a moment after; filling a stage, banking
  * a full overdrive and a chain refill are one shot calls; a wreck (a prop
  * knocked down) is live too, so a row of cans counts up as one call, and so is
@@ -57,12 +57,12 @@ const CALLOUT = {
 /** The callouts' stage for points that spilled past a full tank into overdrive. */
 export const OVERDRIVE_STAGE = NITRO_STAGES + 1;
 
-type LiveKind = 'drift' | 'nearMiss' | 'draft' | 'wreck' | 'crash';
+type LiveKind = 'drift' | 'nearMiss' | 'draft' | 'air' | 'wreck' | 'crash';
 type Kind = LiveKind | 'chain' | 'stage' | 'overdrive' | 'reset';
 /** Where the points's points came from: every live kind (crash counts against it). */
 export type PointsSource = LiveKind;
 
-const NAME: Record<LiveKind | 'chain' | 'reset', string> = { drift: 'Drift', nearMiss: 'Near miss', draft: 'Slipstream', wreck: 'Wreck', crash: 'Crash', chain: 'Chain boost', reset: 'Reset' };
+const NAME: Record<LiveKind | 'chain' | 'reset', string> = { drift: 'Drift', nearMiss: 'Near miss', draft: 'Slipstream', air: 'Airtime', wreck: 'Wreck', crash: 'Crash', chain: 'Chain boost', reset: 'Reset' };
 
 /**
  * What the callouts tell the sounds and rumble: `tick` as a number rolls past
@@ -77,7 +77,7 @@ export type PointsTally = Record<PointsSource, number>;
 
 /** The points: everything style paid less what crashes cost, never below 0. */
 export function pointsTotal(t: PointsTally): number {
-  return Math.max(0, Math.round(t.drift + t.nearMiss + t.draft + t.wreck - t.crash));
+  return Math.max(0, Math.round(t.drift + t.nearMiss + t.draft + t.air + t.wreck - t.crash));
 }
 
 interface Callout {
@@ -102,7 +102,7 @@ interface Callout {
 export class BoostCallouts {
   readonly el: HTMLDivElement;
   /** This race's points so far, by source (points). */
-  readonly tally: PointsTally = { drift: 0, nearMiss: 0, draft: 0, wreck: 0, crash: 0 };
+  readonly tally: PointsTally = { drift: 0, nearMiss: 0, draft: 0, air: 0, wreck: 0, crash: 0 };
   /** Sounds and rumble for what the callouts call (the session's). */
   onCue: ((cue: BoostCue) => void) | null = null;
   private readonly items: Callout[] = [];
@@ -125,6 +125,7 @@ export class BoostCallouts {
     this.pay('drift', g.drift + g.zone, filling, g.zone > 0);
     this.pay('nearMiss', g.nearMiss, filling, false);
     this.pay('draft', g.draft, filling, false);
+    this.pay('air', g.air, filling, false);
     this.pay('wreck', g.wreck, filling, false);
     if (c.nitroLoss > 0 && !this.items.some((x) => x.kind === 'crash' && !x.out)) this.onCue?.({ kind: 'crash' });
     this.pay('crash', c.nitroLoss, filling, false);

@@ -5,10 +5,19 @@
  * through TabHost, so garageUi.ts keeps the steps, saving and dialogs and this
  * file only the controls. Edits write straight into the build and call
  * `changed`, which refits the car live; Save is the screen's.
+ *
+ * Parts are bought (shared/economy.ts, shared/purchases.ts): the Wheels and
+ * Body tabs tag each part with its price for this car, a lock and the races
+ * still to finish, or nothing once owned. A pick the car does not own is put
+ * on the car to preview and the screen offers it (TabHost.offer): bought, it
+ * stays; declined, the pick goes back, so the build only ever keeps owned parts.
+ * A new model drops the wheels it does not own, once confirmed.
  */
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partById, partsFor } from '../render/car/carAssets';
-import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
+import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS, type PartEntry } from '../shared/parts';
+import { loadPurchases, owns, stripParts, unownedParts } from '../shared/purchases';
+import { loadStats } from '../shared/stats';
 import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, BANNER_HEIGHTS, BODY_FEATURES, BodyFeature, CarBuild, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning, type CarTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
@@ -18,7 +27,7 @@ import { cycler, h, multiSelect, onOffSwitch, segmented, toast } from '../ui/kit
 import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, ListFilter, Paintbrush, Sparkles, Zap, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { GaragePrefs, StanceLink, saveGaragePrefs } from './storage';
-import { capital, choiceList, cm, colorPicker, field, matchBody, mm, note, paintPicker, percent, revealable, rowName, section, sectionWith, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
+import { capital, choiceList, cm, colorPicker, field, matchBody, mm, note, paintPicker, partTag, partTagEl, percent, revealable, rowName, section, sectionWith, slider, statLines, toggle, type PaintMatch } from './garageWidgets';
 import { renderVinyls } from './garageVinyls';
 import { setupSlider } from './setupSliders';
 import { wheelPicker } from './wheelPicker';
@@ -97,6 +106,13 @@ export interface TabHost {
   placing: { shape: VinylShape; index: number } | null;
   changed(rerender?: boolean): Promise<unknown>;
   renderTab(): void;
+  /**
+   * A part the car does not own was just put on to preview: offer it (the buy dialog, or the races still to finish
+   * when it is locked). Bought, it stays on; declined, `revert` takes the pick back and the tab re-renders.
+   */
+  offer(part: PartEntry, revert: () => void): void;
+  /** Ask before an edit that loses something: `go` on yes, `cancel` on no (the dialog closed). */
+  confirm(ico: IconNode, title: string, text: string, yes: string, go: () => void, cancel: () => void): void;
   /** Frame the open tab's shot again (the Body tab's slot or the Paint tab's surface changed). */
   reframe(): void;
 }
@@ -182,17 +198,24 @@ export function renderTabContent(host: TabHost): void {
         b.carId,
         (id) => {
           if (id === b.carId) return;
-          // A launch or antilag rpm left on the old car's stock pick follows the new car's; one the player chose stays (applyBuild clamps it).
-          // Swaps are per car: the new one starts on its own engine.
-          followEngine(b.performance, b.carId, b.performance.swap, id, undefined);
-          delete b.performance.swap;
-          b.carId = id;
-          // Parts are per car; wheels are universal and stay.
+          // Parts are per car; wheels are universal and stay, unless the new car does not own them (bought per car).
           const wheels = v.parts.wheels;
-          v.parts = wheels ? { wheels } : {};
-          v.decals = [];
-          // Say hello: a short blip of the new car's engine (and the body rocks with it).
-          void host.changed().then(() => host.scene.blip());
+          const lost = unownedParts({ ...v, parts: wheels ? { wheels } : {} }, id);
+          const go = () => {
+            // A launch or antilag rpm left on the old car's stock pick follows the new car's; one the player chose stays (applyBuild clamps it).
+            // Swaps are per car: the new one starts on its own engine.
+            followEngine(b.performance, b.carId, b.performance.swap, id, undefined);
+            delete b.performance.swap;
+            b.carId = id;
+            v.parts = wheels ? { wheels } : {};
+            stripParts(v, lost);
+            v.decals = [];
+            // Say hello: a short blip of the new car's engine (and the body rocks with it).
+            void host.changed(lost.length > 0).then(() => host.scene.blip());
+          };
+          if (!lost.length) return go();
+          const name = manifestCar(id).displayName;
+          host.confirm(Car, `Switch to the ${name}?`, `Switching to the ${name} resets these parts to stock: ${lost.map((p) => p.name).join(', ')}. Parts are bought per car.`, 'Switch', go, () => host.renderTab());
         },
       );
       // The makers filter, as the Wheels tab's: it hides the other makers' tiles in place, so its menu stays open
@@ -260,6 +283,9 @@ export function renderTabContent(host: TabHost): void {
       const linked = host.prefs.linkWheels;
       const rear = !linked && host.wheelAxle === 'rear';
       const front = v.parts.wheels ?? manifestCar(b.carId).defaultWheel;
+      // The ledgers, read once for every tile's tag.
+      const saved = loadPurchases();
+      const stats = loadStats();
       // The picker fills the tab (the section grows to the body's height) with its own scrolling panes.
       const group = sectionWith(
         linked ? 'Wheel' : `${capital(host.wheelAxle)} wheel`,
@@ -275,7 +301,9 @@ export function renderTabContent(host: TabHost): void {
           onMakers: (m) => {
             host.wheelMakers = m;
           },
+          tag: (p) => partTagEl(partTag(b.carId, p, saved, stats), true),
           onPick: (id) => {
+            const was = { front: v.parts.wheels, rear: w.rearPart };
             if (rear) w.rearPart = id;
             else {
               // Linked, the rear follows the front; unlinked, it keeps the wheel it wore.
@@ -283,6 +311,14 @@ export function renderTabContent(host: TabHost): void {
               v.parts.wheels = id;
             }
             void host.changed();
+            // A wheel this car does not own is a preview until it is bought.
+            const part = partsFor(b.carId, 'wheels').find((p) => p.id === id);
+            if (part && !owns(b.carId, id))
+              host.offer(part, () => {
+                if (was.front === undefined) delete v.parts.wheels;
+                else v.parts.wheels = was.front;
+                w.rearPart = was.rear;
+              });
           },
         }),
       );
@@ -491,21 +527,32 @@ export function renderTabContent(host: TabHost): void {
       break;
     }
     case 'body': {
-      // Every body part slot listed (a part list each, or a line while a slot has none yet); the one in hand frames the camera.
+      // Every body part slot listed (a part list each, or a line while a slot has none yet); the one in hand frames the
+      // camera. Each part shows what it costs this car (owned, its price, or the races that unlock it).
+      const saved = loadPurchases();
+      const stats = loadStats();
       for (const slot of BODY_PART_SLOTS) {
         const parts = partsFor(b.carId, slot);
         const optional = OPTIONAL_SLOTS.includes(slot);
         // The aero and trim slots exist only for cars that ship parts for them: no menu at all otherwise.
         if (!parts.length && HIDE_WHEN_EMPTY.includes(slot) && ![...host.assets.devParts.values()].some((d) => d.slot === slot)) continue;
-        const items: { value: string | null; label: string; sub?: string }[] = [{ value: null, label: optional ? 'None' : 'Stock' }, ...parts.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` }))];
+        const items: { value: string | null; label: string; sub?: string; extra?: Node }[] = [{ value: null, label: optional ? 'None' : 'Stock' }, ...parts.map((p) => ({ value: p.id, label: p.displayName, extra: partTagEl(partTag(b.carId, p, saved, stats)) ?? undefined }))];
         const dev = [...host.assets.devParts.entries()].filter(([, d]) => d.slot === slot).map(([id, d]) => ({ value: id, label: d.name, sub: 'Dev preview' }));
         items.push(...dev);
         const group = section(
           SLOT_LABELS[slot],
           items.length > 1
             ? choiceList(items, v.parts[slot] ?? null, (id) => {
+                const was = v.parts[slot];
                 v.parts[slot] = id;
                 void host.changed(true);
+                // A part this car does not own is a preview until it is bought.
+                const part = id ? parts.find((p) => p.id === id) : undefined;
+                if (part && !owns(b.carId, part.id))
+                  host.offer(part, () => {
+                    if (was === undefined) delete v.parts[slot];
+                    else v.parts[slot] = was;
+                  });
               })
             : note('No parts for this slot yet.'),
         );

@@ -1,9 +1,10 @@
-/* The garage (garageUi.ts): its rail, tabs and groups, the rows inside them, the Wheels tab's picker, the signed-out note under the builds, the car card and the Garage / Street switch. In cascade order. */
+/* The garage (garageUi.ts): its rail, tabs and groups, the rows inside them, the parts' price tags, the Wheels tab's picker, the signed-out note under the builds, the car card, the points counter, the buy dialog and the Garage / Street switch. In cascade order. */
 @use 'garage';
 @use 'garage-tab';
 @use 'garage-section';
 @use 'garage-toggle';
 @use 'garage-item';
+@use 'part-tag';
 @use 'wheel-picker';
 @use 'garage-slot';
 @use 'garage-note';
@@ -11,4 +12,6 @@
 @use 'tune-stat';
 @use 'setup-slider';
 @use 'car-card';
+@use 'points-counter';
+@use 'garage-buy';
 @use 'garage-stage';

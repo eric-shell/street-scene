@@ -1,0 +1,69 @@
+/* The points balance (garageWidgets.ts PointsCounter): a chamfered plate with the coin, the number in tabular
+   figures and "pts", in the values' yellow. Customize's header wears it full size; --quiet is the Builds
+   header's smaller one. A buy flashes it red as the number rolls down (.is-spent), points coming in green
+   (.is-earned); with reduced motion the number jumps and the color holds still. */
+@use '../ui/styles/abstracts/media';
+@use '../ui/styles/abstracts/mixins';
+@use '../ui/styles/abstracts/palette';
+.points-counter {
+  @include mixins.chamfer(7px);
+  --flash: var(--accent-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 8px;
+  font: 700 15px var(--font);
+  color: var(--accent-2);
+  white-space: nowrap;
+  @include mixins.plate(linear-gradient(var(--accent-2-soft), var(--accent-2-soft)), var(--radius-sm));
+  background-color: palette.alpha(bg0, 0.85);
+  border-color: palette.alpha(yellow, 0.35);
+  > svg {
+    flex: none;
+  }
+  &__value {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+  &__unit {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  &--quiet {
+    padding: 3px 8px 3px 6px;
+    font-size: 13px;
+    > svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+  &.is-spent {
+    --flash: var(--red);
+  }
+  &.is-earned {
+    --flash: var(--green);
+  }
+  @include media.motion {
+    &.is-spent,
+    &.is-earned {
+      animation: points-counter-flash 1.8s var(--ease-out) both;
+    }
+  }
+}
+
+@keyframes points-counter-flash {
+  0%,
+  45% {
+    color: var(--flash);
+    border-color: var(--flash);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--flash) 45%, transparent);
+  }
+  100% {
+    color: var(--accent-2);
+    border-color: #{palette.alpha(yellow, 0.35)};
+    box-shadow: none;
+  }
+}

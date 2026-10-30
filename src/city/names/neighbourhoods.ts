@@ -8,7 +8,7 @@
  * Seeds are spread over the blocks (farthest point, then a few Lloyd steps
  * toward their parts' middles) and grow out across the block adjacency
  * graph, nearest first. Crossing a street costs the distance between the
- * blocks' middles, more over a big street and much more over the river, less
+ * blocks' middles, more over a big street and much more over the channel, less
  * through an alley, so borders settle on the avenues and the channel the way
  * real neighbourhood lines do and a part never splits in two. A border is
  * then the street centerlines between blocks of different parts.
@@ -16,7 +16,7 @@
 import type { World } from '../world';
 import type { BlockFace } from '../blocks';
 import type { Area } from '../districts/types';
-import { isRiverEdge, type RoadEdge } from '../roadGraph';
+import { isChannelEdge, type RoadEdge } from '../roadGraph';
 import { pointInPolygon, polygonArea, polygonCentroid } from '../districts/geom';
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Vec2 } from '../../sim/math';
@@ -28,17 +28,17 @@ const HOOD = {
   count: [5, 9],
   /** Lloyd steps after the farthest point spread. */
   relax: 3,
-  /** Extra cost of growing over a street by kind: borders like big streets and the river, not alleys. */
+  /** Extra cost of growing over a street by kind: borders like big streets and the channel, not alleys. */
   boulevard: 260,
   avenue: 140,
   diagonal: 140,
-  river: 900,
+  channel: 900,
   /** Alleys and back alleys run inside what reads as one block: crossing one costs this share of the distance. */
   alleyShare: 0.35,
 } as const;
 
-/** What a neighbourhood is like, which picks the pool its name comes from: the middle, by the river, the lake or the harbor, up high, or none of those. */
-export type HoodCharacter = 'core' | 'river' | 'lake' | 'harbor' | 'heights' | 'town';
+/** What a neighbourhood is like, which picks the pool its name comes from: the middle, by the channel, the lake or the harbor, up high, or none of those. */
+export type HoodCharacter = 'core' | 'channel' | 'lake' | 'harbor' | 'heights' | 'town';
 
 export interface Neighbourhood {
   id: number;
@@ -242,7 +242,7 @@ function plan(world: World): HoodPlan {
 const isAlley = (e: RoadEdge) => e.kind === 'alley' || e.kind === 'backAlley';
 
 function streetCost(e: RoadEdge): number {
-  if (isRiverEdge(e) || e.bridge) return HOOD.river;
+  if (isChannelEdge(e) || e.bridge) return HOOD.channel;
   return e.kind === 'boulevard' ? HOOD.boulevard : e.kind === 'avenue' ? HOOD.avenue : e.kind === 'diagonal' ? HOOD.diagonal : 0;
 }
 
@@ -287,22 +287,22 @@ function middle(mid: Vec2[], size: number[], ids: number[]): Vec2 | null {
 }
 
 /**
- * Core (the part nearest the city's middle); else by the water it has most blocks on (river, lake, harbor); else
+ * Core (the part nearest the city's middle); else by the water it has most blocks on (channel, lake, harbor); else
  * heights (in the hills or on the bluff); else town.
  */
 function characterize(world: World, hoods: Neighbourhood[], inner: BlockFace[], mid: Vec2[], faceHood: Int16Array, sides: Map<number, number[]>): void {
   const g = world.graph;
   // Blocks per neighbourhood on each kind of ground.
-  const on = { river: new Map<number, number>(), lake: new Map<number, number>(), harbor: new Map<number, number>(), heights: new Map<number, number>() };
+  const on = { channel: new Map<number, number>(), lake: new Map<number, number>(), harbor: new Map<number, number>(), heights: new Map<number, number>() };
   const add = (m: Map<number, number>, h: number) => m.set(h, (m.get(h) ?? 0) + 1);
   for (const a of world.areas) {
-    const m = a.kind === 'river' ? on.river : a.kind === 'lake' ? on.lake : a.kind === 'waterfront' ? on.harbor : a.kind === 'hills' || a.kind === 'bluff' ? on.heights : null;
+    const m = a.kind === 'channel' ? on.channel : a.kind === 'lake' ? on.lake : a.kind === 'waterfront' ? on.harbor : a.kind === 'hills' || a.kind === 'bluff' ? on.heights : null;
     if (!m) continue;
     for (let i = 0; i < inner.length; i++) {
       if (a.faces.includes(inner[i].id) || (a.polygon.length >= 3 && pointInPolygon(mid[i].x, mid[i].z, a.polygon))) add(m, faceHood[inner[i].id]);
     }
   }
-  for (const [e, fs] of sides) if (isRiverEdge(g.edges[e])) for (const f of fs) if (faceHood[f] >= 0) add(on.river, faceHood[f]);
+  for (const [e, fs] of sides) if (isChannelEdge(g.edges[e])) for (const f of fs) if (faceHood[f] >= 0) add(on.channel, faceHood[f]);
   const b = g.bounds;
   const cx = (b.minX + b.maxX) / 2;
   const cz = (b.minZ + b.maxZ) / 2;
@@ -316,7 +316,7 @@ function characterize(world: World, hoods: Neighbourhood[], inner: BlockFace[], 
     }
   }
   for (const hd of hoods) {
-    const wet = (['harbor', 'lake', 'river'] as const).map((k) => ({ k, n: on[k].get(hd.id) ?? 0 })).sort((a, b) => b.n - a.n)[0];
+    const wet = (['harbor', 'lake', 'channel'] as const).map((k) => ({ k, n: on[k].get(hd.id) ?? 0 })).sort((a, b) => b.n - a.n)[0];
     hd.character = hd.id === core ? 'core' : wet.n ? wet.k : on.heights.has(hd.id) ? 'heights' : 'town';
   }
 }

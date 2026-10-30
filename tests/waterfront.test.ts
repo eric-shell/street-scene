@@ -9,7 +9,7 @@ import type { Area } from '../src/city/districts/types';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import { insideBuilding } from '../src/city/blocks';
 import { PROP_DEFS } from '../src/city/props';
-import { isRiverEdge } from '../src/city/roadGraph';
+import { isChannelEdge } from '../src/city/roadGraph';
 import { pointInPolygon } from '../src/city/districts/geom';
 import { coastV, frameU, frameV, harborFrame, harborWater, waterLevel, waterSpan } from '../src/city/districts/waterfrontShape';
 import * as THREE from 'three';
@@ -68,7 +68,7 @@ describe('waterfront (plan)', () => {
     for (let i = 0; i < n; i++) if (waterfrontRolled(rng.int(0, 0x7fffffff))) rolled++;
     expect(rolled / n).toBeGreaterThan(CFG.chance - 0.025);
     expect(rolled / n).toBeLessThan(CFG.chance + 0.025);
-    // Most seeds that roll one find a side free enough (the El, the river and the expressway take the rest),
+    // Most seeds that roll one find a side free enough (the El, the channel and the expressway take the rest),
     // so about a third of cities have a harbor; one that does not roll has none.
     const seeds = new Rng(77);
     let tried = 0;
@@ -116,10 +116,10 @@ describe('waterfront (plan)', () => {
     for (const { city, a } of cities) {
       const p = a.params;
       const f = harborFrame(a);
-      // Nothing else stands out over the water or the quay: the El, the river, the expressway, the bluff.
+      // Nothing else stands out over the water or the quay: the El, the channel, the expressway, the bluff.
       const [w0, w1] = waterSpan(p);
       for (const o of city.districts.areas) {
-        if (!['subway', 'river', 'highway', 'bluff'].includes(o.kind)) continue;
+        if (!['subway', 'channel', 'highway', 'bluff'].includes(o.kind)) continue;
         for (const q of [...o.polygon, ...o.path]) {
           const u = frameU(f, q.x, q.z);
           const v = frameV(f, q.x, q.z);
@@ -1192,7 +1192,7 @@ describe('waterfront (mouth sweep)', () => {
       for (const q of city.districts.builds[a.id].destructibles) {
         const r = PROP_DEFS[q.kind].radius;
         for (const e of g.edges) {
-          if (isRiverEdge(e)) continue;
+          if (isChannelEdge(e)) continue;
           const m = distToSegment(q.x, q.z, g.nodes[e.a].x, g.nodes[e.a].z, g.nodes[e.b].x, g.nodes[e.b].z) - e.width / 2 - r;
           if (m <= 0) bad.push(`${seed} ${a.variant} ${q.kind} ${m.toFixed(2)} m into a street`);
         }

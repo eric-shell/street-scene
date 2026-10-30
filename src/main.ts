@@ -57,7 +57,10 @@ import { specBadges } from './shared/carSpec';
 import { damp } from './shared/anim';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
 import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, loadPointsBest, saveGhost, saveLastReplay, submitBest, submitPointsBest } from './replay/replay';
-import { addRunPoints, loadPoints } from './shared/points';
+import { addRunPoints, balanceOf, loadPoints } from './shared/points';
+import { recordFreeRoam, recordRace } from './shared/stats';
+import { enforceOwnership } from './shared/purchases';
+import { openStrippedNotice } from './garage/ownershipNotice';
 import { pointsTotal } from './ui/hud/boostCallouts';
 import { accountReady } from './account/account';
 import { beginDrive, driveFrame, endDrive, setQualityReader } from './analytics/drive';
@@ -536,7 +539,7 @@ function handoffToFreeRoam(): void {
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   // The open world built with the stage (from scratch, the city alone would be hundreds of ms here).
   const world = stageOpen?.seed === config.seed ? stageOpen : createWorld(config.seed, 'circuit', st.world, { openWorld: true });
-  runSession(config, [build.visual], null, null, 'roam', { handoff: { stage: st, shot, pan: HANDOFF.pan }, world });
+  runSession(config, [ownedVisual(build)], null, null, 'roam', { handoff: { stage: st, shot, pan: HANDOFF.pan }, world });
   // The view recenters on the whole screen as the rail slides away (a race start would snap it).
   gr.setFraming(0, 0);
   window.setTimeout(() => {
@@ -671,7 +674,7 @@ function startRace(mode: RaceMode): void {
     aiSeed: rivalSeed(),
   };
   const ghostData = count === 0 ? loadGhost(seed, mode) : null;
-  runSession(config, [build.visual, ...opp.visuals], null, ghostData, 'race');
+  runSession(config, [ownedVisual(build), ...opp.visuals], null, ghostData, 'race');
 }
 
 /**
@@ -698,7 +701,18 @@ function startFreeRoam(seedText: string): void {
     traffic: true,
     people: true,
   };
-  runSession(config, [build.visual], null, null, 'roam');
+  runSession(config, [ownedVisual(build)], null, null, 'roam');
+}
+
+/**
+ * The look a race shows the player's car in: the build's, less any part its car does not own (shared/purchases.ts).
+ * Defensive, since the garage and the loads already enforce it; a copy, so the garage's draft is left alone. Visual
+ * only: the sim never reads it.
+ */
+function ownedVisual(build: CarBuild): VisualBuild {
+  const copy = JSON.parse(JSON.stringify(build)) as CarBuild;
+  enforceOwnership(copy);
+  return copy.visual;
 }
 
 function startReplay(r: ReplayData): void {
@@ -736,6 +750,8 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     const player = session.race.cars[0];
     if (applySavedTuning(player.tuning, loadSavedTuning(player.carId)) > 0) session.tuned = true;
   }
+  // The player's stats count every untuned free roam drive (shared/stats.ts).
+  if (kind === 'roam' && !session.tuned) recordFreeRoam();
   // Debug mode opens both tuning panels (` / F2 and F3 hide and show them).
   if (debugOn()) {
     toggleTuningPanel(true);
@@ -774,8 +790,8 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     const pointsBest = loadPointsBest(race.config.seed, race.config.mode);
     let newPointsBest = false;
     const runPoints = pointsTotal(points);
-    // The player's lifetime points (shared/points.ts, the source for unlocks): a live untuned run adds its points.
-    let lifetime = loadPoints().total;
+    // The player's points balance (shared/points.ts, the garage's currency): a live untuned run adds its points.
+    let lifetime = balanceOf(loadPoints());
     let gained = 0;
     if (!replay) {
       if (FEATURES.replays) saveLastReplay(data);
@@ -783,8 +799,20 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         newPointsBest = submitPointsBest(race.config.seed, race.config.mode, runPoints);
         if (runPoints > 0) {
           gained = runPoints;
-          lifetime = addRunPoints(runPoints).total;
+          lifetime = balanceOf(addRunPoints(runPoints));
         }
+        // The player's stats (shared/stats.ts; races finished unlock parts): live untuned runs only, as the points.
+        const player = me.car;
+        recordRace({
+          mode: race.config.mode,
+          place: me.position,
+          entrants: race.cars.length,
+          time: me.time,
+          distance: race.distance > 0 ? Math.min(Math.max(0, player.dist), race.distance) : Math.max(0, player.dist),
+          driftScore: race.config.mode === 'drift' ? race.drift.total : 0,
+          points: runPoints,
+          crashPoints: points.crash,
+        });
         newBest = submitBest(race.config.seed, race.config.mode, { time: me.time, score: race.drift.total, carId: race.config.player.carId, date: data.date });
         if (newBest && race.config.opponents.length === 0) saveGhost(race.config.seed, race.config.mode, data);
       }
@@ -1126,12 +1154,17 @@ async function boot(): Promise<void> {
   if (code) {
     const b = await decodeShareCode(code);
     if (b) {
+      // Parts the shared build wears that its car does not own here come off, and the player is told which.
+      const stripped = enforceOwnership(b);
       garage.slots.push(b);
       if (garage.slots.length > 6) garage.slots.shift();
       garage.current = garage.slots.length - 1;
       saveGarage(garage);
       track('build_import', { carId: b.carId });
-      notice = () => toast(`Loaded shared build "${b.name}"`, Check);
+      notice = () => {
+        toast(`Loaded shared build "${b.name}"`, Check);
+        if (stripped.length) openStrippedNotice(uiRoot, manifestCar(b.carId).displayName, stripped);
+      };
     } else notice = () => toast('That build code could not be read', Info);
     const u = new URL(location.href);
     u.searchParams.delete('build');

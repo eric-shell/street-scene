@@ -443,7 +443,7 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
   // The corner itself must be a plain junction (subway column nodes are fine: pillars keep off every
   // road and junction); the far ends of the cut's edges may be anything, roundabouts kept at a distance.
   const cornerOk = (id: number) => !g.nodes[id].ring && (!ctx.claims.node.has(id) || ['subway', 'hills', 'bluff', 'highway'].includes(ctx.areas[ctx.claims.node.get(id)!].kind));
-  /** Other streets' corridors, rivers, roundabouts and other alleys stay clear of the cut's sidewalks. */
+  /** Other streets' corridors, channels, roundabouts and other alleys stay clear of the cut's sidewalks. */
   const chordClear = (A: Vec2, B: Vec2, skip: number[], clear: number = cfg.clear): boolean => {
     const len = Math.hypot(B.x - A.x, B.z - A.z);
     const minX = Math.min(A.x, B.x) - 45;
@@ -886,7 +886,7 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
           corners.push({ C, u1: { x: -a.u.x, z: -a.u.z }, h1: E1.width / 2 + E1.sidewalk, u2: b.u, h2: E2.width / 2 + E2.sidewalk });
           if (!cornerClear(corners[0], [a.p, b.p])) continue;
         }
-        // Tight cities (diagonals, the river) leave narrow blocks: a fallback chord may pass closer.
+        // Tight cities (diagonals, the channel) leave narrow blocks: a fallback chord may pass closer.
         if (!chordClear(a.p, b.p, [...a.leg, ...b.leg], CHORD_CLEAR)) continue;
         // Bends away from the corner it cuts, or from the route node ahead of its entry.
         const far = corners.length ? corners[0].C : g.nodes[R[(a.k + 1) % n]];

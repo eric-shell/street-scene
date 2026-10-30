@@ -788,7 +788,7 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
       sceneRef = scene;
       lightingRef = lighting;
       scene.fog = fog;
-      // The haze that pools in the river channel and the low parks (lit by the home's tint); shared uniforms, written here once per scene.
+      // The haze that pools in the channel and the low parks (lit by the home's tint); shared uniforms, written here once per scene.
       setHeightFog(floor, def.heightPool ?? FOG_HEIGHT.pool, tint.hue);
       scene.background = sky;
       scene.environmentIntensity = WEATHER.envDry + WEATHER.envWet * def.wet;

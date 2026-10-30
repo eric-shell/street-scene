@@ -14,7 +14,7 @@
  * circles and clear of every other prop. Pure and deterministic.
  */
 import type { RoadGraph } from './roadGraph';
-import { downtownFactor, isRiverEdge } from './roadGraph';
+import { downtownFactor, isChannelEdge } from './roadGraph';
 import type { EdgeMouths } from './blocks';
 import type { FurnitureKind } from './props';
 import { SETBACK, edgeSides, sidewalkGaps } from './props';
@@ -53,7 +53,7 @@ export function furnishStreets(seed: number, g: RoadGraph, mouths: EdgeMouths[],
   const F = FURNITURE;
   g.edges.forEach((e, ei) => {
     // Plain streets only: alleys are too narrow for it, bridges have parapets, shortcuts are building sites.
-    if (e.kind === 'backAlley' || e.kind === 'alley' || e.kind === 'mouth' || isRiverEdge(e) || e.bridge || e.shortcut) return;
+    if (e.kind === 'backAlley' || e.kind === 'alley' || e.kind === 'mouth' || isChannelEdge(e) || e.bridge || e.shortcut) return;
     const A = g.nodes[e.a];
     const B = g.nodes[e.b];
     const mx = (A.x + B.x) / 2;

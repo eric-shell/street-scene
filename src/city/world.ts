@@ -5,7 +5,7 @@
  */
 import { CITY, ROUTE } from './config';
 import { CityBlocks, Solid, Wall, generateBlocks } from './blocks';
-import { RoadGraph, generateRoadGraph, isRiverEdge } from './roadGraph';
+import { RoadGraph, generateRoadGraph, isChannelEdge } from './roadGraph';
 import { PlannedRouteKind, Route, RouteKind, buildRoute } from './route';
 import { BarrierGroup, routeBarrierGroups } from './routeBarriers';
 import { RailWall, routeRails } from './routeRails';
@@ -16,7 +16,7 @@ import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
 import { RoadProfile, createRoadProfile } from './roadProfile';
 import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
-import { settleRiver } from './districts/river';
+import { settleChannel } from './districts/channel';
 import { CityDistricts, districtModule, planDistricts } from './districts';
 import { settleAlleyLips, shortcutJumpRails } from './districts/alleyDressing';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alleyShortcuts';
@@ -68,14 +68,14 @@ export interface City {
   graph: RoadGraph;
   terrain: Terrain;
   blocks: CityBlocks;
-  /** District areas (downtown blocks, parks, river, ...) and their builds. */
+  /** District areas (downtown blocks, parks, channel, ...) and their builds. */
   districts: CityDistricts;
   /**
    * Both routes' graph nodes in driving order, picked while the city is
    * planned (see planRoads) so their shortcuts could be carved into it.
    */
   routeNodes: Record<PlannedRouteKind, number[]>;
-  /** The seed's named event (Hill Climb, River Run, ...; see events.ts), which the routes were picked to match. */
+  /** The seed's named event (Hill Climb, Channel Run, ...; see events.ts), which the routes were picked to match. */
   event: CityEvent;
   /** The road surface's crown and speed humps (roadProfile.ts), already folded into `terrain`. */
   roadProfile: RoadProfile;
@@ -99,7 +99,7 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
   // Districts claim space and edit the graph (alleys, shortcuts, roundabouts, bridges) first.
   const districts = planDistricts(seed, graph, {
     topology(ctx) {
-      // A route with no room for a shortcut (one wrapped around the river, say) is swapped for the
+      // A route with no room for a shortcut (one wrapped around the channel, say) is swapped for the
       // next alternative that has one: alternatives that still match the event (and dive into the
       // channel) first, then routes picked without the preference, since on the rare seed that cannot
       // have both a shortcut on every route outranks the flavour; after ROUTE_TRIES each way the first
@@ -116,7 +116,7 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
         return first;
       };
       // The seed's event flavour, drawn from what this city can deliver, says what the routes should
-      // have (events.ts); every flavour but River Run also keeps the river dive as a second wish.
+      // have (events.ts); every flavour but Channel Run also keeps the channel dive as a second wish.
       const g = ctx.graph;
       // The harbor is planned after the routes, so a Harbor Run's routes aim for its preview (harborShore.ts).
       const harbor = previewHarbor(ctx);
@@ -195,7 +195,7 @@ export interface World extends City {
   coveredProps: number[];
   /**
    * Terrain height (m): the ground everything is draped on, road level.
-   * Under a bridge deck over the river channel two drivable levels stack
+   * Under a bridge deck over the channel two drivable levels stack
    * (districts/types.ts DeckSpan): with `y`, the querying car body's height
    * (m), the channel floor is returned when the body is nearer to it than to
    * the deck (below their midpoint); without `y` the deck, as everywhere
@@ -218,10 +218,10 @@ export interface World extends City {
    * kerbs and landings. Absent on hand-built test worlds.
    */
   roadBumpAt?(x: number, z: number, y: number, out: RoadBump): boolean;
-  /** Surface under a point; `y` as for heightAt (the river's floor and trickle below a deck, the street on it). */
+  /** Surface under a point; `y` as for heightAt (the channel's floor and trickle below a deck, the street on it). */
   surfaceAt(x: number, z: number, y?: number): Surface;
   /**
-   * True inside a bridge deck's footprint over the river channel, where two levels stack and the
+   * True inside a bridge deck's footprint over the channel, where two levels stack and the
    * terrain is the deck (resets keep off it). Not under the highway: there the terrain is the street,
    * where a reset to the road belongs.
    */
@@ -250,9 +250,9 @@ export function createCity(seed: number): City {
   const claimed = new Set<number>(districts.areas.flatMap((a) => a.edges));
   const roadProfile = createRoadProfile(graph, claimed);
   const terrain = createTerrain(seed, districts.heightMods.concat(roadProfile.mod));
-  // The river's level walls (parapets, piers, abutments) take their heights from the finished terrain,
+  // The channel's level walls (parapets, piers, abutments) take their heights from the finished terrain,
   // and so do the highway's deck, its ramps and their walls.
-  settleRiver(graph, districts.areas, districts.builds, terrain);
+  settleChannel(graph, districts.areas, districts.builds, terrain);
   settleHighway(districts.areas, districts.builds, terrain);
   const blocks = generateBlocks(seed, graph, terrain, districts.blocksInput);
   // Every wall under the highway's deck stops only cars beneath it.
@@ -657,7 +657,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const alleyGates = openWorld ? [] : highwayGates(city.districts.areas, new Set(route.edges));
   // Corner rails, minus the pieces the flights off the route's car park and jump exits would cross, and any across the line.
   const rails = openWorld ? [] : railsOffQuay(city, route, railsOffRoute(route, carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks))))));
-  const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, city.districts.areas.find((a) => a.kind === 'river')?.params, blocks.walls.concat(alleyGates));
+  const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, city.districts.areas.find((a) => a.kind === 'channel')?.params, blocks.walls.concat(alleyGates));
   sealBarriers(city, barrierGroups, rails, alleyGates);
   const closures = closureRails(barrierGroups, rails);
   // A car park that is the other route's shortcut has its ramp shuttered (open world: all open).
@@ -828,7 +828,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     return best;
   }
 
-  // ---- Two drivable levels (districts/types.ts DeckSpan): the river's bridge decks over the channel
+  // ---- Two drivable levels (districts/types.ts DeckSpan): the channel's bridge decks over the channel
   // (`lower`) and the highway's deck and ramps over the streets (`upper`), indexed in a coarse grid of
   // span ids so a query visits the few spans of its cell, first in list order as a scan would.
   const spans = city.districts.builds.flatMap((b) => b.decks).map((d) => ({ d, ...polygonBounds(d.polygon) }));
@@ -976,7 +976,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     let walk = Infinity;
     for (const id of streetScratch) {
       const e = graph.edges[id];
-      if (span && isRiverEdge(e)) continue;
+      if (span && isChannelEdge(e)) continue;
       const a = graph.nodes[e.a];
       const b = graph.nodes[e.b];
       const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
@@ -1028,7 +1028,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
    * (road strips and their sidewalks, by distance to the edges) plus the
    * roundabout rings (road inside the outer curb, sidewalk around it). A
    * district patch over the sidewalk's priority that is not sidewalk (alley
-   * cobbles, the river) keeps the ground flat; plazas at curb height lift.
+   * cobbles, the channel) keeps the ground flat; plazas at curb height lift.
    * The lift eases in from curbRamp.road out on the road to curbRamp.walk
    * onto the paving.
    */
