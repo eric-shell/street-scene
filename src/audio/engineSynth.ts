@@ -27,8 +27,8 @@
  * output, dry, since a backfire goes off at the tip, past the silencer.
  * A few per car behaviours sit on top, each neutral unless the car's voice asks
  * for it: a cam changeover (CAM: the VTEC step), an odd-fire crank (V10odd), a
- * rotary's idle lope and apex seal rasp (LOPE, RASP), a straight six's high-rpm rasp (HOWL) and a runner table per
- * manifold (MANIFOLD).
+ * rotary's idle lope and apex seal rasp (LOPE, RASP), a straight six's high-rpm rasp (HOWL), a runner table per
+ * manifold (MANIFOLD) and the cylinders' size (SIZE).
  * Deterministic: all randomness comes from a seeded xorshift.
  */
 import type { EngineLayout, EngineSpec, EngineVoiceSpec } from '../shared/carSpec';
@@ -273,7 +273,37 @@ const VR6_HEAD = [0.07, 0.035, 0, 0, 0.035, 0.07] as const;
  */
 export const MANIFOLD = {
   split3: { runners: [0.05, 0, 0.05] },
+  /**
+   * topmount: an inline five's tubular turbo manifold, the runners rising over the head to a T3 flange near its middle,
+   * as the 07K turbo kits sell it (docs/carEngines.md, Wendt Strom engine swaps: a T3 top mount with a 44 mm external
+   * wastegate, 41.5 mm runners). A builder bends the runners toward equal length, so the outer pair run only 0.04 m
+   * longer than the middle and the next pair 0.02 (our estimate; no runner length is published), 0.12 ms late at
+   * most against the cast log's 0.52; and every primary is its own tube to the collector, so no group of cylinders
+   * breathes harder: `levels` all 1, replacing the log's 1-3-5 / 2-4 split. The five's warble stays (it is the
+   * firing order's 2.5 order and its odd spacing round the cycle); the extra growl the log's long outer risers add
+   * goes, so it reads cleaner and harder.
+   */
+  topmount: { runners: [0.04, 0.02, 0, 0.02, 0.04], levels: [1, 1, 1, 1, 1] },
 } as const;
+
+/**
+ * The cylinders' size (EngineSpec.displacement). Every layout was voiced on about half a litre a firing; a bigger
+ * cylinder pushes more gas through valves that grow only with the bore, so its blowdown takes longer (the pulse's
+ * rise and decay stretch as the cube root of the volume ratio: valve area grows as volume^(2/3)) and carries more
+ * energy (the level grows as the square root of the volume ratio, after the loudness trim, which otherwise holds every
+ * program to one loudness). The exponents are physical reasoning, not measurement (no source gives a pulse width by
+ * displacement); `level` and `time` are clamped so a tiny or huge engine stays inside the mix. At 0.6 l a firing (the
+ * 3.6 VR6) the pulse is 6 % longer and 0.8 dB louder than at 0.5; the 3.2 VR6 (0.53) 2 % and 0.3 dB.
+ */
+export const SIZE = { litres: 0.5, time: 1 / 3, level: 0.5, clamp: [0.6, 1.6] } as const;
+
+/** The pulse length and level factors for an engine of `displacement` litres over `cylinders` firings (both 1 when the size is missing). */
+export function sizeFactors(displacement: number | undefined, cylinders: number): { time: number; level: number } {
+  if (!displacement) return { time: 1, level: 1 };
+  const ratio = displacement / cylinders / SIZE.litres;
+  const clamp = (x: number) => Math.max(SIZE.clamp[0], Math.min(SIZE.clamp[1], x));
+  return { time: clamp(ratio ** SIZE.time), level: clamp(ratio ** SIZE.level) };
+}
 
 /** The character each layout starts from before the car's own voice spec. */
 export const LAYOUT_VOICE: Record<EngineLayout, LayoutVoice> = {
@@ -419,7 +449,9 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
 
   // A turbine between the ports and the pipe smears every pulse and eats the top end.
   const smear = turbo ? 1 : 0;
-  const pulse: PulseShape = { rise: v.pulse.rise * (1 + 1.5 * smear), decay: v.pulse.decay * (1 + 0.5 * smear), dip: v.pulse.dip * (1 - 0.3 * smear) };
+  // Bigger cylinders blow down longer (SIZE); the level comes after the trim, below.
+  const size = sizeFactors(spec.displacement, layout.cylinders);
+  const pulse: PulseShape = { rise: v.pulse.rise * (1 + 1.5 * smear) * size.time, decay: v.pulse.decay * (1 + 0.5 * smear) * size.time, dip: v.pulse.dip * (1 - 0.3 * smear) };
   const itb = v.intake === 'itb';
   const edge = v.edge * (1 - 0.3 * smear);
   const modes: [number, number, number][] = [...pipeModes(muffler.system, muffler.pipeQ, muffler.pipeBoost, 3), [...muffler.chamber]];
@@ -449,6 +481,8 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
   // Every program lands on one K-weighted loudness through a model of the voice's chain, whatever its spectrum,
   // pipes or intake: the trim is measured, never hand set, so new layouts and silencers stay matched.
   program.trim = Math.max(0.25, Math.min(4, LOUDNESS_REF / estimateLoudness(program)));
+  // A bigger engine is louder than the reference loudness: the trim matches the voicing, the size then adds its energy.
+  program.trim *= size.level;
   return program;
 }
 

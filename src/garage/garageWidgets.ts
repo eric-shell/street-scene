@@ -333,7 +333,7 @@ export function choiceList<T extends string | number | null>(items: Choice<T>[],
   const list = h('div', { class: grid ? 'garage-grid' : 'garage-list' });
   for (const it of items) {
     // Hover a spec tag for its long form.
-    const tags = it.tags?.length ? h('span', { class: 'garage-item__tags' }, ...it.tags.map((t, i) => specChip(t, i, '--small'))) : null;
+    const tags = it.tags?.length ? h('span', { class: 'garage-item__tags' }, ...it.tags.map((t) => specChip(t, '--small'))) : null;
     const el = h(
       'button',
       { type: 'button', class: `garage-item${it.value === current ? ' is-selected' : ''}${tags ? ' garage-item--car' : ''}` },

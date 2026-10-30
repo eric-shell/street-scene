@@ -24,7 +24,7 @@
  * Render side only; reads interpolated car state.
  */
 import type { EngineSpec } from '../shared/carSpec';
-import { CHATTER, FAN, FLUTTER, FlapGate, GEAR_WHINE, SEQUENTIAL, TWIN_WHISTLE, TurboModel, chatterClicks, fanHz, fanLevel, flapResponse, flutterPulses, gearWhineHz, gearWhineLevel, sequentialSpec, twinWhistlePitches, type Pulse } from './engineAccessories';
+import { CHATTER, FAN, FLUTTER, FlapGate, GEAR_WHINE, SCREAMER, SEQUENTIAL, TWIN_WHISTLE, TurboModel, chatterClicks, screamerOpen, fanHz, fanLevel, flapResponse, flutterPulses, gearWhineHz, gearWhineLevel, sequentialSpec, twinWhistlePitches, type Pulse } from './engineAccessories';
 import { CHAIN, ENGINE_PROCESSOR, SYNTH_PARAMS, TURBO, buildProgram, firingHz, presenceHz, renderImpulse, type EngineMessage, type EngineProgram, type SynthParams } from './engineSynth';
 import workletUrl from './engineWorklet?worker&url';
 
@@ -329,6 +329,8 @@ export class EngineVoice {
   private flutter: { filter: BiquadFilterNode; gain: GainNode } | null = null;
   /** Wastegate chatter: the ticks' gain and the car's level (null without the field, and on rivals). */
   private chatter: { gain: GainNode; level: number } | null = null;
+  /** The external wastegate's vent: the raw exhaust's high pass, its gate gain and the car's level (null without the field, and on rivals). */
+  private screamer: { filter: BiquadFilterNode; gain: GainNode; level: number } | null = null;
   /** Active exhaust flaps in front of the silencer: the gate, its depth and the gain and low pass it drives (null without the field). */
   private flaps: { gate: FlapGate; depth: number; gain: GainNode; lp: BiquadFilterNode } | null = null;
   /** Air-cooled fan whine: partials, level node, belt ratio. */
@@ -470,6 +472,19 @@ export class EngineVoice {
         this.turboSources.push(src);
         this.chatter = { gain, level: rattle };
       }
+      // The external wastegate's vent: the worklet's raw exhaust (attach connects it), high passed, through the gate's
+      // gain into the chain after the silencer, so it shares the voice's level, presence and roll-off.
+      const vent = spec.voice?.screamer ?? 0;
+      if (vent > 0 && !opts.lite) {
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.value = SCREAMER.highpass;
+        filter.Q.value = SCREAMER.q;
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        filter.connect(gain).connect(this.presence);
+        this.screamer = { filter, gain, level: vent * SCREAMER.level };
+      }
       // The sequential twin turbo's second whistle: silent until the second turbine pre-spools.
       if (sequentialSpec(spec.voice) && !opts.lite) {
         const osc = ctx.createOscillator();
@@ -588,6 +603,7 @@ export class EngineVoice {
       });
       if (this.flaps) node.connect(this.flaps.gain, 0);
       else node.connect(this.exhaust, 0);
+      if (this.screamer) node.connect(this.screamer.filter, 0);
       node.connect(this.intake, 1);
       node.connect(this.body, 2);
       node.connect(this.pops, 3);
@@ -647,6 +663,8 @@ export class EngineVoice {
         this.whoosh.filter.frequency.setTargetAtTime(H.from + m.boost * (H.to - H.from), t, 0.08);
         this.whoosh.gain.gain.setTargetAtTime(m.boost ** H.power * this.whoosh.level * e.proximity, t, 0.08);
       }
+      // The vent follows the voice's own level (it joins the chain at the presence filter), so no proximity here.
+      if (this.screamer) this.screamer.gain.gain.setTargetAtTime(screamerOpen(m.boost, load, r) * this.screamer.level, t, SCREAMER.tau);
       if (this.lastThrottle > 0.6 && load < 0.25 && m.boost > 0.35) this.lift(t, e.proximity);
     }
     if (this.flaps) {

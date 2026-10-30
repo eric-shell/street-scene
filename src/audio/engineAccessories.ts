@@ -259,6 +259,31 @@ export function chatterClicks(boost: number, strength: number, rand: () => numbe
 
 // ---------------------------------------------------------------------------
 // Active exhaust flaps
+/**
+ * An external wastegate's vent (voice.screamer): the gate's outlet runs to the air on its own short pipe (a "screamer
+ * pipe"), so while the gate is open, holding full boost, part of the exhaust skips the turbine and the silencer and is
+ * heard raw, a brash rasp on top of the note, rising with the revs as more gas has to be bled. The voice taps the
+ * worklet's exhaust before the silencer, high passes it (a short open pipe radiates the pulses' edges, not their body)
+ * and opens it with the gate; at 1, fully open, it sits about 6 dB under the silenced voice (the raw high passed train is
+ * 9 to 11.5 dB under it at 4,000 to 6,500 rpm on the 07K, K-weighted, so `level` lifts it 4 dB). The gate opens over `open` (boost as a fraction of full) with the pedal down, the share it
+ * bleeds grows with rpm from `minRpm` (a fraction of the redline: at low revs the turbine needs all the gas); `level`
+ * is the reference (1) against the silenced voice. All est.: the 07K kits' 44 mm external gate is sourced
+ * (docs/carEngines.md), how loud a screamer pipe is next to the tailpipe is not.
+ */
+export const SCREAMER = {
+  highpass: 900,
+  q: 0.6,
+  level: 1.6,
+  open: [0.82, 0.97],
+  minRpm: 0.35,
+  tau: 0.05,
+} as const;
+
+/** How far the wastegate vent is open (0..1) at `boost` (0..1), pedal `load` (0..1) and `r`, rpm over redline. */
+export function screamerOpen(boost: number, load: number, r: number): number {
+  return smoothstep(SCREAMER.open[0], SCREAMER.open[1], boost) * clamp01((load - 0.5) / 0.4) * clamp01((r - SCREAMER.minRpm) / (1 - SCREAMER.minRpm));
+}
+
 // ---------------------------------------------------------------------------
 
 /**

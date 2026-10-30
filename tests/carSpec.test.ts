@@ -25,6 +25,14 @@ describe('car spec labels', () => {
     expect(engineSpecErrors({ ...base, voice: { exhaust: 'dual' } })).toEqual([expect.stringContaining('engine.voice.exhaust is not a known field')]);
   });
 
+  it("a swapped build leads with a Swap tag in its own ink, then the swapped engine's tags", () => {
+    const b = specBadges(spec('I5', 'turbo'), 'awd', '07K 2.5 Turbo');
+    expect(b.map((x) => x.text)).toEqual(['Swap', 'FA', 'I5', 'Turbo']);
+    expect(b.map((x) => x.ink)).toEqual(['swap', 'drive', 'engine', 'boost']);
+    expect(b[0].title).toContain('07K 2.5 Turbo');
+    expect(specBadges(spec('I5', 'turbo'), 'awd').map((x) => x.text)).toEqual(['FA', 'I5', 'Turbo']);
+  });
+
   it('the selectable cars carry a drivetrain code and an engine layout', () => {
     const badges = Object.fromEntries(SELECTABLE_CAR_IDS.map((id) => [id, specBadges(cars.find((c) => c.id === id)!.engine, getBaseTuning(id).drivetrain.layout).map((b) => b.text)]));
     expect(badges).toEqual({ wendtStrom: ['FA', 'VR6'], kazamaRotor: ['FR', 'R2', 'Turbo'], albrechtKombi: ['FA', 'I5', 'Turbo'], daltonFiend: ['FR', 'V8', 'S/C'], tachibanaZenith: ['FR', 'I6', 'Turbo'], tachibanaRunabout: ['MR', 'I4', 'Turbo'] });

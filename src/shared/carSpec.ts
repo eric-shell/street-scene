@@ -85,11 +85,13 @@ export const VOICE_OPTIONS = {
    */
   diverter: ['vent', 'recirculating', 'flutter'],
   /**
-   * Inline six only, the cast exhaust manifold's runner table: `split3` is a twin turbo manifold split front three and
-   * rear three (the RB26DETT's), each trio running into its own turbine with the middle runner shortest. Absent: the
-   * layout's own ramp, as the 2JZ-GTE's single turbo manifold has.
+   * A named exhaust manifold's runner table in place of the layout's own (MANIFOLD_LAYOUTS says which layout each fits):
+   * `split3`, an inline six's twin turbo manifold split front three and rear three (the RB26DETT's), each trio running
+   * into its own turbine with the middle runner shortest; `topmount`, an inline five's tubular turbo manifold up over
+   * the head to a T3 flange, its runners near equal and every pulse alike (the 07K turbo kits'), in place of the
+   * Audi five's cast log. Absent: the layout's own (the six's ramp, as the 2JZ-GTE's single turbo manifold has).
    */
-  manifold: ['split3'],
+  manifold: ['split3', 'topmount'],
 } as const;
 
 /** Numeric voice fields: [min, max]. */
@@ -136,7 +138,19 @@ export const VOICE_RANGES = {
   howl: [0, 1],
   /** Parallel twin turbo (turbo only): the two turbines' whistles as two tones this far apart as a fraction of pitch (0.015 is 1.5 percent), each at about 0.72 of a single turbo's level; absent means one tone. */
   twinWhistle: [0, 0.1],
+  /**
+   * Turbo only: an external wastegate's vent ("screamer pipe") dumped to the air beside the exhaust, so while the gate
+   * holds full boost part of the raw, unsilenced pulse train is heard on its own, a brash rasp on top of the note, as a
+   * multiple of the reference (0 none, the default; engineAccessories.ts SCREAMER).
+   */
+  screamer: [0, 2],
 } as const;
+
+/** The layout each named manifold (VOICE_OPTIONS.manifold) is built for. */
+export const MANIFOLD_LAYOUTS: Record<(typeof VOICE_OPTIONS.manifold)[number], EngineLayout> = { split3: 'I6', topmount: 'I5' };
+
+/** Swept volume (l) the engine voice is tuned on: a firing of this size sounds as it always has; `displacement` scales from it. */
+export const DISPLACEMENT_RANGE = [0.5, 10] as const;
 
 export interface EngineVoiceSpec {
   headers?: (typeof VOICE_OPTIONS.headers)[number];
@@ -183,12 +197,14 @@ export interface EngineVoiceSpec {
   fanRatio?: number;
   /** Gear whine level (VOICE_RANGES). */
   gearWhine?: number;
-  /** Inline six manifold runner table (VOICE_OPTIONS). */
+  /** Named manifold runner table, for the layout MANIFOLD_LAYOUTS gives (VOICE_OPTIONS). */
   manifold?: (typeof VOICE_OPTIONS.manifold)[number];
   /** High-rpm rasp depth (VOICE_RANGES). */
   howl?: number;
   /** Parallel twin turbo whistle spread (VOICE_RANGES). */
   twinWhistle?: number;
+  /** External wastegate vent level (VOICE_RANGES). */
+  screamer?: number;
 }
 
 /** The `engine` block of a car in carManifest.json. */
@@ -199,6 +215,11 @@ export interface EngineSpec {
   aspiration: Aspiration;
   /** Where the engine sits in the chassis; first letter of the drivetrain code. */
   position: EnginePosition;
+  /**
+   * Swept volume (l, DISPLACEMENT_RANGE): bigger cylinders blow down longer and harder, so each pulse is longer and
+   * louder (engineSynth.ts SIZE). Missing: the voice as tuned, which is a firing of about half a litre.
+   */
+  displacement?: number;
   /** Exhaust and intake details for the engine voice (optional, see VOICE_OPTIONS). */
   voice?: EngineVoiceSpec;
 }
@@ -250,16 +271,22 @@ export interface SpecBadge {
   text: string;
   /** Long form for the tooltip. */
   title: string;
+  /** What the tag says, which picks its ink (`.ink-*`): an engine swap, the drivetrain, the engine, forced induction. */
+  ink: 'swap' | 'drive' | 'engine' | 'boost';
 }
 
-/** The tags shown on a garage car tile: drivetrain code, engine layout, forced induction. */
-export function specBadges(spec: EngineSpec, drive: DrivetrainLayout): SpecBadge[] {
+/**
+ * The tags shown on a garage car tile and a build: a Swap tag first when `swap` names the engine swapped in (a build's
+ * Power tab pick), then the drivetrain code, the engine layout and forced induction of `spec` (the swap's, when swapped).
+ */
+export function specBadges(spec: EngineSpec, drive: DrivetrainLayout, swap?: string): SpecBadge[] {
   const badges: SpecBadge[] = [
-    { text: drivetrainCode(spec.position, drive), title: drivetrainName(spec.position, drive) },
-    { text: spec.layout, title: engineName(spec) },
+    { text: drivetrainCode(spec.position, drive), title: drivetrainName(spec.position, drive), ink: 'drive' },
+    { text: spec.layout, title: engineName(spec), ink: 'engine' },
   ];
+  if (swap) badges.unshift({ text: 'Swap', title: `Engine swap: ${swap}`, ink: 'swap' });
   const forced = ASPIRATIONS[spec.aspiration].badge;
-  if (forced) badges.push({ text: forced, title: engineName(spec) });
+  if (forced) badges.push({ text: forced, title: engineName(spec), ink: 'boost' });
   return badges;
 }
 
@@ -276,7 +303,8 @@ export function engineSpecErrors(spec: unknown): string[] {
   check('layout', ENGINE_LAYOUTS);
   check('aspiration', ASPIRATIONS);
   check('position', ENGINE_POSITIONS);
-  for (const k of Object.keys(s)) if (!(SPEC_FIELDS as readonly string[]).includes(k) && k !== 'voice') errors.push(`engine.${k} is not a known field (${SPEC_FIELDS.join(', ')}, voice)`);
+  for (const k of Object.keys(s)) if (!(SPEC_FIELDS as readonly string[]).includes(k) && k !== 'voice' && k !== 'displacement') errors.push(`engine.${k} is not a known field (${SPEC_FIELDS.join(', ')}, displacement, voice)`);
+  if ('displacement' in s && !(typeof s.displacement === 'number' && s.displacement >= DISPLACEMENT_RANGE[0] && s.displacement <= DISPLACEMENT_RANGE[1])) errors.push(`engine.displacement ${JSON.stringify(s.displacement)} is not a number of litres from ${DISPLACEMENT_RANGE[0]} to ${DISPLACEMENT_RANGE[1]}`);
   if ('voice' in s) {
     const v = s.voice;
     if (!v || typeof v !== 'object' || Array.isArray(v)) errors.push('engine.voice must be an object');
@@ -295,10 +323,11 @@ export function engineSpecErrors(spec: unknown): string[] {
       if (voice.crank === 'oddfire' && layout !== 'V10') errors.push('engine.voice.crank "oddfire" is for a V10');
       if ('camStep' in voice && !('camRpm' in voice)) errors.push('engine.voice.camStep needs camRpm');
       for (const k of ['idleLope', 'apexRasp']) if (k in voice && !ENGINE_LAYOUTS[layout]?.rotary) errors.push(`engine.voice.${k} is for a rotary`);
-      if ('manifold' in voice && layout !== 'I6') errors.push('engine.voice.manifold is for an inline six');
+      const fits = MANIFOLD_LAYOUTS[voice.manifold as keyof typeof MANIFOLD_LAYOUTS];
+      if (fits && layout !== fits) errors.push(`engine.voice.manifold "${String(voice.manifold)}" is for an ${ENGINE_LAYOUTS[fits].name}`);
       if ('twinWhistle' in voice && s.aspiration !== 'turbo') errors.push('engine.voice.twinWhistle is for a turbo');
       if ('twinWhistle' in voice && 'handoverRpm' in voice) errors.push('engine.voice.twinWhistle is for parallel twins, not a sequential pair (handoverRpm)');
-      for (const k of ['flutter', 'wastegate', 'spoolRpm', 'preboostRpm', 'handoverRpm', 'handoverDip']) if (k in voice && s.aspiration !== 'turbo') errors.push(`engine.voice.${k} is for a turbo`);
+      for (const k of ['flutter', 'wastegate', 'screamer', 'spoolRpm', 'preboostRpm', 'handoverRpm', 'handoverDip']) if (k in voice && s.aspiration !== 'turbo') errors.push(`engine.voice.${k} is for a turbo`);
       if (voice.diverter === 'flutter' && s.aspiration !== 'turbo') errors.push('engine.voice.diverter "flutter" is for a turbo');
       for (const k of ['spoolRpm', 'preboostRpm', 'handoverDip']) if (k in voice && !('handoverRpm' in voice)) errors.push(`engine.voice.${k} needs handoverRpm`);
       if (typeof voice.handoverRpm === 'number') {

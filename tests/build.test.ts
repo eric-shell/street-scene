@@ -48,13 +48,21 @@ describe('engine swaps', () => {
     expect((await decodeShareCode(await encodeShareCode(b)))?.performance.swap).toBe('turbo07k');
   });
 
-  it('every swap is quicker than the car it goes into', () => {
+  it('every swap is quicker than the car it goes into, the DAZA the most powerful and fastest, each geared for its top speed', () => {
     const stock = measureStats(tuningForBuild('wendtStrom', stockPerformance('wendtStrom')));
+    const stats: Record<string, ReturnType<typeof measureStats>> = {};
     for (const swap of ['vr36', 'turbo07k', 'daza']) {
-      const st = measureStats(tuningForBuild('wendtStrom', { ...stockPerformance('wendtStrom'), swap }));
+      const t = tuningForBuild('wendtStrom', { ...stockPerformance('wendtStrom'), swap });
+      const st = (stats[swap] = measureStats(t));
       expect(st.zeroTo60, swap).toBeLessThan(stock.zeroTo60);
       expect(st.power, swap).toBeGreaterThan(stock.power);
+      // Sixth's limiter about 1.1 times the drag top speed, as on the stock cars: the swap's own final drive.
+      const limiter = (t.engine.redline / 60) * 2 * Math.PI / (t.gearbox.ratios.at(-1)! * t.gearbox.finalDrive) * t.geometry.wheelRadius * 3.6;
+      expect(limiter / st.topSpeed, swap).toBeGreaterThan(1.07);
+      expect(limiter / st.topSpeed, swap).toBeLessThan(1.13);
     }
+    expect(stats.daza.power).toBeGreaterThan(stats.turbo07k.power);
+    expect(stats.daza.topSpeed).toBeGreaterThan(stats.turbo07k.topSpeed);
   });
 });
 

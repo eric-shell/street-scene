@@ -36,7 +36,7 @@
  * placing a layer on the car).
  */
 import type { GameRenderer } from '../render/scene';
-import { CarAssetLibrary, engineSpecFor, manifestCar } from '../render/car/carAssets';
+import { CarAssetLibrary, engineSpecFor, manifestCar, swapName } from '../render/car/carAssets';
 import type { StreetStage } from '../game/streetStage';
 import type { Quality } from '../ui/settings';
 import { RailSteps, railInset, screenHead } from '../ui/rail/rail';
@@ -492,7 +492,7 @@ export class GarageScreen implements TabHost {
       ),
       h('h2', { class: 'car-card__name' }, b.name),
       h('div', { class: 'car-card__car' }, car.displayName, AUTHORS[car.source] ? h('span', { class: 'muted' }, ` · by ${AUTHORS[car.source]}`) : null),
-      h('div', { class: 'car-card__tags' }, ...specBadges(engineSpecFor(b.carId, b.performance.swap), getBaseTuning(b.carId).drivetrain.layout).map((t, i) => specChip(t, i))),
+      h('div', { class: 'car-card__tags' }, ...specBadges(engineSpecFor(b.carId, b.performance.swap), getBaseTuning(b.carId).drivetrain.layout, swapName(b.carId, b.performance.swap)).map((t) => specChip(t))),
       statLines(b),
       go,
     );

@@ -431,6 +431,10 @@
             [6600, 319],
             [6900, 295]
           ]
+        },
+        "gearbox": {
+          "_": "The R32's six speed stays; the final drive goes from 4.4 to 4.14 (a ring and pinion swap), putting sixth's limiter (266 km/h) at 1.1 times the drag top speed (242), as on the stock cars.",
+          "finalDrive": 4.14
         }
       },
       "turbo07k": {
@@ -450,6 +454,10 @@
             [7300, 395]
           ]
         },
+        "gearbox": {
+          "_": "The R32's six speed stays; a 3.76 final drive (from 4.4) puts sixth's limiter (310 km/h) at 1.1 times the drag top speed (282), as on the stock cars.",
+          "finalDrive": 3.76
+        },
         "launch": {
           "_": "A big turbo wants revs at the line: 4,500 is where it is on boost, so the launch and rolling antilag both sit there.",
           "defaultRpm": 4500,
@@ -459,19 +467,24 @@
         }
       },
       "daza": {
-        "_name": "2.5 TFSI (DAZA, EA855 evo, the 2017-20 RS3 8V's): 2,480 cc inline five (82.5 mm bore, the 07K's dimensions), aluminium crankcase, port and direct injection, one turbo. 400 PS (294 kW) from 5,850 to 7,000 rpm and 480 N\u00b7m from 1,700 to 5,850, a flat line to the power plateau: 401 N\u00b7m at 7,000 is the power at its end. Rev limit 7,200 is an estimate (the power plateau ends at 7,000). Audi gives it 26 kg under the iron block CEPA (183 kg), so about 25 kg under the VR6 (an estimate). Quick spool: a short lag behind a small share of the torque.",
+        "_name": "2.5 TFSI (DAZA, EA855 evo, the 2017-20 RS3 8V's) at Stage 2: 2,480 cc inline five (82.5 mm bore, the 07K's dimensions), aluminium crankcase, port and direct injection, one turbo. Stock it makes 400 PS (294 kW) from 5,850 to 7,000 rpm and 480 N\u00b7m from 1,700 to 5,850; the swap is the usual Stage 2 on the stock turbo (downpipe, intake, intercooler and a map, sold for the 8V RS3 at about 480 to 500 PS and 600 to 650 N\u00b7m; our pick, an estimate): 500 PS at 6,200 and 620 N\u00b7m from 2,000 to 5,000, about the torque the stock rods are trusted with. Rev limit 7,200 is an estimate (the stock power plateau ends at 7,000). Audi gives it 26 kg under the iron block CEPA (183 kg), so about 25 kg under the VR6 (an estimate). Quick spool: a short lag behind a small share of the torque.",
         "mass": 1455,
         "engine": {
           "redline": 7200,
           "torqueCurve": [
-            [800, 180],
-            [1300, 340],
-            [1700, 480],
-            [5850, 480],
-            [6500, 438],
-            [7000, 401],
-            [7200, 380]
+            [800, 190],
+            [1300, 360],
+            [2000, 620],
+            [5000, 620],
+            [5600, 600],
+            [6200, 566],
+            [6800, 500],
+            [7200, 450]
           ]
+        },
+        "gearbox": {
+          "_": "The R32's six speed stays; a 3.55 final drive (from 4.4) puts sixth's limiter (324 km/h) at 1.1 times the drag top speed (294), as on the stock cars.",
+          "finalDrive": 3.55
         },
         "launch": {
           "_": "RS3 launch control holds about 4,000 to 4,500: full boost and the plateau. Rolling antilag at 4,500.",

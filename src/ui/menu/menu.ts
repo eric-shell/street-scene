@@ -227,7 +227,7 @@ function modeTile(t: RaceType, n: number, onClick: () => void): HTMLButtonElemen
 
 /** A build's spec tags in their inks, small. */
 function buildTags(b: MenuBuild): HTMLElement {
-  return h('span', { class: 'build-line__tags' }, ...b.tags.map((t, i) => specChip(t, i, '--small')));
+  return h('span', { class: 'build-line__tags' }, ...b.tags.map((t) => specChip(t, '--small')));
 }
 
 /** The city's notable districts as chips in their map inks (at most three). */

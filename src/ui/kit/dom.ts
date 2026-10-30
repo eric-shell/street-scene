@@ -314,12 +314,9 @@ export function chip(text: string, ico?: IconNode, cls = ''): HTMLElement {
   return h('span', { class: bem('chip', cls) }, ico && icon(ico, { size: 13 }), h('span', { class: 'chip__label' }, text));
 }
 
-/** Each spec tag's ink by its place in specBadges (drivetrain cyan, engine yellow, forced induction red): `.ink-*` in garage/_tune-stat.scss. */
-const SPEC_INKS = ['ink-drive', 'ink-engine', 'ink-boost'] as const;
-
-/** A spec tag as a chip in its ink, the long form on hover (the garage's car tiles and build card, the menu's builds). */
-export function specChip(t: SpecBadge, i: number, cls = ''): HTMLElement {
-  const c = chip(t.text, undefined, `--ink ${SPEC_INKS[i] ?? ''} ${cls}`);
+/** A spec tag as a chip in its ink (swap purple, drivetrain cyan, engine yellow, forced induction red: `.ink-*` in garage/_tune-stat.scss), the long form on hover (the garage's car tiles and build card, the menu's builds). */
+export function specChip(t: SpecBadge, cls = ''): HTMLElement {
+  const c = chip(t.text, undefined, `--ink ink-${t.ink} ${cls}`);
   c.title = t.title;
   return c;
 }

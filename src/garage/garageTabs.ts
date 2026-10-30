@@ -556,7 +556,7 @@ function renderPower(host: TabHost): void {
   host.body.append(section('Stats', statLines(b)));
   const stock = { value: null, label: `Stock ${car.engine.layout}`, sub: engineFigures(tuningForBuild(b.carId, { ...b.performance, swap: undefined })), tags: specBadges(car.engine, drive) };
   const list = choiceList<string | null>(
-    [stock, ...swaps.map((s) => ({ value: s.id, label: s.name, sub: engineFigures(tuningForBuild(b.carId, { ...b.performance, swap: s.id })), tags: specBadges(s.engine, drive) }))],
+    [stock, ...swaps.map((s) => ({ value: s.id, label: s.name, sub: engineFigures(tuningForBuild(b.carId, { ...b.performance, swap: s.id })), tags: specBadges(s.engine, drive, s.name) }))],
     b.performance.swap ?? null,
     (id) => {
       const swap = id ?? undefined;

@@ -70,6 +70,11 @@ export function engineSpecFor(carId: string, swap?: string): EngineSpec {
   return (swap && car.engineSwaps?.find((s) => s.id === swap)?.engine) || car.engine;
 }
 
+/** The name of the engine swap a build fits (undefined without one, or for a swap the car does not offer). */
+export function swapName(carId: string, swap?: string): string | undefined {
+  return swap ? manifestCar(carId).engineSwaps?.find((s) => s.id === swap)?.name : undefined;
+}
+
 export function partsFor(carId: string, slot: PartSlot): PartEntry[] {
   return CATALOG.parts.filter((p) => p.slot === slot && (p.carId === carId || (slot === 'wheels' && p.carId === 'universal')));
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { Biquad, CAM, CHAIN, HOWL, LAYOUT_VOICE, LOPE, MANIFOLD, RASP, TURBO, buildProgram, EngineSynth, kWeighting, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
+import { Biquad, CAM, CHAIN, HOWL, LAYOUT_VOICE, LOPE, MANIFOLD, RASP, SIZE, TURBO, buildProgram, sizeFactors, EngineSynth, kWeighting, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
 import { powerSpectrum } from '../src/audio/dsp';
-import { CHATTER, FAN, FLAPS, FLUTTER, FlapGate, GEAR_WHINE, SEQUENTIAL, TWIN_WHISTLE, TurboModel, chatterClicks, fanHz, fanLevel, flapResponse, flutterPulses, gearWhineHz, gearWhineLevel, sequentialSpec, twinWhistlePitches, type Pulse } from '../src/audio/engineAccessories';
+import { CHATTER, FAN, FLAPS, FLUTTER, FlapGate, GEAR_WHINE, SCREAMER, SEQUENTIAL, TWIN_WHISTLE, TurboModel, chatterClicks, screamerOpen, fanHz, fanLevel, flapResponse, flutterPulses, gearWhineHz, gearWhineLevel, sequentialSpec, twinWhistlePitches, type Pulse } from '../src/audio/engineAccessories';
 import { ENGINE_LAYOUTS, engineSpecErrors, type EngineLayout, type EngineSpec } from '../src/shared/carSpec';
 import manifest from '../src/assets/carManifest.json';
 
@@ -1040,8 +1040,48 @@ describe('RB26DETT voice (Nakaya Horizon GT)', () => {
     expect(engineSpecErrors({ ...spec('I6', 'na'), voice: { twinWhistle: 0.02 } })).toEqual([expect.stringContaining('twinWhistle is for a turbo')]);
     expect(engineSpecErrors({ ...spec('I6', 'turbo'), voice: { twinWhistle: 0.02, handoverRpm: 4000 } })).toEqual([expect.stringContaining('parallel twins, not a sequential pair')]);
     expect(engineSpecErrors({ ...spec('I6', 'turbo'), voice: { twinWhistle: 0.2 } })).toEqual([expect.stringContaining('twinWhistle 0.2 is not a number from 0 to 0.1')]);
-    expect(engineSpecErrors({ ...spec('I4'), voice: { manifold: 'split3' } })).toEqual([expect.stringContaining('manifold is for an inline six')]);
+    expect(engineSpecErrors({ ...spec('I4'), voice: { manifold: 'split3' } })).toEqual([expect.stringContaining('manifold "split3" is for an inline 6')]);
     expect(engineSpecErrors({ ...spec('I6'), voice: { manifold: 'split3' } })).toEqual([]);
     expect(engineSpecErrors({ ...spec('I6'), voice: { manifold: 'log' as 'split3' } })).toEqual([expect.stringContaining('engine.voice.manifold "log" is not one of split3')]);
+  });
+});
+
+describe("the Wendt Strom swaps' voices", () => {
+  it("topmount: the five's runners near equal and every pulse alike, against the cast log", () => {
+    const log = buildProgram(spec('I5', 'turbo'));
+    const top = buildProgram(spec('I5', 'turbo', { manifold: 'topmount' }));
+    const spread = (p: EngineProgram) => Math.max(...p.cylinders.map((c) => c.delay)) - Math.min(...p.cylinders.map((c) => c.delay));
+    expect(spread(top)).toBeLessThan(spread(log) / 3);
+    const gains = top.cylinders.map((c) => c.gain);
+    expect(Math.min(...gains) / Math.max(...gains)).toBeGreaterThan(0.9);
+    expect(engineSpecErrors({ ...spec('I5', 'turbo'), voice: { manifold: 'topmount' } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('I6', 'turbo'), voice: { manifold: 'topmount' } })).toEqual([expect.stringContaining('manifold "topmount" is for an inline 5')]);
+  });
+
+  it('displacement: bigger cylinders give longer, louder pulses; missing is the voice as tuned', () => {
+    expect(sizeFactors(undefined, 6)).toEqual({ time: 1, level: 1 });
+    expect(sizeFactors(SIZE.litres * 6, 6)).toEqual({ time: 1, level: 1 });
+    const vr = (displacement?: number) => buildProgram({ ...spec('VR6'), displacement });
+    const plain = vr();
+    const small = vr(3.189);
+    const big = vr(3.598);
+    expect(big.pulse.decay).toBeGreaterThan(small.pulse.decay);
+    expect(small.pulse.decay).toBeGreaterThan(plain.pulse.decay);
+    expect(big.trim).toBeGreaterThan(small.trim);
+    // 3.6 against 3.2: about half a dB louder, a few percent longer.
+    expect(20 * Math.log10(big.trim / small.trim)).toBeGreaterThan(0.3);
+    expect(20 * Math.log10(big.trim / small.trim)).toBeLessThan(1);
+    const vr6 = { layout: 'VR6', aspiration: 'na', position: 'front' };
+    expect(engineSpecErrors({ ...vr6, displacement: 3.6 })).toEqual([]);
+    expect(engineSpecErrors({ ...vr6, displacement: 40 })).toEqual([expect.stringContaining('engine.displacement 40')]);
+  });
+
+  it('screamer: the wastegate vent opens only at full boost with the pedal down, more with the revs; turbo only', () => {
+    expect(screamerOpen(0.5, 1, 0.9)).toBe(0);
+    expect(screamerOpen(1, 0.2, 0.9)).toBe(0);
+    expect(screamerOpen(1, 1, SCREAMER.minRpm)).toBe(0);
+    expect(screamerOpen(1, 1, 0.9)).toBeGreaterThan(screamerOpen(1, 1, 0.6));
+    expect(screamerOpen(1, 1, 1)).toBeCloseTo(1);
+    expect(engineSpecErrors({ ...spec('I5'), voice: { screamer: 1 } })).toEqual([expect.stringContaining('screamer is for a turbo')]);
   });
 });

@@ -54,6 +54,7 @@
         "layout": "VR6",
         "aspiration": "na",
         "position": "front",
+        "displacement": 3.189,
         "voice": {
           "headers": "unequal",
           "headerSpread": 0.35,
@@ -70,6 +71,7 @@
             "layout": "VR6",
             "aspiration": "na",
             "position": "front",
+            "displacement": 3.598,
             "voice": {
               "headers": "unequal",
               "headerSpread": 0.3,
@@ -86,6 +88,7 @@
             "layout": "I5",
             "aspiration": "turbo",
             "position": "front",
+            "displacement": 2.48,
             "voice": {
               "headers": "equal",
               "pipes": 1,
@@ -93,24 +96,27 @@
               "diverter": "vent",
               "flutter": 0.3,
               "wastegate": 0.8,
-              "whoosh": 1.4
+              "whoosh": 1.4,
+              "manifold": "topmount",
+              "screamer": 1
             }
           }
         },
         {
           "id": "daza",
-          "name": "2.5 TFSI (DAZA)",
-          "note": "The RS3's turbocharged aluminium block five, dropped in whole with its own tune.",
+          "name": "2.5 TFSI (DAZA) Stage 2",
+          "note": "The RS3's aluminium block five, dropped in whole and tuned: downpipe, intake, intercooler and a map on its own turbo.",
           "engine": {
             "layout": "I5",
             "aspiration": "turbo",
             "position": "front",
+            "displacement": 2.48,
             "voice": {
               "headers": "equal",
               "pipes": 1,
               "muffler": "sport",
               "diverter": "recirculating",
-              "whoosh": 0.6,
+              "whoosh": 0.8,
               "flaps": 0.6
             }
           }
