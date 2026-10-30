@@ -215,16 +215,22 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   m.Banner = new THREE.MeshPhysicalMaterial({ name: 'Banner', envMap, visible: false, polygonOffset: true });
   const depth = { value: -1 };
   const shift = { value: 0 };
+  const direct = { value: 1 };
   m.Banner.userData.depth = depth;
   m.Banner.userData.shift = shift;
+  m.Banner.userData.direct = direct;
   m.Banner.onBeforeCompile = (shader) => {
     shader.uniforms.bannerDepth = depth;
     shader.uniforms.bannerShift = shift;
+    shader.uniforms.bannerDirect = direct;
     withDrop(shader);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nuniform float bannerShift;')
       .replace('#include <project_vertex>', '#include <project_vertex>\n  mvPosition.xyz += normalize(mvPosition.xyz) * bannerShift;\n  gl_Position = projectionMatrix * mvPosition;');
-    shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', 'if (vBannerDrop > bannerDepth) discard;\n#include <clipping_planes_fragment>');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float bannerDirect;')
+      .replace('#include <clipping_planes_fragment>', 'if (vBannerDrop > bannerDepth) discard;\n#include <clipping_planes_fragment>')
+      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n  reflectedLight.directDiffuse *= bannerDirect;');
   };
   return m;
 }
@@ -343,17 +349,16 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
   const banner = m.Banner as THREE.MeshPhysicalMaterial;
   banner.visible = b.enabled;
   (banner.userData.shift as { value: number }).value = b.vinyl ? 0 : FILM_DEPTH;
+  (banner.userData.direct as { value: number }).value = b.vinyl ? 1 : 0;
   if (b.vinyl) {
     applyPaint(banner, accent(b.paint), PAINT_ENV.Paint);
     banner.setValues({ transparent: false, opacity: 1, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   } else {
-    // The film only absorbs: the windshield over it lets 1 - clear through and adds the reflections, so the film
-    // takes the rest of the tint's opacity in the tint's own color, with no sheen of its own. A lit glass color
-    // would glow under the lights overhead, which the side glass mostly does not face.
-    const clear = tintOpacity(0);
-    const opacity = 1 - (1 - tintOpacity(v.tint.darkness)) / (1 - clear);
-    banner.setValues({ ...GLASS, transparent: true, opacity, envMapIntensity: 0, specularIntensity: 0, polygonOffsetFactor: 0, polygonOffsetUnits: 0 });
-    banner.color.set(v.tint.color);
+    // The side glass's own color and opacity, so the band is the same tint seen through clear glass. The windshield
+    // over it brings the reflections, so the film has none; and it takes only the ambient light, not the lamps
+    // overhead the windshield faces and the side glass does not, so it reads as dark as the windows beside it.
+    banner.setValues({ ...GLASS, transparent: true, envMapIntensity: 0, specularIntensity: 0, polygonOffsetFactor: 0, polygonOffsetUnits: 0 });
+    tintGlass(banner, v.tint.color, v.tint.darkness);
     banner.needsUpdate = true;
   }
   setTireLettering(m, v.wheels.lettering === true);
