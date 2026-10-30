@@ -1770,17 +1770,48 @@ def feature_nodes(o, skin, rect, y_min, inset=0.005, ring=0.025, step=0.01, off=
     return crop, plug
 
 
-def strip_nodes(o, skin, y0, y1, z_lo, z_hi, x_min=0.8, off='shavedRubstrip_off', on='shavedRubstrip_on'):
+def _strip_press(src, name, surface, strip, gaps=(), keep=0.02):
+    """strip_nodes' `on`: a copy of `src` with the vertices for which strip(co) holds pressed onto
+    surface(y, z, side) = (x, normal), then dissolved, all but those within `keep` m in y of a shut line in
+    `gaps` (their dip has to carry on through), and the faces round them triangulated afresh (beautify_fill).
+    Pressed and kept, the reduced body's strip left long slivers that read as streaks where it had been; with
+    them gone the band spans the panel's own vertices above and below it. Every corner takes the surface's
+    normal. Returns the new object, in src's collection."""
+    o = src.copy()
+    o.data = src.data.copy()
+    o.name = o.data.name = name
+    src.users_collection[0].objects.link(o)
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    side = lambda co: 1 if co.x > 0 else -1
+    pressed = [v for v in bm.verts if strip(v.co)]
+    for v in pressed:
+        v.co.x = surface(v.co.y, v.co.z, side(v.co))[0]
+    gone = [v for v in pressed if all(abs(v.co.y - g) > keep for g in gaps)]
+    bmesh.ops.dissolve_verts(bm, verts=gone, use_face_split=False, use_boundary_tear=False)
+    tri = bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 3])
+    bmesh.ops.beautify_fill(bm, faces=tri['faces'], edges=[e for e in bm.edges if not e.is_boundary])
+    for f in bm.faces:
+        f.smooth = True
+    bm.to_mesh(o.data)
+    bm.free()
+    me = o.data
+    me.normals_split_custom_set([surface(me.vertices[lp.vertex_index].co.y, me.vertices[lp.vertex_index].co.z, side(me.vertices[lp.vertex_index].co))[1] for lp in me.loops])
+    o['authored_normals'] = True
+    print(f'_strip_press: {len(pressed)} pressed, {len(gone)} dissolved, {len(me.polygons)} faces')
+    return o
+
+
+def strip_nodes(o, skin, y0, y1, z_lo, z_hi, gaps=(), x_min=0.8, off='shavedRubstrip_off', on='shavedRubstrip_on'):
     """A body side feature the garage switches (render/car/bodyFeatures.ts) where feature_nodes' rectangular hole
     cannot go: a moulded strip along both sides (the Wendt Strom's rubstrip, across the door's rear shut line).
     The vertices strictly between z_lo(y) and z_hi(y) (callables, m, just outside the strip's lower and upper
-    edges) at |x| > x_min and y0 < y < y1 are the strip; every face using one leaves o for `off`, unchanged,
-    and a copy of those faces becomes `on` with the strip's vertices pressed in x onto the skin's side seen from
-    outside, the lerp in z of the skin at z_lo and z_hi at the same y, so the door's edge curls and the shut
-    line's gap carry on through where the strip was. Every corner of `on` takes the skin's normal there (lerped
-    the same way on the strip) and the region's boundary corners on o and `off` the skin's too, so the three
-    meet without a shading step. Both pieces go into o's collection as `<prefix>.<off>` and `<prefix>.<on>`.
-    Returns (off, on)."""
+    edges) at |x| > x_min and y0 < y < y1 are the strip; every face using one leaves o for `off`, unchanged, and
+    `on` is a copy with them pressed onto the skin's side seen from outside, the lerp in z of the skin at z_lo
+    and z_hi at the same y, and dissolved but near the shut lines at `gaps` (y, m; _strip_press), so the door's
+    edge curls and the shut lines carry on through where the strip was. The region's boundary corners on o and
+    `off` take the skin's normal, as every corner of `on` does, so the three meet without a shading step. Both
+    pieces go into o's collection as `<prefix>.<off>` and `<prefix>.<on>`. Returns (off, on)."""
     prefix = o.name.split('.')[0]
     me = o.data
     sbm, ssn, trees = _skin_trees(skin)
@@ -1794,49 +1825,33 @@ def strip_nodes(o, skin, y0, y1, z_lo, z_hi, x_min=0.8, off='shavedRubstrip_off'
             raise RuntimeError(f'strip_nodes: no skin at y {y:.3f} z {z:.3f}')
         return loc.x, _skin_normal(fs[fi], ssn, loc)
 
-    strip = {v.index for v in me.vertices if abs(v.co.x) > x_min and y0 < v.co.y < y1 and z_lo(v.co.y) < v.co.z < z_hi(v.co.y)}
+    def surface(y, z, s):
+        """The side without the strip: the skin, or across the strip the lerp of the skin at its two edges."""
+        a, b = z_lo(y), z_hi(y)
+        if not (y0 < y < y1 and a < z < b):
+            return side(y, z, s)
+        (xa, na), (xb, nb) = side(y, a, s), side(y, b, s)
+        t = (z - a) / (b - a)
+        return xa + (xb - xa) * t, na.lerp(nb, t).normalized()
+
+    in_strip = lambda co: abs(co.x) > x_min and y0 < co.y < y1 and z_lo(co.y) < co.z < z_hi(co.y)
+    strip = {v.index for v in me.vertices if in_strip(v.co)}
     faces = [p for p in me.polygons if any(i in strip for i in p.vertices)]
     region = {i for p in faces for i in p.vertices}
-    pressed, normal = {}, {}
-    for i in region:
-        c = me.vertices[i].co
-        s = 1 if c.x > 0 else -1
-        if i in strip:
-            a, b = z_lo(c.y), z_hi(c.y)
-            (xa, na), (xb, nb) = side(c.y, a, s), side(c.y, b, s)
-            t = (c.z - a) / (b - a)
-            pressed[key(c)] = Vector((xa + (xb - xa) * t, c.y, c.z))
-            normal[key(c)] = na.lerp(nb, t).normalized()
-        else:
-            normal[key(c)] = side(c.y, c.z, s)[1]
-    sbm.free()
-    boundary = {key(me.vertices[i].co) for i in region - strip}
+    normal = {key(me.vertices[i].co): side(me.vertices[i].co.y, me.vertices[i].co.z, 1 if me.vertices[i].co.x > 0 else -1)[1] for i in region - strip}
     centers = {key(p.center) for p in faces}
     off_o = split_off(o, f'{prefix}.{off}', lambda c, m, n: key(c) in centers)
-    on_o = off_o.copy()
-    on_o.data = off_o.data.copy()
-    on_o.name = on_o.data.name = f'{prefix}.{on}'
-    o.users_collection[0].objects.link(on_o)
-    for v in on_o.data.vertices:
-        if key(v.co) in pressed:
-            v.co = pressed[key(v.co)]
-    on_o.data.update()
-
-    def renormal(obj, keys, at):
-        """Corners whose vertex (by its position before the press) is in `keys` take normal[that position]."""
+    on_o = _strip_press(off_o, f'{prefix}.{on}', surface, in_strip, gaps)
+    sbm.free()
+    for obj in (o, off_o):
         m = obj.data
         ns = [Vector(c.vector) for c in m.corner_normals]
         for li, lp in enumerate(m.loops):
-            k = at(lp.vertex_index)
-            if k in keys:
+            k = key(m.vertices[lp.vertex_index].co)
+            if k in normal:
                 ns[li] = normal[k]
         m.normals_split_custom_set(ns)
-
-    before = {key(p): k for k, p in pressed.items()}
-    renormal(on_o, normal, lambda i: before.get(key(on_o.data.vertices[i].co), key(on_o.data.vertices[i].co)))
-    for obj in (o, off_o):
-        renormal(obj, boundary, lambda i, obj=obj: key(obj.data.vertices[i].co))
-    print(f'strip_nodes: {len(strip)} strip vertices pressed, {len(faces)} faces in {off} and {on}, {len(boundary)} on the boundary')
+    print(f'strip_nodes: {len(strip)} strip vertices, {len(faces)} faces in {off}, {len(on_o.data.polygons)} in {on}, {len(normal)} on the boundary')
     return off_o, on_o
 
 

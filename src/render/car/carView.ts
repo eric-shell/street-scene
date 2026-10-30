@@ -627,6 +627,9 @@ export class CarView {
     this.baseModel.traverse((o) => {
       if (o === this.baseModel) return;
       if (this.car.wheelNodes.includes(o.name)) return;
+      // A feature's `_on` / `_off` nodes are BodyFeatureView's: their first visibility is only the stock state, and
+      // restoring it after a part loads undid the switch.
+      if (o.userData.featureNode) return;
       if (o.userData.__baseVisible === undefined) o.userData.__baseVisible = o.visible;
       o.visible = hidden.has(o.name) ? false : (o.userData.__baseVisible as boolean);
     });
