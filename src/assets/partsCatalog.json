@@ -206,7 +206,7 @@
         "Paint",
         "Black"
       ],
-      "tris": 931,
+      "tris": 923,
       "generated": true
     },
     {
@@ -222,7 +222,7 @@
         "Paint",
         "Black"
       ],
-      "tris": 931,
+      "tris": 923,
       "generated": true
     },
     {
@@ -251,7 +251,7 @@
         "Paint",
         "Black"
       ],
-      "tris": 1150,
+      "tris": 1142,
       "generated": true
     },
     {
@@ -280,7 +280,7 @@
         "Paint",
         "Black"
       ],
-      "tris": 2242,
+      "tris": 2234,
       "generated": true
     },
     {
@@ -298,19 +298,19 @@
         [
           0.065,
           0.257,
-          -2.062
+          -2.037
         ],
         [
           -0.065,
           0.257,
-          -2.062
+          -2.037
         ]
       ],
       "materialSlots": [
         "Paint",
         "Black"
       ],
-      "tris": 2674,
+      "tris": 2854,
       "generated": true
     },
     {
