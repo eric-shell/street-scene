@@ -369,6 +369,19 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_spoiler_trackWild",
+      "displayName": "Track Wild",
+      "carId": "wendtStrom",
+      "slot": "spoiler",
+      "file": "parts/wendtStrom_spoiler_trackWild.glb",
+      "hides": [],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 344,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Hiryu",

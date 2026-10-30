@@ -1976,3 +1976,94 @@ def shading(kind='MATERIAL', color_type=None):
             sh.type = kind
             if color_type:
                 sh.color_type = color_type
+
+
+# ----- wings ----------------------------------------------------------------
+# A GT wing is a straight airfoil on plate uprights. The uprights are laser cut plates with
+# windows between bars, which is a flat polygon with holes: tessellate_polygon fills a flat plate
+# cleanly (its slivers only mattered on a curved panel), so these are the one place it is used.
+# The caller lays out the windows (each a convex region between the bars, inset by half the bar
+# width with inset_polygon) and cut_plate cuts them; see /parts for the Track Wild wing's layout.
+
+def airfoil(chord, thick=0.15, n=7):
+    """An inverted flat top airfoil as (u, w) points round the section, u along the chord from the
+    nose, w up: a flat pressure side on top, the camber underneath (a NACA 4 digit thickness law,
+    all of it on the lower side, so the law's half thickness is doubled), max thickness `thick` × chord
+    at 30 %, a 1 mm trailing edge.
+    `n` points along each side; starts at the trailing edge and runs forward along the top."""
+    def t(u):
+        return 10 * thick * chord * (0.2969 * math.sqrt(u) - 0.1260 * u - 0.3516 * u * u + 0.2843 * u ** 3 - 0.1036 * u ** 4)
+    us = [1 - (i / n) ** 1.6 for i in range(n + 1)]  # dense toward the nose
+    top = [(u * chord, -0.0012 * (1 - u)) for u in us[:-1]]
+    nose = [(0.0, -0.35 * t(0.03))]
+    bottom = [(u * chord, -t(u) - 0.001) for u in reversed(us[:-1])]
+    bottom[-1] = (chord, -0.001)
+    return top + nose + bottom
+
+
+def gt_wing(o, span, chord, le, aoa, name, thick=0.15):
+    """A straight single element wing: the airfoil's nose at `le` (y, z), `aoa` degrees nose down
+    (the trailing edge rises, so the wing presses down), run across x by `span`, capped square."""
+    a = math.radians(aoa)
+    sec = []
+    for u, w in airfoil(chord, thick):
+        y = le[0] + u * math.cos(a) - w * math.sin(a)
+        z = le[1] + u * math.sin(a) + w * math.cos(a)
+        sec.append((y, z))
+    sweep(o, [[(-span / 2, y, z) for y, z in sec], [(span / 2, y, z) for y, z in sec]], name)
+    return sec
+
+
+def inset_polygon(pts, d):
+    """A convex polygon (list of (a, b)) shrunk by `d`: the polygon clipped by every edge's inward
+    offset half plane (Sutherland-Hodgman), so an acute corner is cut off rather than thrown far away
+    as the moved edges' intersection would (that blew a sliver window out of its plate), and a region
+    thinner than 2 `d` comes back empty. Convex only: a concave edge's half plane, extended, clips
+    the far side of the polygon away (a window bounded by the hatch skin's bulge came back empty).
+    Winding is normalised; the result is counterclockwise."""
+    area = sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1] for i in range(len(pts)))
+    if area < 0:
+        pts = pts[::-1]
+    poly = [Vector(p) for p in pts]
+    for i in range(len(pts)):
+        a, b = Vector(pts[i]), Vector(pts[(i + 1) % len(pts)])
+        e = (b - a).normalized()
+        nrm = Vector((-e.y, e.x))  # left of the edge, the inside of a counterclockwise loop
+        p0 = a + nrm * d
+        inside = lambda q: (q - p0).dot(nrm) >= -1e-9
+        out = []
+        for k in range(len(poly)):
+            s_, e_ = poly[k - 1], poly[k]
+            if inside(e_):
+                if not inside(s_):
+                    t = (p0 - s_).dot(nrm) / (e_ - s_).dot(nrm)
+                    out.append(s_ + (e_ - s_) * t)
+                out.append(e_)
+            elif inside(s_):
+                t = (p0 - s_).dot(nrm) / (e_ - s_).dot(nrm)
+                out.append(s_ + (e_ - s_) * t)
+        poly = out
+        if len(poly) < 3:
+            return []
+    return [(q.x, q.y) for q in poly]
+
+
+def cut_plate(o, x, thick, outline, holes, name):
+    """A flat plate in the plane x = `x`, `thick` across it, with the (y, z) `outline` and any number
+    of (y, z) `holes` cut through it: both faces tessellated, walls round every loop. Closed, so
+    add_geom orients it."""
+    from mathutils.geometry import tessellate_polygon
+    loops = [outline] + list(holes)
+    flat = [p for loop in loops for p in loop]
+    tris = tessellate_polygon([[Vector((a, b, 0)) for a, b in loop] for loop in loops])
+    m = len(flat)
+    verts = [(x - thick / 2, a, b) for a, b in flat] + [(x + thick / 2, a, b) for a, b in flat]
+    faces = [tuple(t) for t in tris] + [tuple(m + i for i in reversed(t)) for t in tris]
+    base = 0
+    for loop in loops:
+        k = len(loop)
+        for i in range(k):
+            a, b = base + i, base + (i + 1) % k
+            faces.append((a, b, m + b, m + a))
+        base += k
+    add_geom(o, verts, faces, name)
