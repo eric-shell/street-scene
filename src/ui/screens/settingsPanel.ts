@@ -41,7 +41,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     s[k] = v;
     onChange(s);
   };
-  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'flashEffects' | 'rumble' | 'debugMode') => onOff(s[k], (v) => set(k, v));
+  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'flashEffects' | 'racingLine' | 'rumble' | 'debugMode') => onOff(s[k], (v) => set(k, v));
   const slider = (label: string, value: number, onInput: (v: number) => void) => {
     const r = h('input', { type: 'range', min: 0, max: 1, step: 0.01, value, class: 'setting-row__slider', 'aria-label': label }) as HTMLInputElement;
     r.addEventListener('input', () => onInput(Number(r.value)));
@@ -114,6 +114,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
           );
         show('keyboard');
         return [
+          settingRow('Racing line', toggle('racingLine'), 'Brake red, hold white, gas green at the corners'),
           settingRow('Gamepad rumble', toggle('rumble'), 'Hits, landings, rough ground, nitrous'),
           segmented<keyof typeof CONTROLS>(
             [

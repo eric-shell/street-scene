@@ -25,9 +25,13 @@
  * transition asked for while one runs is ignored (a double click). The overlay
  * covers everything, the music widget included, and swallows pointer and key
  * presses while it is up. Reduced motion swaps them for a short fade.
+ * Every wipe and shift card stays covered at least `T.cardRead` after the cover lands, so its text finishes arriving and gets read
+ * however quick the work is (the door keeps its own short hold: its sign has no cascade). A wipe whose card sets `progress` shows the work's real progress (`loadProgress`):
+ * the course line draws and the rule fills as the work reports, instead of a fixed-length animation.
  * Styled by _cover.scss, _wipe.scss, _door.scss and _shift.scss beside this file.
  */
 import { h } from '../kit/dom';
+import { nextPaint } from '../../shared/anim';
 import { uiDoorDown, uiDoorUp, uiWhoosh, uiWipe } from '../../audio/uiSound';
 
 /** Timings (ms) and the bands' slant (deg). */
@@ -41,6 +45,8 @@ const T = {
   doorUp: 720,
   /** The door stays shut at least this long, so its sign reads. */
   doorHold: 260,
+  /** A wipe or shift card stays covered at least this long (ms), measured from when the cover lands: its text cascades in over about 0.86 s (_wipe.scss), then a beat to read, so quick work never lifts a card mid-sentence. */
+  cardRead: 1100,
   fade: 220,
   /** The shift: the city flooring it and the frame closing (ms), the card held at least this long (ms), the frame opening onto the new city (ms). */
   shiftIn: 560,
@@ -67,8 +73,10 @@ export interface WipeCard {
   title: string;
   art?: Element;
   sub?: string;
-  /** The card stays up at least this long (ms), so a drawing can finish however fast the work is. */
+  /** The card stays up at least this long (ms), so a drawing can finish however fast the work is. Never less than `T.cardRead`. */
   hold?: number;
+  /** The work reports how far along it is (`loadProgress`): the course line draws and the rule fills with it, instead of sitting full. */
+  progress?: boolean;
 }
 
 let busy = false;
@@ -91,9 +99,17 @@ const lift = () => {
   for (const r of lifting.splice(0)) r();
 };
 
+/** Where the covering card shows the work's progress (0..1): the card element whose `--progress` the styles read, or null. */
+let progressSink: HTMLElement | null = null;
+
+/** The running work's progress, 0..1 (monotone, clamped): the covering card's line draws and its rule fills as far, each step gliding. A no-op with no card showing progress. */
+export function loadProgress(p: number): void {
+  progressSink?.style.setProperty('--progress', Math.max(0, Math.min(1, p)).toFixed(3));
+}
+
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Two frames: the covered screen is on the glass before the work blocks the main thread. */
-const painted = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+const painted = nextPaint;
 
 /** Swallow key presses while the screen is covered (key releases still pass, so nothing sticks). */
 function blockKeys(): () => void {
@@ -116,6 +132,8 @@ async function run(overlay: HTMLElement, cover: () => Promise<void>, work: () =>
     await painted();
     const t0 = performance.now();
     await work();
+    // The bar is full when the card is allowed to lift, whatever the work reported.
+    loadProgress(1);
     const left = hold - (performance.now() - t0);
     if (left > 0) await new Promise((r) => setTimeout(r, left));
     // The new screen gets its first frame under the cover, so the reveal shows it whole.
@@ -123,6 +141,7 @@ async function run(overlay: HTMLElement, cover: () => Promise<void>, work: () =>
     lift();
     await uncover();
   } finally {
+    progressSink = null;
     lift();
     overlay.remove();
     unblock();
@@ -177,6 +196,11 @@ export function wipe(card: WipeCard, work: () => void | Promise<void>): Promise<
     () => {
       uiWipe();
       content.classList.add('is-entering');
+      if (card.progress) {
+        content.classList.add('is-loading');
+        content.style.setProperty('--progress', '0');
+        progressSink = content;
+      }
       return move(xIn, xCover, T.wipeIn, 'cubic-bezier(0.7, 0, 0.3, 1)');
     },
     work,
@@ -184,7 +208,7 @@ export function wipe(card: WipeCard, work: () => void | Promise<void>): Promise<
       content.classList.add('is-leaving');
       return move(xCover, xOut, T.wipeOut, 'cubic-bezier(0.6, 0, 0.25, 1)');
     },
-    card.hold ?? 0,
+    Math.max(card.hold ?? 0, T.cardRead),
   );
 }
 
@@ -229,6 +253,7 @@ export function door(sign: string, work: () => void | Promise<void>): Promise<vo
         { duration: T.doorUp, fill: 'forwards' },
       ).finished;
     },
+    // The door's sign is a word that flickers on, no cascade to wait for: its own short hold.
     T.doorHold,
   );
 }
@@ -293,7 +318,7 @@ export function shift(card: WipeCard, work: () => void | Promise<void>, burn: (s
         iris.animate([shut, open], { duration: T.shiftOut, easing: 'cubic-bezier(0.25, 0.4, 0.3, 1)', fill: 'forwards' }).finished,
       ]);
     },
-    T.shiftHold,
+    Math.max(T.shiftHold, T.cardRead),
   ).finally(() => {
     // A build that threw still lets the warp burn out.
     arrived ??= performance.now();

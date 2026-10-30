@@ -43,7 +43,7 @@ export interface MapPose {
 }
 
 /** The event's signature districts, which breathe on the overview. */
-const SIGNATURE: Record<EventFlavourId, AreaKind | null> = {
+export const SIGNATURE: Record<EventFlavourId, AreaKind | null> = {
   hillClimb: 'hills',
   channelRun: 'channel',
   harborRun: 'waterfront',

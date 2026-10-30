@@ -5,7 +5,7 @@
  * for the daily race, so the day's city gets one more reason to be looked at.
  *
  * Which weekend it is comes from the seed's own digits, never from the clock.
- * The daily seed is the UTC date as YYYYMMDD (src/seed.ts) and seedFromString
+ * The daily seed is the Pacific date as YYYYMMDD (src/seed.ts) and seedFromString
  * returns a 1-9 digit string as the number itself, so the sim reads the date
  * back out of the seed with a pure days-from-civil formula (no `Date`). That
  * keeps the city a function of the seed alone: a Saturday link opened on a

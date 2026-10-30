@@ -12,6 +12,7 @@
 import { track } from '../analytics/telemetry';
 import { setOwnsAll } from '../shared/purchases';
 import { loadJson, saveJson } from '../shared/store';
+import { grantSignInBonus } from '../shared/points';
 import { applySave, collectSave, joinLocalBuilds, mergeLocalPoints, watchSynced, type SaveBlob } from './cloudSave';
 
 export interface Player {
@@ -121,6 +122,8 @@ function reconcile(r: AccountReply): boolean {
   const mine = meta.owner === r.player.id;
   const picture = meta.last?.email === r.player.email ? meta.last.picture : undefined;
   meta.last = { name: r.player.name, email: r.player.email, picture };
+  // Signing in is worth a bonus once per account: raised locally first so the merge and upload below carry it.
+  grantSignInBonus();
   if (r.save && !(mine && meta.dirty)) {
     // A save that belonged to no account (this device's first sign-in) brings its builds along into the account's garage.
     const joined = meta.owner === null ? joinLocalBuilds(r.save) : 0;

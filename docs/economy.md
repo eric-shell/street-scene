@@ -8,7 +8,7 @@ Races pay points; points buy garage parts and the body features (fog lights, sha
 
 | Module | Store key | What it holds | Merge across devices |
 |---|---|---|---|
-| `src/shared/points.ts` | `points.v1` | `{ total, spent, best }`: lifetime earned, lifetime spent, best run | max of each field |
+| `src/shared/points.ts` | `points.v1` | `{ total, spent, best, bonus }`: lifetime earned, lifetime spent, best run, points granted | max of each field |
 | `src/shared/stats.ts` | `stats.v1` | races finished (all and per mode), wins, podiums, best finish, race time (s), distance (m), drift score, best run, points lost to crashes, free roam drives | max of each counter, min of the (set) best finish |
 | `src/shared/economy.ts` | none | the price and unlock table (`ECONOMY`), `priceOf`, `unlockRaces`, `isUnlocked`; `Buyable`, `featureId`, `featurePrice`, `featureRacesToUnlock` | |
 | `src/shared/purchases.ts` | `purchases.v1` | `{ [carId]: id[] }`: part ids and `feature.<name>` ids | union per car |
@@ -17,7 +17,11 @@ All three keys sync with an account (`src/account/cloudSave.ts`, `SYNCED`). A do
 
 ### The ledger
 
-The balance is `total - spent`, never below 0 (`pointsBalance()`); `totalPoints()` is still lifetime earned. A ledger rather than a balance because both fields only grow, which is what lets two devices merge with a max and no server: a merged balance would have to guess which device spent what. Every race's points go through `addRunPoints` (main.ts's finish handler, live untuned runs only) and every purchase through `spendPoints`, which refuses when the balance is short. A save from before the economy has no `spent` and reads 0.
+The balance is `total + bonus - spent`, never below 0 (`pointsBalance()`); `totalPoints()` is still lifetime earned. A ledger rather than a balance because both fields only grow, which is what lets two devices merge with a max and no server: a merged balance would have to guess which device spent what. Every race's points go through `addRunPoints` (main.ts's finish handler, live untuned runs only) and every purchase through `spendPoints`, which refuses when the balance is short. A save from before the economy has no `spent` and reads 0.
+
+### The welcome bonus
+
+`bonus` is points granted rather than earned, kept apart so `total` (and the Stats page) stays truthful. Everyone starts with 5,000 (`BONUS.WELCOME`; a save without the field reads that, which is how players from before the update get it too), and signing in to an account raises it to 10,000 (`BONUS.SIGN_IN`: another 5,000), once per account. 5,000 is a little under two races, about the cheapest wheel on its own; 10,000 buys a first real upgrade before the first race pays out. It merges as a max like every other field, so the grant is never counted twice across devices and a device that has not seen it cannot lose it. `grantSignInBonus` (called from `account.reconcile` on every sign-in and boot pull, before the merge) is idempotent and signing out never lowers the value, so a second device signing in to the same account gets nothing more: its max already includes the account's 10,000.
 
 ### Stats
 

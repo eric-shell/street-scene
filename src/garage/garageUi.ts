@@ -21,7 +21,7 @@
  * changes, so only the slot in use is ever a draft. Back from Customize is
  * cancel: it discards the draft, after a prompt that can save it instead, so
  * the Builds step shows what the slots hold. Share and import live in a
- * dialog off the build card and the Builds header.
+ * dialog off the build card and the Builds step's Import button under the slots.
  *
  * It speaks the main menu's language (the partials beside this file): chamfered
  * plates, a hue per category (the tab's badge, and the open tab's picks, sliders
@@ -50,7 +50,7 @@ import type { Quality } from '../ui/settings';
 import { RailSteps, railInset, screenHead } from '../ui/rail/rail';
 import { Help, MUSIC_KEYS } from '../ui/panels/help';
 import type { HelpKey } from '../ui/panels/help';
-import { uiWhoosh } from '../audio/uiSound';
+import { uiShutter, uiWhoosh } from '../audio/uiSound';
 import { BODY_PART_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { Axle, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, VinylShape, validateBuild } from '../shared/carBuild';
 import { getBaseTuning } from '../sim/tuning';
@@ -60,7 +60,7 @@ import { specBadges } from '../shared/carSpec';
 import { btn, chip, h, iconBtn, isTyping, scrollHint, segmented, sheen, specChip, toast } from '../ui/kit/dom';
 import { door, transitioning } from '../ui/transitions/transitions';
 import { openSignInDialog, onSignedIn, wantsSignIn } from '../ui/screens/signIn';
-import { Car, Check, ChevronRight, CircleUser, CloudOff, Coins, Copy, Download, Gauge, Hammer, Lock, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
+import { Camera, Car, Check, ChevronRight, CircleUser, CloudOff, Coins, Copy, Download, Gauge, Hammer, Lock, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
 import type { Buyable } from '../shared/economy';
 import { buyItem } from '../shared/purchases';
 import { pointsBalance } from '../shared/points';
@@ -110,14 +110,19 @@ const DRIVE_KEYS = [...GAS_KEYS, ...LEFT_KEYS, ...RIGHT_KEYS];
 /** How long the Save button stays green after a save (ms), before it eases back to Saved. */
 const SAVED_FLASH_MS = 5000;
 
-/** Where a step stands (pips like the menu's race flow), then anything else for the header's right. */
-const progress = (at: number, ...aside: Child[]) =>
-  h(
-    'span',
-    { class: 'screen-head__aside' },
-    h('span', { class: 'stepper', role: 'img', 'aria-label': `Step ${at} of 2` }, ...[1, 2].map((i) => h('i', { class: i < at ? 'stepper__pip is-done' : i === at ? 'stepper__pip is-current' : 'stepper__pip' }))),
-    ...aside,
-  );
+/** What sits at the header's right (the points counter, the build's name chip). */
+const headAside = (...aside: Child[]) => h('span', { class: 'screen-head__aside' }, ...aside);
+
+/** The File System Access API's save dialog (Chromium only; the DOM lib does not type it). */
+interface SavePicker {
+  showSaveFilePicker?: (o: { suggestedName: string; startIn?: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<{ createWritable(): Promise<{ write(b: Blob): Promise<void>; close(): Promise<void> }> }>;
+}
+
+/** yyyymmdd-hhmm in local time, for a screenshot's file name. */
+const stamp = (d = new Date()) => {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+};
 
 /**
  * The garage screen. The members the tab builders reach (`scene`, `body`, `tab`, `bodySlot`, `wheel*`,
@@ -192,6 +197,7 @@ export class GarageScreen implements TabHost {
         { keys: ['W', '↑', 'Space'], label: this.prefs.presentation === 'dyno' ? 'Hold to run a pull on the dyno' : 'Hold to rev', action: () => this.scene.blip() },
         { keys: ['A', 'D', '←', '→'], label: 'Turn the front wheels' },
         { keys: ['C'], label: 'Next camera angle', action: () => this.nextCamera() },
+        { keys: ['P'], label: 'Screenshot of the view', action: () => void this.screenshot() },
         { keys: ['Ctrl S'], label: 'Save the build', action: () => this.save() },
       ];
       const builds = this.step === 'builds';
@@ -297,6 +303,7 @@ export class GarageScreen implements TabHost {
           if (this.step === 'build') this.backToBuilds();
           else this.exit();
         } else if (e.code === 'KeyC') this.nextCamera();
+        else if (e.code === 'KeyP') void this.screenshot();
         else if (this.step === 'builds' && /^[1-9]$/.test(e.key) && this.garage.slots[Number(e.key) - 1]) this.pickSlot(Number(e.key) - 1);
       },
       o,
@@ -431,7 +438,7 @@ export class GarageScreen implements TabHost {
     this.steps.current?.querySelector<HTMLElement>(next === 'builds' ? '.car-card__go' : '.garage-tab.is-selected')?.focus({ preventScroll: true });
   }
 
-  /** Step one: the build card over the slots. Import sits in the header: it fills a slot. */
+  /** Step one: the build card over the slots. Import sits under the slots: it fills a slot. */
   private buildsStep(): HTMLElement[] {
     this.updateCarCard();
     this.updateSlots();
@@ -442,10 +449,10 @@ export class GarageScreen implements TabHost {
         back: () => this.exit(),
         backLabel: 'Back to menu (Esc)',
         // The balance, so the player knows what there is to spend before Customize.
-        aside: progress(1, FEATURES.economy ? new PointsCounter(pointsBalance(), 'points-counter--quiet').el : null, iconBtn(Upload, 'Import a build code', () => this.openShare(true), '--small --ghost')),
+        aside: headAside(FEATURES.economy ? new PointsCounter(pointsBalance(), 'points-counter--quiet').el : null),
       }),
       this.carCard,
-      section(`Builds · ${this.garage.slots.length} of ${MAX_SLOTS}`, this.slotsEl),
+      section(`Builds · ${this.garage.slots.length} of ${MAX_SLOTS}`, this.slotsEl, btn(Upload, 'Import a build', () => this.openShare(true), '--small --ghost')),
       ...[this.signInNote()].filter((n) => n !== null),
     ];
   }
@@ -469,14 +476,14 @@ export class GarageScreen implements TabHost {
 
   /**
    * Step two: the tabs and the open tab's groups. With the economy on the header's right is the live points
-   * counter and the build's name moves to a quiet line over the tabs; off, it is the step pips and the name's chip.
+   * counter and the build's name moves to a quiet line over the tabs; off, it is the name's chip.
    */
   private buildStep(): HTMLElement[] {
     this.setTab(this.tab);
     const head = (aside: HTMLElement) => screenHead({ icon: Hammer, title: 'Customize', back: () => this.backToBuilds(), backLabel: 'Back to your builds (Esc)', aside });
     if (!FEATURES.economy) {
       this.counter = null;
-      return [head(progress(2, chip(this.build.name, undefined, '--accent garage__build-chip'))), h('div', { class: 'garage__work' }, this.tabBar, this.bodyView)];
+      return [head(headAside(chip(this.build.name, undefined, '--accent garage__build-chip'))), h('div', { class: 'garage__work' }, this.tabBar, this.bodyView)];
     }
     this.counter = new PointsCounter(pointsBalance());
     return [
@@ -764,6 +771,45 @@ export class GarageScreen implements TabHost {
     this.updateSaveState();
   }
 
+  /**
+   * Save the 3D view as a PNG (the rail is DOM, so the picture is clean). Chromium opens its save dialog on the
+   * Desktop; other browsers download to the Downloads folder.
+   */
+  private async screenshot(): Promise<void> {
+    const blob = await this.scene.capture();
+    if (!blob || blob.size === 0) return void toast('Could not capture the view', Camera);
+    uiShutter();
+    this.flash();
+    const name = `street-scene-${this.build.name.trim().replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'build'}-${stamp()}.png`;
+    const picker = (window as unknown as SavePicker).showSaveFilePicker;
+    if (picker) {
+      try {
+        const file = await picker.call(window, { suggestedName: name, startIn: 'desktop', types: [{ description: 'PNG image', accept: { 'image/png': ['.png'] } }] });
+        const out = await file.createWritable();
+        await out.write(blob);
+        await out.close();
+        toast('Screenshot saved', Camera);
+      } catch (e) {
+        if ((e as DOMException)?.name !== 'AbortError') toast('Could not save the screenshot', Camera);
+      }
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = h('a', { href: url, download: name });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast('Screenshot saved to Downloads', Camera);
+  }
+
+  /** A white flash over the view, as the shutter fires. */
+  private flash(): void {
+    const f = h('div', { class: 'garage-flash' });
+    f.addEventListener('animationend', () => f.remove());
+    this.uiRoot.append(f);
+    // Without motion there is no animation to end: a plain short blink.
+    setTimeout(() => f.remove(), 600);
+  }
+
   private nextCamera(): void {
     toast(`Camera: ${this.scene.setCamera()}`, Video);
   }
@@ -787,6 +833,7 @@ export class GarageScreen implements TabHost {
         },
       ),
       iconBtn(Video, 'Next camera angle (C)', () => this.nextCamera(), '--small'),
+      iconBtn(Camera, 'Take a screenshot of the view (P)', () => void this.screenshot(), '--small'),
     );
   }
 

@@ -38,6 +38,8 @@ export interface Settings {
   interfaceVolume: number;
   /** Driver aid: cuts drive torque when the rear wheels spin. Off lets the rear step out. */
   tractionControl: boolean;
+  /** Driving aid: a racing line at the corners, red to brake, white to hold, green for gas (render/race/drivingLine.ts). */
+  racingLine: boolean;
   /** Flash effects: lightning flashes and the police light bar's strobes. Off keeps the sky still and the light bar a soft glow. */
   flashEffects: boolean;
   /** Gamepad rumble for the player's car (pads and browsers that support it). */
@@ -46,6 +48,10 @@ export interface Settings {
   debugMode: boolean;
   /** The player's name as a license plate can carry it (plateText: A–Z, 0–9, spaces and hyphens, PLATE_MAX long); the plates will show it. Empty: none chosen. Set on Settings › Account and synced with the account. */
   username: string;
+  /** The player's display name in standings and results (free text, trimmed, DRIVER_NAME_MAX long). Empty: none yet, so 'You'. Filled from the account's name on sign-in (ui/driverName.ts), editable on Settings › Account. */
+  driverName: string;
+  /** The player's racing number, 1..RACING_NUMBER_MAX, shown as a roundel beside the name in results. 0: none. */
+  racingNumber: number;
 }
 
 const KEY = 'settings.v1';
@@ -68,10 +74,13 @@ export const DEFAULT_SETTINGS: Settings = {
   ambienceVolume: 1,
   interfaceVolume: 1,
   tractionControl: false,
+  racingLine: true,
   flashEffects: true,
   rumble: true,
   debugMode: false,
   username: '',
+  driverName: '',
+  racingNumber: 0,
 };
 
 /** The longest plate name (characters), what a US plate holds. */
@@ -85,6 +94,27 @@ export function plateText(text: string): string {
     .replace(/ {2,}/g, ' ')
     .replace(/^ +/, '')
     .slice(0, PLATE_MAX);
+}
+
+/** The longest driver name (characters). */
+export const DRIVER_NAME_MAX = 24;
+/** The highest racing number: two digits fit the roundel. */
+export const RACING_NUMBER_MAX = 99;
+
+/** Free text as a driver name: control characters out, runs of spaces collapsed, at most DRIVER_NAME_MAX long (not trimmed, so typing a space works). */
+export function driverNameText(text: string): string {
+  return text.replace(/[\u0000-\u001f\u007f]/g, '').replace(/ {2,}/g, ' ').replace(/^ +/, '').slice(0, DRIVER_NAME_MAX);
+}
+
+/** A racing number from anything typed: whole 1..RACING_NUMBER_MAX, else 0 (none). */
+export function racingNumberOf(v: unknown): number {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, RACING_NUMBER_MAX) : 0;
+}
+
+/** The name the player races under: their driver name, else 'You'. */
+export function driverName(s: Pick<Settings, 'driverName'>): string {
+  return s.driverName.trim() || 'You';
 }
 
 export function loadSettings(): Settings {
@@ -108,6 +138,8 @@ export function loadSettings(): Settings {
   delete (s as Partial<typeof legacy>).debugTuningPanel;
   delete (s as Partial<typeof legacy>).debugCameraPanel;
   s.username = typeof s.username === 'string' ? plateText(s.username).trim() : '';
+  s.driverName = typeof s.driverName === 'string' ? driverNameText(s.driverName).trim() : '';
+  s.racingNumber = racingNumberOf(s.racingNumber);
   for (const k of VOLUMES) {
     s[k] = clamp01(Number(s[k]));
     if (!Number.isFinite(s[k])) s[k] = DEFAULT_SETTINGS[k];

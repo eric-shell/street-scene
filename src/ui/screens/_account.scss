@@ -14,6 +14,41 @@
       display: none;
     }
   }
+  /* Driver name, plate and racing number in one row that wraps on narrow screens. */
+  &__id {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 24px;
+    > .setting-row {
+      flex: 0 1 auto;
+    }
+  }
+  /* The driver name: plain text, as wide as the longest name. Under the block like the plate. */
+  .account__name {
+    width: calc(24ch + 2em);
+    max-width: 100%;
+    padding: 7px 10px;
+    font: 700 15px var(--mono);
+    &::placeholder {
+      color: var(--muted);
+      opacity: 0.6;
+    }
+  }
+  /* The racing number, on a roundel: round, two digits in the seed's yellow. */
+  .account__number {
+    box-sizing: border-box;
+    width: 52px;
+    height: 52px;
+    padding: 0;
+    border-radius: 50%;
+    font: 800 20px var(--mono);
+    text-align: center;
+    color: var(--accent-2);
+    &::placeholder {
+      color: var(--muted);
+      opacity: 0.6;
+    }
+  }
   /* The plate name, typed onto a plate: the seed's yellow in wide set capitals, as long as the longest name.
      Under the block so it outweighs the kit's input[type='text']. */
   .account__plate {

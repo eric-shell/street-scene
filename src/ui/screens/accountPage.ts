@@ -7,7 +7,7 @@
 import { btn, h } from '../kit/dom';
 import { LogOut, icon } from '../kit/icons';
 import { accountState, onAccountChange, signOut } from '../../account/account';
-import { PLATE_MAX, plateText, type Settings } from '../settings';
+import { DRIVER_NAME_MAX, PLATE_MAX, RACING_NUMBER_MAX, driverNameText, plateText, racingNumberOf, type Settings } from '../settings';
 import { settingRow } from './settingsPanel';
 import { SYNC_STATUS, signInContent } from './signIn';
 
@@ -27,6 +27,32 @@ function plateRow(s: Settings, onChange: (s: Settings) => void): HTMLElement {
   return settingRow('Plate name', input, `Your name on your license plates, up to ${PLATE_MAX} letters and numbers`);
 }
 
+/** The driver name, as standings and results show it. Filled from the account's name on sign-in (driverName.ts). */
+function nameRow(s: Settings, onChange: (s: Settings) => void): HTMLElement {
+  const input = h('input', { type: 'text', class: 'account__name', value: s.driverName, maxlength: DRIVER_NAME_MAX, spellcheck: 'false', autocomplete: 'off', 'aria-label': 'Driver name', placeholder: 'You' }) as HTMLInputElement;
+  input.addEventListener('input', () => {
+    const clean = driverNameText(input.value);
+    if (clean !== input.value) input.value = clean;
+    s.driverName = clean.trim();
+    onChange(s);
+  });
+  input.addEventListener('change', () => (input.value = s.driverName));
+  return settingRow('Driver name', input, `Your name in results, up to ${DRIVER_NAME_MAX} characters`);
+}
+
+/** The racing number: a roundel that takes 1 to RACING_NUMBER_MAX. */
+function numberRow(s: Settings, onChange: (s: Settings) => void): HTMLElement {
+  const input = h('input', { type: 'text', inputmode: 'numeric', class: 'account__number', value: s.racingNumber ? String(s.racingNumber) : '', maxlength: 2, autocomplete: 'off', 'aria-label': 'Racing number', placeholder: '#' }) as HTMLInputElement;
+  input.addEventListener('input', () => {
+    const digits = input.value.replace(/\D/g, '').slice(0, 2);
+    if (digits !== input.value) input.value = digits;
+    s.racingNumber = racingNumberOf(digits);
+    onChange(s);
+  });
+  input.addEventListener('change', () => (input.value = s.racingNumber ? String(s.racingNumber) : ''));
+  return settingRow('Racing number', input, `1 to ${RACING_NUMBER_MAX}`);
+}
+
 export function accountPage(s: Settings, onChange: (s: Settings) => void): HTMLElement[] {
   // The plate stays put between the account's two parts (signed out above it, signed in below it): redrawing
   // never moves the field, so typing in it (each key saves the settings, which sets the sync state going)
@@ -34,7 +60,9 @@ export function accountPage(s: Settings, onChange: (s: Settings) => void): HTMLE
   const above = h('div', { class: 'account__part' });
   const below = h('div', { class: 'account__part' });
   const plate = plateRow(s, onChange);
-  const root = h('div', { class: 'account' }, above, plate, below);
+  const name = nameRow(s, onChange);
+  const idRows = h('div', { class: 'account__id' }, name, plate, numberRow(s, onChange));
+  const root = h('div', { class: 'account' }, above, idRows, below);
   /** What the parts show, so a change that leaves it as it is redraws nothing (Google's button included). */
   let shown = '';
   const draw = () => {
@@ -42,6 +70,9 @@ export function accountPage(s: Settings, onChange: (s: Settings) => void): HTMLE
     const now = player ? `${player.id} ${status}` : 'out';
     if (now === shown) return;
     shown = now;
+    // Signed in with no driver name yet (an account from before the field): the menu's watcher fills it; show it here.
+    const driver = root.querySelector<HTMLInputElement>('.account__name')!;
+    if (document.activeElement !== driver) driver.value = s.driverName;
     plate.querySelector<HTMLInputElement>('.account__plate')!.placeholder = suggestedPlate(player?.name);
     if (!player) {
       above.replaceChildren(...signInContent());

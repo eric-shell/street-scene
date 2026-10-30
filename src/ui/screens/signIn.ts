@@ -16,6 +16,8 @@
  * Signing in reloads the page when the account brought a different save (account.ts), so a place that holds
  * unsaved work (the garage) settles it before it opens the dialog.
  */
+import { BONUS } from '../../shared/points';
+import { FEATURES } from '../../shared/features';
 import { h, iconBtn, toast } from '../kit/dom';
 import { privacyPage } from './privacyPage';
 import { CircleUser, Cloud, CloudCheck, CloudOff, ShieldCheck, X, icon, type IconNode } from '../kit/icons';
@@ -66,9 +68,14 @@ const GOOGLE_G =
 
 /** What an account keeps, counting the builds when known (the menu passes its garage's). */
 function pitch(builds: number | undefined): string {
-  if (builds === undefined) return SIGN_IN_PITCH;
-  return builds > 1 ? `Keep your ${builds} customized vehicles and progress` : 'Keep your customized vehicle and progress';
+  // With the economy on, signing in is also worth a bonus (shared/points.ts BONUS).
+  const perk = FEATURES.economy ? `, plus ${bonusText()} points` : '';
+  if (builds === undefined) return SIGN_IN_PITCH + perk;
+  return (builds > 1 ? `Keep your ${builds} customized vehicles and progress` : 'Keep your customized vehicle and progress') + perk;
 }
+
+/** The sign-in grant on its own (points), as the player reads it: 5,000. */
+const bonusText = () => (BONUS.SIGN_IN - BONUS.WELCOME).toLocaleString('en-US');
 
 /**
  * The signed-out row as it stands now: Sign in with Google, the G on a white badge as on Google's own
@@ -93,7 +100,8 @@ const firstName = (name: string | undefined): string | undefined => name?.split(
 export function welcome(): string {
   const player = accountState().player;
   const name = firstName(player?.name) ?? player?.email ?? '';
-  return isNewAccount() ? `Welcome ${name}!` : `Welcome back ${name}!`;
+  if (!isNewAccount()) return `Welcome back ${name}!`;
+  return FEATURES.economy ? `Welcome ${name}! +${bonusText()} points` : `Welcome ${name}!`;
 }
 
 /** Puts the player's picture in a row's badge once it loads, the whole badge (what was there stays if it does not). */

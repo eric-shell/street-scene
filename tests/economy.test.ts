@@ -4,7 +4,7 @@
  * not own. All pure but for the local store, which a Map stands in for here (the tests run in node).
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addRunPoints, balanceOf, loadPoints, mergePoints, pointsBalance, spendPoints, POINTS_KEY } from '../src/shared/points';
+import { addRunPoints, balanceOf, grantSignInBonus, loadPoints, mergePoints, pointsBalance, spendPoints, POINTS_KEY } from '../src/shared/points';
 import { cleanStats, mergeStats, recordRace, STATS_KEY } from '../src/shared/stats';
 import { ECONOMY, catalogPart, featureBuyable, featureId, featurePrice, featureRacesToUnlock, isUnlocked, priceOf, stockWheel } from '../src/shared/economy';
 import { buy, buyItem, cleanPurchases, enforceOwnership, grandfathered, hasLedger, loadPurchases, mergePurchases, owns, ownsFeature, setOwnsAll, startLedger, PURCHASES_KEY } from '../src/shared/purchases';
@@ -28,22 +28,34 @@ beforeEach(() => store.clear());
 describe('points ledger', () => {
   it('reads old saves without spent, spends only what the balance covers', () => {
     store.set(`nightrun.${POINTS_KEY}`, JSON.stringify({ total: 5000, best: 3000 }));
-    expect(loadPoints()).toEqual({ total: 5000, spent: 0, best: 3000 });
-    expect(spendPoints(6000)).toBe(false);
+    expect(loadPoints()).toEqual({ total: 5000, spent: 0, best: 3000, bonus: 5000 });
+    expect(spendPoints(11000)).toBe(false);
     expect(spendPoints(2000)).toBe(true);
-    expect(pointsBalance()).toBe(3000);
+    expect(pointsBalance()).toBe(8000);
     addRunPoints(1000);
-    expect(loadPoints()).toEqual({ total: 6000, spent: 2000, best: 3000 });
+    expect(loadPoints()).toEqual({ total: 6000, spent: 2000, best: 3000, bonus: 5000 });
   });
 
   it('merges the larger of each field, never a negative balance', () => {
-    const a = { total: 9000, spent: 1000, best: 4000 };
-    const b = { total: 7000, spent: 6000, best: 5000 };
+    const a = { total: 9000, spent: 1000, best: 4000, bonus: 5000 };
+    const b = { total: 7000, spent: 6000, best: 5000, bonus: 10000 };
     const m = mergePoints(a, b);
-    expect(m).toEqual({ total: 9000, spent: 6000, best: 5000 });
+    expect(m).toEqual({ total: 9000, spent: 6000, best: 5000, bonus: 10000 });
     expect(mergePoints(b, a)).toEqual(m);
-    expect(balanceOf({ total: 100, spent: 500, best: 0 })).toBe(0);
-    expect(mergePoints({ total: 'x', spent: -5 }, null)).toEqual({ total: 0, spent: 0, best: 0 });
+    expect(balanceOf({ total: 100, spent: 500, best: 0, bonus: 0 })).toBe(0);
+    expect(mergePoints({ total: 'x', spent: -5 }, null)).toEqual({ total: 0, spent: 0, best: 0, bonus: 5000 });
+  });
+
+  it('starts everyone with 5,000 and the sign-in grant raises it to 10,000 once', () => {
+    expect(pointsBalance()).toBe(5000);
+    expect(grantSignInBonus()).toBe(true);
+    expect(grantSignInBonus()).toBe(false);
+    expect(loadPoints().bonus).toBe(10000);
+    addRunPoints(1000);
+    expect(pointsBalance()).toBe(11000);
+    expect(loadPoints().total).toBe(1000);
+    // A device that never saw the grant merges to it, once.
+    expect(mergePoints({ total: 0, spent: 0, best: 0 }, loadPoints()).bonus).toBe(10000);
   });
 });
 
@@ -141,7 +153,7 @@ describe('purchases', () => {
     expect(buy('wendtStrom', w, unlocked)).toBe('short');
     addRunPoints(price + 100);
     expect(buy('wendtStrom', w, unlocked)).toBe('bought');
-    expect(pointsBalance()).toBe(100);
+    expect(pointsBalance()).toBe(5100);
     expect(owns('wendtStrom', w.id)).toBe(true);
     expect(buy('wendtStrom', w, unlocked)).toBe('owned');
     expect(store.has(`nightrun.${PURCHASES_KEY}`)).toBe(true);

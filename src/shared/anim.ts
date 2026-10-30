@@ -7,6 +7,9 @@
 /** The fraction of the way to a target to move this frame at `rate` (1/s): `x += (target - x) * damp(rate, dt)`. */
 export const damp = (rate: number, dt: number): number => 1 - Math.exp(-rate * dt);
 
+/** Resolves after two animation frames: whatever was changed is on the glass before the next block of work holds the main thread. */
+export const nextPaint = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
 /** A value chasing a target with no overshoot (`spring`): where it is and how fast it moves (units, units/s). */
 export interface Spring {
   x: number;

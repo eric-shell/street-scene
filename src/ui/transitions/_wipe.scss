@@ -44,6 +44,8 @@
     flex-direction: column;
     align-items: center;
     gap: 10px;
+    /* The panel is wider than the screen (it covers the slant), so the card is held inside the screen here, where long names and facts wrap rather than run off its edge. */
+    max-width: calc(100vw - 48px);
     transform: skewX(12deg);
     text-align: center;
     &.is-entering > * {
@@ -58,6 +60,26 @@
     &.is-entering > .wipe__sub {
       animation-delay: 0.36s;
     }
+    /* A card whose work reports its progress (transitions.ts loadProgress sets --progress, 0..1): the rule fills and the course line draws as far, each step gliding. */
+    /* The rule is a dim track while loading, and its fill (::after) is the progress. */
+    &.is-loading .wipe__rule {
+      position: relative;
+      background: rgba(255, 255, 255, 0.12);
+      &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: var(--rule);
+        transform: scaleX(var(--progress, 0));
+        transform-origin: left;
+        transition: transform 250ms linear;
+      }
+    }
+    &.is-loading .course-art__line {
+      animation: none;
+      stroke-dashoffset: calc(1 - var(--progress, 0));
+      transition: stroke-dashoffset 250ms linear;
+    }
     &.is-leaving {
       animation: wipe-text-out 0.3s ease-in forwards;
     }
@@ -67,12 +89,14 @@
     letter-spacing: 0.32em;
     text-transform: uppercase;
     color: var(--accent-2);
+    overflow-wrap: anywhere;
   }
   &__title {
     font: italic 900 clamp(44px, 9vw, 108px) / 0.95 var(--logo);
     letter-spacing: -0.01em;
     text-transform: uppercase;
     padding: 0 0.12em;
+    overflow-wrap: anywhere;
     @include mixins.gradient-text(var(--logo-ink));
   }
   &__rule {
@@ -89,6 +113,7 @@
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--soft);
+    overflow-wrap: anywhere;
   }
 }
 @keyframes wipe-text-in {

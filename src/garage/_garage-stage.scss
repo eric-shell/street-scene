@@ -46,3 +46,26 @@
     }
   }
 }
+
+/* The screenshot's shutter flash (garageUi.ts flash): white over the whole view for a moment. Reduced motion
+   gets no flash at all. */
+.garage-flash {
+  display: none;
+  @include media.motion {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: #fff;
+    pointer-events: none;
+    animation: garage-flash 0.28s var(--ease-out) both;
+  }
+}
+@keyframes garage-flash {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}

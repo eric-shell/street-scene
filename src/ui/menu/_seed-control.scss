@@ -19,6 +19,11 @@
     min-width: 0;
     padding: 5px 8px;
     font-size: 13px;
+    /* A date still to come: its unlock day stands in the field. */
+    &.is-locked::placeholder {
+      color: var(--accent);
+      opacity: 1;
+    }
   }
   .btn--small.btn--icon {
     padding: 6px;

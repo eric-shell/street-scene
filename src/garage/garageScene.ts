@@ -668,7 +668,27 @@ export class GarageScene {
     }
   }
 
+  /** A screenshot waiting for the next frame: the canvas is read right after a render, since it does not keep its buffer. */
+  private shot: ((blob: Blob | null) => void) | null = null;
+
+  /** The next frame's 3D view as a PNG (null if the canvas could not be read). Resolves one frame later. */
+  capture(): Promise<Blob | null> {
+    this.shot?.(null);
+    return new Promise((resolve) => {
+      this.shot = resolve;
+    });
+  }
+
   render(dt: number): void {
+    this.draw(dt);
+    const shot = this.shot;
+    if (!shot) return;
+    this.shot = null;
+    // toBlob copies the drawing buffer at call time, which is still this frame's picture.
+    this.gr.canvas.toBlob((b) => shot(b), 'image/png');
+  }
+
+  private draw(dt: number): void {
     dt = Math.min(dt, 0.1);
     this.time += dt;
     this.fitLens();

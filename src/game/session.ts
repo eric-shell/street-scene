@@ -14,7 +14,7 @@
  * audio.ts (engine voices, sound effects and their per frame feeds).
  */
 import * as THREE from 'three';
-import { createRace, RaceConfig, RaceState, raceTime, stepRace, teleportToStreet, ticksToSeconds } from '../sim/race';
+import { cityForSeed, createRace, RaceConfig, RaceState, raceTime, stepRace, teleportToStreet, ticksToSeconds } from '../sim/race';
 import { InputFrame, NEUTRAL_INPUT, unpackInput } from '../sim/input';
 import { autopilotInput, type AiState } from '../sim/ai';
 import { VisualBuild } from '../shared/carBuild';
@@ -33,12 +33,14 @@ import { ExhaustFx } from '../render/car/exhaustFx';
 import { TireFx } from '../render/car/tireFx';
 import { Litter } from '../render/car/litter';
 import { WaypointBeacons } from '../render/race/waypointBeacons';
+import { DrivingLine } from '../render/race/drivingLine';
 import { CarAssetLibrary } from '../render/car/carAssets';
 import { CAMERA, ChaseCamera } from '../render/camera/camera';
 import { RaceCinematics, type HandoffShot } from '../render/camera/cinematics';
-import { GameRenderer, NightScene, createNightScene } from '../render/scene';
+import { GameRenderer, NightScene, createNightScene, createNightSceneStaged } from '../render/scene';
+import { LoadProgress } from './session/loadProgress';
 import { NITRO_FX } from '../render/post';
-import { measureStats } from '../sim/stats';
+import { measureDriveLimits, measureStats } from '../sim/stats';
 import { damp } from '../shared/anim';
 import type { World } from '../city/world';
 import type { Cruise } from './cruise';
@@ -148,6 +150,10 @@ export interface SessionOptions {
     shot: HandoffShot;
     pan: number;
   };
+  /** Parts of the build already done by `RaceSession.create` (the staged path), so the constructor takes them instead of building them. */
+  built?: { race: RaceState; topSpeed: number; night: NightScene };
+  /** The staged build's progress, 0..1 (the loading card). */
+  onProgress?: (p: number) => void;
   /** Free roam: the HUD card's Exit, back to the menu. */
   onQuit?: () => void;
   /** A race: the HUD card's Pause, the pause screen (as Escape). */
@@ -257,6 +263,8 @@ export class RaceSession {
   private litter: Litter;
   /** The waypoint race's columns of light over its waypoints (null in the other modes). */
   private readonly beacons: WaypointBeacons | null = null;
+  /** The suggested racing line at the corners (Settings › Driving › Racing line); null where there is no route to follow (free roam, drag). */
+  private readonly drivingLine: DrivingLine | null = null;
   /** Ambient traffic (render/traffic/traffic.ts) and its last two snapshots (TRAFFIC_SNAP floats per car), swapped every tick. */
   private traffic: TrafficView | null = null;
   private trafficPrev = new Float32Array(0);
@@ -313,12 +321,12 @@ export class RaceSession {
     this.uiRoot = uiRoot;
     let own: Vec2 | null = null;
     this.wp = opts.waypoint ?? { get: () => own, set: (p) => (own = p) };
-    this.race = createRace(opts.config, opts.world);
+    this.race = opts.built?.race ?? createRace(opts.config, opts.world);
     // The streaks' reference speed: driving the sim to its top speed costs 15-35 ms, so it is paid here under the loading screen, never on a live frame.
-    this.topSpeed = Math.max(30, measureStats(this.race.cars[0].tuning).topSpeed / 3.6);
+    this.topSpeed = opts.built?.topSpeed ?? Math.max(30, measureStats(this.race.cars[0].tuning).topSpeed / 3.6);
     const hand = opts.handoff;
     this.borrowed = !!hand;
-    this.night = hand ? hand.stage.lend() : createNightScene(this.race.world, gr, settings);
+    this.night = opts.built?.night ?? (hand ? hand.stage.lend() : createNightScene(this.race.world, gr, settings));
     if (hand) {
       // The scene's clock carries on from the stage's: its blinking, weather, steam and air traffic never jump.
       this.time = hand.stage.time;
@@ -365,6 +373,11 @@ export class RaceSession {
     if (this.race.config.mode === 'waypoint' && this.race.world.route.waypoints) {
       this.beacons = new WaypointBeacons(this.race.world);
       this.night.scene.add(this.beacons.group);
+    }
+    if (!this.openWorld && this.race.config.mode !== 'drag') {
+      // Its target speeds are this car's own measured grip and brakes (a few ms of driving the flat test world, paid under the loading screen).
+      this.drivingLine = new DrivingLine(this.race.world, this.race.line, measureDriveLimits(this.race.cars[0].tuning), this.topSpeed, settings.quality !== 'low');
+      this.night.scene.add(this.drivingLine.group);
     }
     const traffic = this.race.traffic;
     if (traffic) {
@@ -497,6 +510,33 @@ export class RaceSession {
         gr.canvas.removeEventListener('pointerdown', onTap);
       });
     } else if (!this.openWorld && this.race.world.event) this.hud.message(this.race.world.event.name, 2.6);
+  }
+
+  /**
+   * A session built in stages under the loading card, with a painted frame between them so the card's progress
+   * moves while the build holds the main thread: the sim, each stage of the night scene, the session itself (HUD,
+   * effects, traffic, cars), the cars' models, and the shader compile before the first frame. The same code as
+   * the constructor runs, only paced: the handoff keeps the constructor (it borrows the street stage's scene).
+   */
+  static async create(gr: GameRenderer, assets: CarAssetLibrary, input: InputManager, settings: Settings, uiRoot: HTMLElement, opts: SessionOptions): Promise<RaceSession> {
+    const progress = new LoadProgress(settings.quality, opts.onProgress ?? (() => undefined));
+    // The city is cached per seed; a race on a city not yet generated pays for it here, as its own stage.
+    if (!opts.world) cityForSeed(opts.config.seed);
+    await progress.step('gen');
+    const race = createRace(opts.config, opts.world);
+    await progress.step('race');
+    const topSpeed = Math.max(30, measureStats(race.cars[0].tuning).topSpeed / 3.6);
+    await progress.step('stats');
+    const night = await createNightSceneStaged(race.world, gr, settings, (stage) => progress.step(stage));
+    const session = new RaceSession(gr, assets, input, settings, uiRoot, { ...opts, built: { race, topSpeed, night } });
+    await progress.step('session');
+    await session.readyPromise;
+    await progress.step('cars');
+    // The first frame would compile every program it meets on the main thread; compileAsync builds them in parallel behind the card.
+    await gr.renderer.compileAsync(night.scene, session.cam.camera).catch(() => undefined);
+    await progress.step('shaders');
+    progress.finish();
+    return session;
   }
 
   /** Where the camera is now (last frame's, or the chase camera's before the first frame): sparks only fly near it. */
@@ -1006,6 +1046,8 @@ export class RaceSession {
       camera = this.drone.camera;
     } else camera = this.updateCamera(p, dt);
     this.lastCamera = camera;
+    // The racing line reads the live setting, so the pause menu's toggle shows or hides it at once; the intro and finish shots own the screen.
+    this.drivingLine?.update(this.settings.racingLine !== false && !this.cine.active && !r.cars[0].finished, p.x, p.z, p.speed, r.cars[0].rawS, dt);
     this.exhaust.haze(this.gr.post, camera, poses, this.time, dt, this.paused);
     this.trails.update(this.views[0].root, camera, this.paused ? 0 : p.nitroStage, dt);
     this.carLight?.follow(p);
@@ -1199,6 +1241,8 @@ export class RaceSession {
     this.tireFx.dispose();
     this.litter.dispose();
     this.beacons?.dispose();
+    if (this.drivingLine) this.night.scene.remove(this.drivingLine.group);
+    this.drivingLine?.dispose();
     this.traffic?.dispose();
     this.audio.dispose();
     this.rumble?.stop();

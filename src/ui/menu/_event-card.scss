@@ -34,6 +34,31 @@
       flex: none;
     }
   }
+  /* The dated kicker is a button into the This Week step (menu.ts): the label's look, with a chevron that nudges. */
+  &__week {
+    padding: 4px 0;
+    font-family: inherit;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    transition: color var(--t-fast);
+    > svg:last-child {
+      color: var(--dim);
+      transition: color var(--t-fast), transform var(--t-fast);
+    }
+    &:hover,
+    &:focus-visible {
+      color: var(--text);
+      outline: none;
+      > svg:last-child {
+        color: var(--accent);
+        transform: translateX(3px);
+      }
+    }
+    &:focus-visible {
+      box-shadow: var(--ring);
+    }
+  }
   &__name {
     margin: 2px 0 0;
     font: 900 32px/1.02 var(--display);

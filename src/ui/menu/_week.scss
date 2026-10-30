@@ -1,0 +1,190 @@
+/* The This Week step (menu.ts, week.ts): a row per race day, Monday to Sunday. Each is a plate with the day's
+   map thumbnail beside its date and status (Tonight, your best, or a lock), the event's name and tagline and
+   its chips. Tonight wears the orange, a played day the yellow, a day to come the purple, dimmed and not
+   pressable. A row whose day is still being planned (week.ts, weekPlanner.ts) stands as a skeleton that
+   fills in. The thumbnail is drawn on a canvas by weekThumb.ts, in the city map's inks. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.week-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.week-row {
+  @include mixins.chamfer(10px);
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 8px;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  @include mixins.plate($radius: var(--radius-sm));
+  transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+  &__map {
+    flex: none;
+    display: block;
+    width: 128px;
+    aspect-ratio: 160 / 110;
+    overflow: hidden;
+    background: var(--well);
+    border: 1px solid var(--line);
+    clip-path: var(--chamfer-sm);
+  }
+  &__thumb {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  &__body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+  }
+  &__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font: 600 12px var(--font);
+    color: var(--muted);
+    b {
+      font: 900 13px var(--display);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--hue);
+    }
+  }
+  &__date {
+    flex: none;
+  }
+  &__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    font: 700 12px var(--font);
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    @include mixins.ellipsis;
+    > svg {
+      flex: none;
+    }
+    &--raced {
+      color: var(--accent-2);
+    }
+  }
+  &__text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  &__name {
+    font: 900 17px/1.1 var(--display);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    @include mixins.ellipsis;
+  }
+  &__tagline {
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  &__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: auto;
+    .chip {
+      padding: 1px 6px;
+      font-size: 11px;
+    }
+  }
+  &__special {
+    --ink: #{palette.get(orange)};
+  }
+  &__skeleton {
+    display: block;
+    height: 12px;
+    width: 90%;
+    background: palette.alpha(text, 0.07);
+    border-radius: 3px;
+    &--name {
+      height: 17px;
+      width: 65%;
+    }
+    &--short {
+      width: 40%;
+    }
+    @include media.motion {
+      animation: week-row-pulse 1.4s ease-in-out infinite;
+    }
+  }
+  /* Tonight: lit, with the rule down its edge. */
+  &--today {
+    border-color: rgba(var(--hue-rgb), 0.55);
+    background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.14), transparent 70%), var(--plate);
+    box-shadow: var(--edge), inset 3px 0 0 var(--hue);
+    .week-row__status {
+      color: var(--hue);
+    }
+  }
+  &.is-current:not(&--today) {
+    border-color: rgba(var(--hue-rgb), 0.45);
+  }
+  &:not([disabled]):hover,
+  &:not([disabled]):focus-visible {
+    border-color: rgba(var(--hue-rgb), 0.6);
+    background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.13), transparent 65%), var(--plate-hover);
+    box-shadow: var(--edge), inset 3px 0 0 var(--hue);
+    outline: none;
+  }
+  &:not([disabled]):focus-visible {
+    box-shadow: var(--edge), inset 3px 0 0 var(--hue), var(--ring);
+  }
+  &:not([disabled]):active {
+    transform: translateY(1px);
+  }
+  @include mixins.sheen-on-hover;
+  /* Days to come: a teaser, dimmed and not pressable. */
+  &--upcoming {
+    cursor: default;
+    .week-row__map,
+    .week-row__body {
+      opacity: 0.5;
+    }
+    .week-row__map {
+      filter: saturate(0.5);
+    }
+  }
+  @include media.phone {
+    &__map {
+      width: 96px;
+    }
+    &__tagline {
+      display: none;
+    }
+  }
+  /* Short screens: a lower row, and the tagline goes. */
+  @media (max-height: 780px) {
+    &__map {
+      width: 104px;
+    }
+    &__tagline {
+      display: none;
+    }
+  }
+}
+@keyframes week-row-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}

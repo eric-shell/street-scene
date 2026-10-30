@@ -9,6 +9,7 @@
 import { btn, h, prefersReducedMotion, scrollHint } from '../kit/dom';
 import { ChevronsRight, Flag, MapPinned, Medal, RotateCcw, Route, Share2, Sparkles, Trophy, Video, Wind, Wrench, LogOut, icon, type IconNode } from '../kit/icons';
 import { formatTime, ordinal } from '../kit/format';
+import { loadSettings } from '../settings';
 import { navRow, railScreen } from '../rail/rail';
 import { Help } from '../panels/help';
 import { openSignInDialog, signInRow } from './signIn';
@@ -120,13 +121,14 @@ export function resultsScreen(o: {
   const table = h('table', { class: 'results-table' });
   // A column of best laps when any racer has one (circuits).
   const laps = o.rows.some((r) => r.bestLap);
+  const number = loadSettings().racingNumber;
   o.rows.forEach((r, i) =>
     table.append(
       h(
         'tr',
         { class: r.me ? 'results-table__row results-table__row--player' : 'results-table__row' },
         h('td', { class: 'results-table__cell results-table__pos' }, String(i + 1)),
-        h('td', { class: 'results-table__cell results-table__name' }, r.name, h('span', { class: 'results-table__car' }, r.car)),
+        h('td', { class: 'results-table__cell results-table__name' }, r.me && number ? h('span', { class: 'results-table__number', title: 'Racing number' }, `#${number}`) : null, r.name, h('span', { class: 'results-table__car' }, r.car)),
         laps && h('td', { class: 'results-table__cell results-table__lap', title: 'Best lap' }, r.bestLap ? formatTime(r.bestLap) : ''),
         h('td', { class: 'results-table__cell results-table__time' }, (r.estimated ? '~' : '') + formatTime(r.time)),
       ),

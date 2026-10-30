@@ -12,7 +12,7 @@ Code: `src/city/weekend.ts` (the pick), `src/city/districts/weekendSites.ts` (si
 
 ## How the kind is chosen
 
-The daily seed is the UTC date as `YYYYMMDD` (`src/seed.ts`), and `seedFromString` returns a 1-9 digit string as that number. `weekendOf(seed)` reads the date back out of the digits with a days-from-civil formula (no `Date`): it is null unless the seed is exactly eight digits, a valid calendar date (leap years right), in 2025-2099, on a Saturday or Sunday. The sim never reads the clock, so a Saturday link opened on a Tuesday rebuilds the Saturday city and a replay (which carries only the seed) rebuilds the world it was recorded in. A random 8-digit menu seed reads as a weekend date about 0.03% of the time and gets a special too; that is accepted.
+The daily seed is the Pacific date as `YYYYMMDD` (`src/seed.ts`), and `seedFromString` returns a 1-9 digit string as that number. `weekendOf(seed)` reads the date back out of the digits with a days-from-civil formula (no `Date`): it is null unless the seed is exactly eight digits, a valid calendar date (leap years right), in 2025-2099, on a Saturday or Sunday. The sim never reads the clock, so a Saturday link opened on a Tuesday rebuilds the Saturday city and a replay (which carries only the seed) rebuilds the world it was recorded in. A random 8-digit menu seed reads as a weekend date about 0.03% of the time and gets a special too; that is accepted.
 
 `ordinal` counts weekend days since Saturday 2026-01-03 (Saturday 0, its Sunday 1, the next Saturday 2, ...; negative before it), and `kind = WEEKEND_FEATURES[ordinal mod 3]`. A Saturday and its Sunday therefore differ, and the cycle takes a day and a half.
 

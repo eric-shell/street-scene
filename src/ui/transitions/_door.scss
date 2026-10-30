@@ -57,6 +57,9 @@
     font: italic 900 clamp(48px, 10vw, 120px) / 1 var(--logo);
     letter-spacing: 0.02em;
     text-transform: uppercase;
+    text-align: center;
+    max-width: calc(100vw - 32px);
+    overflow-wrap: anywhere;
     color: palette.alpha(yellow, 0.12);
     -webkit-text-stroke: 1.5px palette.alpha(yellow, 0.25);
   }

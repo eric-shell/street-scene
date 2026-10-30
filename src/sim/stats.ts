@@ -7,7 +7,7 @@
  * converts (ui/kit/units.ts).
  */
 import { createCar, stepCar, torqueAt } from './car';
-import { CarTuning } from './tuning';
+import { CarTuning, GRAVITY } from './tuning';
 import type { World } from '../city/world';
 import { NEUTRAL_INPUT } from './input';
 import { TICK_HZ } from './constants';
@@ -133,4 +133,41 @@ export function statBars(s: CarStats): { topSpeed: number; acceleration: number;
     // Not better or worse, so the bar simply grows with the mass: the roster runs from about 1,270 to 1,940 kg.
     weight: n(s.mass, 1100, 2000),
   };
+}
+
+/** The speed (m/s) the lateral test holds: a mid corner's, where the downforce is part of the grip but not all of it. */
+const LIMIT_SPEED = 25;
+
+/** What a car can do at the limit, as the sim measures it. */
+export interface DriveLimits {
+  /** Peak sustained lateral acceleration (g) with the steering swept to full lock at LIMIT_SPEED. */
+  lateralG: number;
+  /** Mean deceleration (m/s^2) of a full stop-brake from 40 to 14 m/s: tires, brake assist and the drag together. */
+  brakeDecel: number;
+}
+
+/**
+ * The car's grip and braking as the sim delivers them, by driving it on the flat test world: a steering sweep at
+ * a held speed (the peak of the body's lateral acceleration) and a full brake from speed. About 5 ms; the driving
+ * line's target speeds are drawn from these, so they follow the tuning, a build's brake balance and an engine swap.
+ */
+export function measureDriveLimits(t: CarTuning): DriveLimits {
+  const lat = createCar(0, 0, 0, 0);
+  lat.vz = LIMIT_SPEED;
+  let peak = 0;
+  for (let i = 0; i < 480; i++) {
+    stepCar(lat, t, { ...NEUTRAL_INPUT, throttle: lat.speed < LIMIT_SPEED ? 0.6 : 0, steer: Math.min(1, i / 400) }, { world: flatWorld });
+    if (i > 30) peak = Math.max(peak, Math.abs(lat.aLat));
+  }
+  const stop = createCar(0, 0, 0, 0);
+  stop.vz = 40;
+  for (let i = 0; i < 20; i++) stepCar(stop, t, NEUTRAL_INPUT, { world: flatWorld });
+  const from = stop.speed;
+  const brake = { ...NEUTRAL_INPUT, brake: 1 };
+  let n = 0;
+  while (stop.speed > 14 && n < 10 * TICK_HZ) {
+    stepCar(stop, t, brake, { world: flatWorld });
+    n++;
+  }
+  return { lateralG: peak / GRAVITY, brakeDecel: n > 0 ? (from - stop.speed) / (n / TICK_HZ) : 0 };
 }

@@ -226,7 +226,12 @@ export interface NightScene {
   dispose(): void;
 }
 
-export function createNightScene(world: World, gr: GameRenderer, settings: Settings): NightScene {
+/**
+ * The night scene's build as a list of stages: each `yield` names the stage just finished, so a driver can run them
+ * back to back (createNightScene, the menu stage and the drone) or give the screen a frame between them
+ * (createNightSceneStaged, the race's loading card, whose progress is the stages done). One body, two drivers.
+ */
+function* buildNightScene(world: World, gr: GameRenderer, settings: Settings): Generator<string, NightScene, void> {
   const scene = new THREE.Scene();
   scene.environment = gr.envMap;
   // The seed's colour grade, worn whenever this scene is the one rendered (the menu stage and a race alike).
@@ -239,9 +244,11 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const barriers = classifyBarriers(world);
   const city = buildCityMeshes(world, { detail: settings.quality });
   scene.add(city.group);
+  yield 'city';
   // District dressing (lots, plazas, parks, channel, roundabouts, subway) and the distant mountains.
   const districts = buildDistrictMeshes(world, { quality: settings.quality, hazardLamp: city.barrierLampMaterial });
   scene.add(districts.group);
+  yield 'districts';
   const bounds = world.graph.bounds;
   const backdrop = buildBackdrop(world.seed, {
     fogColor: weather.def.fogColor,
@@ -268,12 +275,14 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // A fireworks display over the water on three seeds in ten (sky/fireworks.ts).
   const fireworks = buildFireworks(world, { quality: settings.quality, flashes });
   if (fireworks) scene.add(fireworks.group);
+  yield 'sky';
   // Street level polish: road decals, puddles, posters, blade signs, banners, steam (pasted onto the drawn podiums).
   const polish = buildStreetPolish(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
   scene.add(polish.group);
   // The map's names in the world: street name blades on the junction poles and a gateway banner per neighbourhood (Medium and up).
   const placeSigns = buildPlaceSigns(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
   scene.add(placeSigns.group);
+  yield 'street';
   // Each neighbourhood's post design and lamp colour: the lamp heads move to their design's reach and height, and the
   // pool, streak, point light and the props' lens tint all read the same plan.
   const lampPlan = planLamps(world);
@@ -292,6 +301,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // On damp nights the nearest streetlamps show a cone of light in the air (lampCones.ts; none on clear nights or at Low).
   const cones = buildLampCones(city.lampPositions, lampTone.map((t) => toneColor(t.pool)), world.heightAt, { quality: settings.quality, mood: weather.mood, fogDensity, grid });
   if (cones) scene.add(cones.group);
+  yield 'lights';
   // Parks and plazas: a wash over the whole area and a pool under every lantern post.
   const areaLights = buildAreaLights(world);
   scene.add(areaLights.group);
@@ -308,6 +318,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.add(weather.group);
   const air = buildAirTraffic(world, { quality: settings.quality, fogDensity, flashes });
   scene.add(air.group);
+  yield 'lighting';
   // Street meets behind every cyan barrier: a crowd against the barrier, thinning back among parked cars.
   const meetQ = MEET_QUALITY[settings.quality];
   const meet = planMeets(world, {
@@ -323,6 +334,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.add(parked.group);
   const arrows = buildRouteArrows(world, barriers, { beacon: city.barrierLampMaterial });
   scene.add(arrows.group);
+  yield 'meets';
   // The big merged layers cull per 200 m cell (registered last, below).
   const chunks = new CityChunks(grid);
   if (import.meta.env.DEV && new URLSearchParams(location.search).get('cull') === 'off') chunks.enabled = false;
@@ -374,6 +386,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     },
   });
   scene.add(props.group);
+  yield 'props';
   // Spectators on the sidewalks by the start / finish gantries, and every meet's crowd (none in an open world).
   const crowdQ = CROWD_QUALITY[settings.quality];
   // The people of the city are one plan (city/people/people.ts), the same at every quality: the sim collides with them,
@@ -391,6 +404,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // Dev builds: `?walls` draws the sim's collision over the scene (wallOverlay.ts).
   const walls = import.meta.env.DEV && new URLSearchParams(location.search).has('walls') ? buildWallOverlay(world) : null;
   if (walls) scene.add(walls.group);
+  yield 'people';
   stabilizeSmallEmitters(city);
   keepGroundLayersUnderVehicles(scene);
   // Every material that fogs itself in a shader now gets the mood's fog.
@@ -399,6 +413,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   applyHeightFog(scene);
   // Last: stabilizeSmallEmitters reads each layer's material as a single one, and chunking wraps it in an array.
   chunks.addByName(scene, CHUNK_LAYERS);
+  yield 'finish';
   // Last of all: the zone reflection probes are baked from the finished scene (Medium and High).
   const envProbes = bakeEnvProbes(gr.renderer, scene, world, settings.quality, [weather.group, lighting.group]);
   return {
@@ -473,6 +488,32 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       walls?.dispose();
     },
   };
+}
+
+/** The whole night scene, built in one go (the menu stage, the drone). */
+export function createNightScene(world: World, gr: GameRenderer, settings: Settings): NightScene {
+  const steps = buildNightScene(world, gr, settings);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/**
+ * The same build with a gap between its stages: `between` gets each finished stage's name and how long it took
+ * (ms, the stage alone) and returns when the caller wants the next (a painted frame, so a loading card keeps moving).
+ */
+export async function createNightSceneStaged(world: World, gr: GameRenderer, settings: Settings, between: (stage: string, ms: number) => Promise<void>): Promise<NightScene> {
+  const steps = buildNightScene(world, gr, settings);
+  for (;;) {
+    const t0 = performance.now();
+    const r = steps.next();
+    if (r.done) {
+      await between('probes', performance.now() - t0);
+      return r.value;
+    }
+    await between(r.value, performance.now() - t0);
+  }
 }
 
 /**

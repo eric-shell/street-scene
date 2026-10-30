@@ -4,7 +4,10 @@
  * route. Home is the title block over the event card (tonight's event: its
  * name and tagline, the seed with edit and shuffle, the city as a tilted live
  * map with what makes it this city, and the way into the race) over a list
- * of the other places: Garage, Explore (the drone flyover) and Settings.
+ * of the other places: This Week, Garage, Explore (the drone flyover) and Settings.
+ * This Week (week.ts) is a step of seven rows, the race days Monday to Sunday with each event's name,
+ * map and your best; the event card's date opens it too, and a past day picked there plays that day's
+ * city again (the days to come are locked; seed.ts).
  * On a build with accounts, an account row in the list's style stands above
  * the event card (Sign in, or who is signed in and their cloud save) and
  * opens Settings on its Account page. Home says nothing about the race itself, so no type is implied
@@ -70,6 +73,7 @@ import {
   type IconNode,
   icon,
 } from '../kit/icons';
+import { watchDriverName } from '../driverName';
 import { RACE_TYPES, type Difficulty, type RaceType, type Settings } from '../settings';
 import { onOff, settingRow, settingsPanel } from '../screens/settingsPanel';
 import { RailSteps, navRow, railScreen, screenHead } from '../rail/rail';
@@ -92,8 +96,11 @@ import { uiBlip, uiWhoosh } from '../../audio/uiSound';
 import { transitioning, uncovered } from '../transitions/transitions';
 import { accountRow } from '../screens/signIn';
 import { TAGLINE, titleWords } from './title';
+import { weekStep, type WeekStep } from './week';
+import type { WeekPlanner } from './weekPlanner';
+import { dailySeed, dayLabel, seedDate, seedLocked, weekOf } from '../../seed';
 
-export type MenuStep = 'home' | 'race' | 'setup' | 'settings';
+export type MenuStep = 'home' | 'race' | 'setup' | 'settings' | 'week';
 
 /** A garage build as the menu shows it: its name, its car and the car's spec tags (drivetrain, engine, forced induction). */
 export interface MenuBuild {
@@ -137,7 +144,10 @@ export interface MenuOptions {
   onMap(type?: RaceType): void;
   /** The waypoint free roam will steer to, set on the map (the menu's maps pin it). */
   waypoint?: () => Vec2 | null;
+  /** Switch to a city by its seed (null: today's). Refused for a date seed that is still locked (seed.ts seedLocked). */
   onSeed(seed: string | null): void;
+  /** Plans the This Week step's days off the main thread and keeps them for the session (weekPlanner.ts). */
+  week: WeekPlanner;
   /** Hide every piece of UI to watch the menu city (H); any key or click brings it back. */
   onHideUi(): void;
   /** The step changed: the camera behind the menu moves with it. */
@@ -185,6 +195,7 @@ const FEATURES: { kind: AreaKind; icon: IconNode; one: string; many?: (n: number
 
 /** The other places on home, each in its own hue (rail.ts navRow). */
 const PLACES_INFO = {
+  week: { icon: Calendar, label: 'This Week', hue: 'green' },
   garage: { icon: Wrench, label: 'Garage', hue: 'orange' },
   explore: { icon: Drone, label: 'Explore', hue: 'cyan' },
   settings: { icon: SettingsIcon, label: 'Settings', hue: 'purple' },
@@ -197,15 +208,18 @@ const MODE_COLUMNS = 3;
 const GRID_MOVES: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: MODE_COLUMNS, ArrowUp: -MODE_COLUMNS };
 
 /** How deep each step sits, so a move deeper slides forward (left) and a move out slides back. */
-const STEP_DEPTH: Record<MenuStep, number> = { home: 0, race: 1, settings: 1, setup: 2 };
+const STEP_DEPTH: Record<MenuStep, number> = { home: 0, race: 1, settings: 1, week: 1, setup: 2 };
 
-/** A random city's seed. */
-const randomSeed = (): string => String(Math.floor(Math.random() * 1e8));
-
-/** Today's event's date as its seed counts it (the UTC day, seed.ts dailySeed): "Sat, Oct 24". */
-function todayLabel(now = new Date()): string {
-  return now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+/** A random city's seed; one that happens to read as a date still to come (locked) is rolled again. */
+function randomSeed(): string {
+  for (;;) {
+    const seed = String(Math.floor(Math.random() * 1e8));
+    if (!seedLocked(seed)) return seed;
+  }
 }
+
+/** Today's race day as its seed counts it (the Pacific date, seed.ts): "Sat, Oct 24". */
+const todayLabel = (): string => dayLabel(dailySeed()) ?? '';
 
 /** A row of the home menu's list (its element class names the place, for focus). */
 function navItem(kind: keyof typeof PLACES_INFO, sub: string, onClick: () => void, label: string | Node = PLACES_INFO[kind].label): HTMLButtonElement {
@@ -248,6 +262,7 @@ function cityFeatures(world: World): HTMLElement | null {
 
 export function mainMenu(o: MenuOptions): MainMenu {
   const s = o.settings;
+  watchDriverName(s, o.onSettings);
   const menu = h('div', { class: 'rail__col menu' });
   // The step's keys and tips behind the ? in the corner (KEYS and TIPS below, read when it opens).
   const help = new Help({ title: 'Menu', sections: () => helpFor(step) });
@@ -268,6 +283,8 @@ export function mainMenu(o: MenuOptions): MainMenu {
   let course: CourseMap | null = null;
   // Build the map layers now, while the boot splash is still up, not on the first visit to a map.
   layersOf(o.world);
+  // The week's other cities are planned in the background once the menu has settled (weekPlanner.ts), so the This Week step opens full.
+  o.week.prefetch(weekOf());
 
   const best = (m: RaceMode) => {
     const b = o.bests[m];
@@ -289,7 +306,23 @@ export function mainMenu(o: MenuOptions): MainMenu {
       );
     const edit = () => {
       const input = h('input', { type: 'text', class: 'mono seed-control__input', value: o.seed, maxlength: 32, 'aria-label': 'Seed', placeholder: 'Type a seed' }) as HTMLInputElement;
-      const apply = () => o.onSeed(input.value.trim() || null);
+      const apply = () => {
+        const typed = input.value.trim();
+        // A date still to come stays locked: say when it opens, in the field, and keep it open for another try.
+        if (typed && seedLocked(typed)) {
+          input.value = '';
+          input.placeholder = `Unlocks ${dayLabel(typed)}`;
+          input.classList.add('is-locked');
+          input.setAttribute('aria-invalid', 'true');
+          return;
+        }
+        o.onSeed(typed || null);
+      };
+      input.addEventListener('input', () => {
+        input.classList.remove('is-locked');
+        input.removeAttribute('aria-invalid');
+        input.placeholder = 'Type a seed';
+      });
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') apply();
         else if (e.key === 'Escape') {
@@ -313,7 +346,17 @@ export function mainMenu(o: MenuOptions): MainMenu {
     enter.title = 'Pick the race type and rivals, then start';
     enter.append(icon(ChevronRight, { size: 20 }));
     // Whose city this is, as the kicker: today's (dated) or one of your own; the seed's actions beside it change it.
-    const kicker = h('span', { class: 'label label--kicker' }, icon(o.isDaily ? Calendar : Shuffle, { size: 14 }), o.isDaily ? `Today · ${todayLabel()}` : 'Custom city');
+    // A day of the week's (today, or a past date played again) is a button into the This Week step; any other seed is a custom city.
+    const dated = o.isDaily || (seedDate(o.seed) !== null && !seedLocked(o.seed));
+    const kicker = dated
+      ? h(
+          'button',
+          { class: 'label label--kicker event-card__week', type: 'button', title: "This week's events", onclick: () => go('week') },
+          icon(Calendar, { size: 14 }),
+          `${o.isDaily ? 'Today · ' : ''}${dayLabel(o.seed) ?? todayLabel()}`,
+          icon(ChevronRight, { size: 14 }),
+        )
+      : h('span', { class: 'label label--kicker' }, icon(Shuffle, { size: 14 }), 'Custom city');
     overview = new CityOverview(o.world);
     const map = h(
       'button',
@@ -344,6 +387,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     h(
       'nav',
       { class: 'nav-list', 'aria-label': 'Main menu' },
+      navItem('week', "Mon to Sun: this week's events", () => go('week')),
       // The build in use under Garage, its spec tags beside the word.
       navItem('garage', `${o.builds[build].name} · ${o.builds[build].car}`, o.onGarage, h('span', { class: 'build-line' }, h('span', { class: 'build-line__name' }, PLACES_INFO.garage.label), buildTags(o.builds[build]))),
       navItem('explore', 'Fly a drone over the event city', o.onDrone),
@@ -607,6 +651,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
       h('div', { class: 'section-title' }, 'Driving'),
       settingRow('Manual gearbox', onOff(s.manualGearbox, (v) => ((s.manualGearbox = v), o.onSettings(s))), 'Q / E to shift'),
       settingRow('Traction control', onOff(s.tractionControl, (v) => ((s.tractionControl = v), o.onSettings(s))), 'Off lets the rear step out'),
+      settingRow('Racing line', onOff(s.racingLine, (v) => ((s.racingLine = v), o.onSettings(s))), 'Brake red, hold white, gas green at the corners'),
     );
     const start = btn(Play, info.start, () => o.onRace(t), '--large --primary --cta step-foot__start');
     return [
@@ -620,6 +665,12 @@ export function mainMenu(o: MenuOptions): MainMenu {
 
   /** The settings page go() was asked to open on (Sign in opens Account), else the last one seen. */
   let settingsPage: string | undefined;
+  /** The This Week step on screen (week.ts), for its keys and to stop listening for the planner's answers. */
+  let weekCur: WeekStep | null = null;
+  const week = (): HTMLElement[] => {
+    weekCur = weekStep({ planner: o.week, days: weekOf(), seed: o.seed, onPick: (seed) => o.onSeed(seed), back: () => go('home') });
+    return weekCur.parts;
+  };
   const settings = (): HTMLElement[] => [screenHead({ icon: SettingsIcon, title: 'Settings', back: () => go('home') }), settingsPanel(s, o.onSettings, o.music, settingsPage)];
 
   // Hide the menu is a button in the panel too, for touch screens.
@@ -629,12 +680,14 @@ export function mainMenu(o: MenuOptions): MainMenu {
     race: [{ keys: ['←', '→', '↑', '↓'], label: 'Race type' }, { keys: ['1–6'], label: 'Pick a type by its place' }, { keys: ['Enter'], label: 'Next' }, { keys: ['Esc'], label: 'Back' }, hideUi],
     setup: [...(o.builds.length > 1 ? [{ keys: ['↑', '↓'], label: 'Build' }, { keys: [`1–${o.builds.length}`], label: 'Pick a build by its slot' }] : []), { keys: ['Enter'], label: 'Start' }, { keys: ['Esc'], label: 'Back' }, hideUi],
     settings: [{ keys: ['Esc'], label: 'Back' }, hideUi],
+    week: [{ keys: ['↑', '↓'], label: 'Walk the days' }, { keys: ['Enter'], label: 'Play that day' }, { keys: ['Esc'], label: 'Back' }, hideUi],
   };
   const TIPS: Record<MenuStep, string[]> = {
     home: ["Every day brings a new event city. Beside its seed, shuffle rolls a random city and the pencil types a seed of your own; on a city of your own, the calendar brings you back to today's.", 'The live map opens the whole city; a waypoint set there carries into free roam.'],
     race: ['Each type draws its course on the card, with your best on this event.'],
     setup: ['Your car opens the garage\'s builds; each one you pick joins the line of cars on the street.', 'Rivals and driving aids are remembered for your next race.'],
     settings: ['Controls lists every key, gamepad button and touch control.'],
+    week: ['A new event city arrives every day at midnight Pacific (3 am Eastern). Days that have passed stay open to play again; the days to come unlock when their night arrives.', 'Your best time on each day shows on its row.'],
   };
   const helpFor = (at: MenuStep) => [
     { title: 'Keys', keys: KEYS[at] },
@@ -642,7 +695,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     { title: 'Tips', tips: TIPS[at] },
   ];
 
-  const steps: Record<MenuStep, () => HTMLElement[]> = { home, race, setup, settings };
+  const steps: Record<MenuStep, () => HTMLElement[]> = { home, race, setup, settings, week };
 
   /**
    * A step's cards between its header and its foot, in a box that scrolls when the screen is too short
@@ -667,6 +720,8 @@ export function mainMenu(o: MenuOptions): MainMenu {
     overview = course = null;
     pickType = null;
     turnBuild = null;
+    weekCur?.dispose();
+    weekCur = null;
     closeBuilds?.();
     closeBuilds = null;
     const fwd = STEP_DEPTH[next] > STEP_DEPTH[from];
@@ -678,10 +733,11 @@ export function mainMenu(o: MenuOptions): MainMenu {
     if (!animate) return;
     // Keep keyboard and gamepad focus on the menu: the step's main action, or where the player came back from.
     const focus = {
-      home: from === 'settings' ? (fromPage === 'account' ? '.menu__account' : '.menu__settings') : '.event-card__go',
+      home: from === 'settings' ? (fromPage === 'account' ? '.menu__account' : '.menu__settings') : from === 'week' ? '.menu__week' : '.event-card__go',
       race: '.step-foot__next',
       setup: '.step-foot__start',
       settings: '.settings__tab.is-selected',
+      week: '.week-row--today',
     }[next];
     el.querySelector<HTMLElement>(focus)?.focus({ preventScroll: true });
   }
@@ -724,6 +780,8 @@ export function mainMenu(o: MenuOptions): MainMenu {
       const next = at < 0 ? items.findIndex((x) => x.classList.contains('event-card__go')) : (at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
       e.preventDefault();
       items[next]?.focus();
+    } else if (step === 'week' && weekCur?.key(e)) {
+      // Up and down walked the days.
     } else if (step === 'race' && pickType && !e.repeat) {
       // Left and right step through the race types, up and down change rows of the grid; 1 to 6 pick one.
       const at = RACE_TYPES.indexOf(s.raceType);
@@ -755,6 +813,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     },
     dispose() {
       window.removeEventListener('keydown', onKey);
+      weekCur?.dispose();
       help.dispose();
       overview?.dispose();
       course?.dispose();

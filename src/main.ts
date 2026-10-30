@@ -13,8 +13,9 @@ import { createCity, createWorld, type World } from './city/world';
 import { CITY } from './city/config';
 import { trafficNet } from './sim/traffic';
 import { seedFromString, Rng } from './sim/prng';
-import { dailySeed, initialSeed } from './seed';
-import { Settings, loadSettings, saveSettings } from './ui/settings';
+import { dailySeed, initialSeed, seedLocked } from './seed';
+import { WeekPlanner } from './ui/menu/weekPlanner';
+import { Settings, driverName, loadSettings, saveSettings } from './ui/settings';
 import { AutoQualityController, MAX_LEVEL, QUALITY_LEVELS, autoLabel, deviceKey, guessLevel, loadRememberedLevel, readDeviceInfo, saveRememberedLevel } from './render/autoQuality';
 import { GameRenderer } from './render/scene';
 import { FreeFlyCamera } from './render/camera/freeFly';
@@ -44,7 +45,7 @@ import { formatTime } from './ui/kit/format';
 import { showFatal } from './ui/screens/fatal';
 import { courseFor, openFullMap, seedCourses, type FullMap, type WaypointStore } from './ui/map/fullMap';
 import type { Vec2 } from './sim/math';
-import { door, shift, transitioning, wipe, type NitroSource, type WipeCard } from './ui/transitions/transitions';
+import { door, loadProgress, shift, transitioning, wipe, type NitroSource, type WipeCard } from './ui/transitions/transitions';
 import { courseArt, courseRoute, type CourseRoutes } from './ui/menu/menuMaps';
 import type { RaceType } from './ui/settings';
 import { installUiSounds } from './audio/uiSound';
@@ -158,10 +159,21 @@ let seedStr = initialSeed();
 // Dev builds: ?perf=<seed> is a fixed-seed measured race (game/perfRun.ts).
 const perfSeed = import.meta.env.DEV ? params.get('perf') : null;
 if (perfSeed) seedStr = perfSeed;
-let isDaily = !params.get('seed');
+// A date still to come is locked (seed.ts): a link to one plays today's city, and the address bar forgets it.
+if (!perfSeed && seedLocked(seedStr)) {
+  seedStr = dailySeed();
+  const u = new URL(location.href);
+  u.searchParams.delete('seed');
+  history.replaceState(null, '', u);
+}
+let isDaily = seedStr === dailySeed();
+/** The This Week step's planner (a worker; its answers are kept across menus). */
+const weekPlanner = new WeekPlanner();
 
 let state: State = 'menu';
 let session: RaceSession | null = null;
+/** A session is being built in stages under the loading card (runSession): the old one is gone and the new one not there yet, so the loop draws and steps nothing. */
+let building = false;
 let overlay: HTMLElement | null = null;
 let lastConfig: RaceConfig | null = null;
 let lastVisuals: VisualBuild[] = [];
@@ -389,7 +401,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 /** The camera behind each menu step: the shot loop behind home, the hero shot for the race, lining up for the setup, a calm orbit for settings. */
-const STEP_CAMERA = { home: 'reel', race: 'hero', setup: 'grid', settings: 'calm' } as const;
+const STEP_CAMERA = { home: 'reel', race: 'hero', setup: 'grid', settings: 'calm', week: 'calm' } as const;
 
 /** Open the menu (on `step`), from wherever the game was: the camera cuts straight to that step's shot. */
 function showMenu(step: MenuStep = 'home'): void {
@@ -444,16 +456,18 @@ function showMenu(step: MenuStep = 'home'): void {
     onReplay: FEATURES.replays
       ? () => {
           const r = loadLastReplay();
-          if (r) void wipe({ kicker: MODE_NAME[r.config.mode], title: 'Replay', sub: 'Your last race' }, () => startReplay(r));
+          if (r) void wipe({ kicker: MODE_NAME[r.config.mode], title: 'Replay', sub: 'Your last race', progress: true }, () => startReplay(r));
         }
       : undefined,
     onDrone: exploreFromMenu,
     onMap: openMenuMap,
     waypoint: () => waypointFor(st.world.seed).get(),
+    week: weekPlanner,
     onSeed: (s) => {
+      if (s !== null && seedLocked(s)) return;
       const next = s ?? dailySeed();
       const use = () => {
-        isDaily = s === null;
+        isDaily = next === dailySeed();
         seedStr = next;
         const u = new URL(location.href);
         if (isDaily) u.searchParams.delete('seed');
@@ -492,7 +506,7 @@ function raceCard(t: RaceType): WipeCard {
     drift: { kicker: event, title: 'Drift', art, hold, sub: '2 laps · score attack' },
     roam: { kicker: event, title: 'Free roam', sub: 'The whole city · no rules' },
   };
-  return card[t];
+  return { ...card[t], progress: true };
 }
 
 /** Start the race type picked on the menu: the camera drops in behind the car as the wipe covers the screen. */
@@ -523,7 +537,7 @@ function handoffToFreeRoam(): void {
     seed: seedFromString(seedStr),
     mode: 'circuit',
     laps: 1,
-    player: { name: 'You', carId: build.carId, performance: build.performance },
+    player: { name: driverName(settings), carId: build.carId, performance: build.performance },
     opponents: [],
     difficulty: settings.difficulty,
     manualGearbox: settings.manualGearbox,
@@ -540,7 +554,7 @@ function handoffToFreeRoam(): void {
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   // The open world built with the stage (from scratch, the city alone would be hundreds of ms here).
   const world = stageOpen?.seed === config.seed ? stageOpen : createWorld(config.seed, 'circuit', st.world, { openWorld: true });
-  runSession(config, [ownedVisual(build)], null, null, 'roam', { handoff: { stage: st, shot, pan: HANDOFF.pan }, world });
+  void runSession(config, [ownedVisual(build)], null, null, 'roam', { handoff: { stage: st, shot, pan: HANDOFF.pan }, world });
   // The view recenters on the whole screen as the rail slides away (a race start would snap it).
   gr.setFraming(0, 0);
   window.setTimeout(() => {
@@ -652,7 +666,8 @@ function opponentEntrants(seed: number, count: number): { entrants: RaceEntrant[
   return { entrants, visuals };
 }
 
-function startRace(mode: RaceMode): void {
+/** `staged` paces the build with painted frames for a loading card's progress; the boot's direct start runs it at once. */
+function startRace(mode: RaceMode, staged = true): Promise<void> {
   garageScreen?.dispose();
   garageScreen = null;
   const seed = seedFromString(seedStr);
@@ -664,7 +679,7 @@ function startRace(mode: RaceMode): void {
     seed,
     mode,
     laps: mode === 'circuit' ? 3 : mode === 'drift' ? 2 : 1,
-    player: { name: 'You', carId: build.carId, performance: build.performance },
+    player: { name: driverName(settings), carId: build.carId, performance: build.performance },
     opponents: opp.entrants,
     difficulty: settings.difficulty,
     manualGearbox: settings.manualGearbox,
@@ -675,7 +690,7 @@ function startRace(mode: RaceMode): void {
     aiSeed: rivalSeed(),
   };
   const ghostData = count === 0 ? loadGhost(seed, mode) : null;
-  runSession(config, [ownedVisual(build), ...opp.visuals], null, ghostData, 'race');
+  return runSession(config, [ownedVisual(build), ...opp.visuals], null, ghostData, 'race', {}, staged);
 }
 
 /**
@@ -685,7 +700,7 @@ function startRace(mode: RaceMode): void {
  * finishes; the pause menu goes back to the start, to a new random city, or to
  * the menu.
  */
-function startFreeRoam(seedText: string): void {
+function startFreeRoam(seedText: string, staged = true): Promise<void> {
   garageScreen?.dispose();
   garageScreen = null;
   const build = currentBuild();
@@ -693,7 +708,7 @@ function startFreeRoam(seedText: string): void {
     seed: seedFromString(seedText),
     mode: 'circuit',
     laps: 1,
-    player: { name: 'You', carId: build.carId, performance: build.performance },
+    player: { name: driverName(settings), carId: build.carId, performance: build.performance },
     opponents: [],
     difficulty: settings.difficulty,
     manualGearbox: settings.manualGearbox,
@@ -702,7 +717,7 @@ function startFreeRoam(seedText: string): void {
     traffic: true,
     people: true,
   };
-  runSession(config, [ownedVisual(build)], null, null, 'roam');
+  return runSession(config, [ownedVisual(build)], null, null, 'roam', {}, staged);
 }
 
 /**
@@ -716,18 +731,18 @@ function ownedVisual(build: CarBuild): VisualBuild {
   return copy.visual;
 }
 
-function startReplay(r: ReplayData): void {
-  runSession(r.config, r.visuals, r, null, 'race');
+function startReplay(r: ReplayData): Promise<void> {
+  return runSession(r.config, r.visuals, r, null, 'race');
 }
 
-function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayData | null, ghost: ReplayData | null, kind: SessionKind, extra: Pick<SessionOptions, 'handoff' | 'world'> = {}): void {
+async function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayData | null, ghost: ReplayData | null, kind: SessionKind, extra: Pick<SessionOptions, 'handoff' | 'world'> = {}, staged = true): Promise<void> {
   session?.dispose();
   dev.close();
   // A handoff keeps the menu on screen while it slides away (handoffToFreeRoam takes it down).
   if (!extra.handoff) setOverlay(null);
   lastConfig = config;
   lastVisuals = visuals;
-  session = new RaceSession(gr, assets, input, settings, uiRoot, {
+  const opts: SessionOptions = {
     config,
     visuals,
     replay: replay ? { ...replay, decoded: decodeLog(replay.log) } : undefined,
@@ -741,7 +756,17 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     ...extra,
     onQuit: wipeToMenu,
     onPause: togglePause,
-  });
+  };
+  if (staged && !extra.handoff) {
+    // Built in stages with a painted frame between, so the loading card's progress moves; the handoff borrows the menu's scene and builds at once.
+    session = null;
+    building = true;
+    try {
+      session = await RaceSession.create(gr, assets, input, settings, uiRoot, { ...opts, onProgress: loadProgress });
+    } finally {
+      building = false;
+    }
+  } else session = new RaceSession(gr, assets, input, settings, uiRoot, opts);
   state = 'race';
   sessionKind = kind;
   syncMusicMode();
@@ -856,10 +881,10 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         // A live, untuned run on the event's city can be sent on: the link opens the same race on the same streets.
         onChallenge: FEATURES.challenges && !replay && !tuned && race.config.seed === seedFromString(seedStr) ? () => void challenge(race.config.mode, me.time, race.drift.total) : undefined,
         onRetry: () =>
-          void wipe({ kicker: race.world.event?.name, title: 'Retry', sub: MODE_NAME[race.config.mode] }, () =>
+          void wipe({ kicker: race.world.event?.name, title: 'Retry', sub: MODE_NAME[race.config.mode], progress: true }, () =>
             replay ? startReplay(replay) : runSession({ ...race.config, aiSeed: rivalSeed() }, visuals, null, race.config.opponents.length ? null : loadGhost(race.config.seed, race.config.mode), 'race'),
           ),
-        onReplay: FEATURES.replays ? () => void wipe({ kicker: race.world.event?.name, title: 'Replay', sub: MODE_NAME[race.config.mode] }, () => startReplay(replay ?? data)) : undefined,
+        onReplay: FEATURES.replays ? () => void wipe({ kicker: race.world.event?.name, title: 'Replay', sub: MODE_NAME[race.config.mode], progress: true }, () => startReplay(replay ?? data)) : undefined,
         onGarage: () => void openGarage(),
         onMenu: wipeToMenu,
       }),
@@ -980,7 +1005,7 @@ function togglePause(): void {
       const cfg = lastConfig;
       if (!cfg) return;
       const title = sessionKind === 'race' ? 'Restart' : 'Free roam';
-      void wipe({ kicker: session?.race.world.event?.name, title, sub: sessionKind === 'race' ? MODE_NAME[cfg.mode] : 'Back to the start' }, () =>
+      void wipe({ kicker: session?.race.world.event?.name, title, sub: sessionKind === 'race' ? MODE_NAME[cfg.mode] : 'Back to the start', progress: true }, () =>
         runSession(cfg.opponents.length ? { ...cfg, aiSeed: rivalSeed() } : cfg, lastVisuals, null, cfg.opponents.length || cfg.openWorld ? null : loadGhost(cfg.seed, cfg.mode), sessionKind),
       );
     },
@@ -989,7 +1014,7 @@ function togglePause(): void {
     quitSub: sessionKind === 'roam' ? 'Leave free roam' : undefined,
     extra:
       sessionKind === 'roam'
-        ? [{ icon: Shuffle, label: 'New city', sub: 'Free roam in a city never seen', hue: 'green', onClick: () => void wipe({ title: 'New city', sub: 'Free roam · a city never seen' }, () => startFreeRoam(String(Math.floor(Math.random() * 1e8)))) }]
+        ? [{ icon: Shuffle, label: 'New city', sub: 'Free roam in a city never seen', hue: 'green', onClick: () => void wipe({ title: 'New city', sub: 'Free roam · a city never seen', progress: true }, () => startFreeRoam(String(Math.floor(Math.random() * 1e8)))) }]
         : undefined,
     // The map pauses the session itself and resumes it on close, so the pause screen steps aside for it.
     onMap: session.isReplay
@@ -1086,7 +1111,7 @@ const musicDip = { on: false, gain: 1 };
 
 const loop = new FixedStepLoop({
   tick() {
-    if (state === 'race') session?.tick();
+    if (state === 'race' && !building) session?.tick();
   },
   render(alpha, dt) {
     musicDip.gain += ((musicDip.on ? MUSIC_DIP.gain : 1) - musicDip.gain) * damp(MUSIC_DIP.rate, dt);
@@ -1097,7 +1122,9 @@ const loop = new FixedStepLoop({
     padNav.poll(dt, padUi);
     if (padUi) input.swallowPad();
     if (arrival && state !== 'menu') endArrival();
-    if (state === 'race' && session) {
+    if (building) {
+      // The next session is being built behind the loading card: nothing to draw until it exists.
+    } else if (state === 'race' && session) {
       session.render(alpha, dt);
       driveFrame(dt, !session.paused && session.race.phase !== 'finished' && !session.droneActive);
       if (session.droneActive !== photoDrone) {
@@ -1182,11 +1209,11 @@ async function boot(): Promise<void> {
     history.replaceState(null, '', u);
   }
   if (directMode) {
-    startRace(directMode);
+    void startRace(directMode, false);
     if (import.meta.env.DEV && perfSeed) void import('./game/perfRun').then((m) => m.runPerf(() => session, gr, params));
   } else if (params.has('garage')) void openGarage(false);
   else if (params.has('drone')) startDrone();
-  else if (params.has('freeroam')) startFreeRoam(seedStr);
+  else if (params.has('freeroam')) void startFreeRoam(seedStr, false);
   else showMenu();
   if (splash) {
     splash.progress(SPLASH_LOAD.city);

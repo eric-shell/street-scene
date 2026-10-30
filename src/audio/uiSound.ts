@@ -1,7 +1,7 @@
 /**
  * Menu sounds, synthesized like the rest of the game's effects (no files): a
  * soft tick as the pointer or keyboard focus lands on a control, a click when
- * one is pressed, a blip when a race type is picked, a whoosh as a menu step
+ * one is pressed, a blip when a race type is picked, a camera shutter for the garage's screenshot, a whoosh as a menu step
  * slides, the rush of the screen wipe and the garage's roller door rattling
  * down onto a clunk and back up. They play on the interface bus
  * (engineAudio.ts AudioHub.uiBus, so the Interface level applies) and only
@@ -104,6 +104,18 @@ export function uiPress(back = false): void {
   const t = a.ctx.currentTime;
   noise(a, t, 0.018, 'bandpass', 3200, 1.6, UI.press * 0.7);
   tone(a, t, 0.06, back ? 720 : 1150, back ? 480 : 760, UI.press);
+}
+
+/** A camera shutter: two tight transients a few ms apart (the mirror, then the curtain) over a little filtered noise. */
+export function uiShutter(): void {
+  const a = live(true);
+  if (!a) return;
+  const t = a.ctx.currentTime;
+  noise(a, t, 0.012, 'highpass', 2400, 0.8, UI.press * 1.1, 0.001);
+  tone(a, t, 0.025, 240, 90, UI.press * 1.2, 'square');
+  noise(a, t + 0.045, 0.014, 'highpass', 3000, 0.8, UI.press * 0.9, 0.001);
+  tone(a, t + 0.045, 0.03, 340, 130, UI.press, 'square');
+  noise(a, t + 0.06, 0.06, 'bandpass', 1800, 0.7, UI.press * 0.25, 0.01);
 }
 
 /** A race type picked: two quick rising notes. */
