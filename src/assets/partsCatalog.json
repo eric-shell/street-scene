@@ -162,22 +162,6 @@
       "generated": true
     },
     {
-      "id": "wendtStrom_roof_sunroofDelete",
-      "displayName": "Sunroof Delete",
-      "carId": "wendtStrom",
-      "slot": "roof",
-      "file": "parts/wendtStrom_roof_sunroofDelete.glb",
-      "hides": [
-        "Roof"
-      ],
-      "materialSlots": [
-        "Paint",
-        "Black"
-      ],
-      "tris": 514,
-      "generated": true
-    },
-    {
       "id": "wendtStrom_rearBumper_euro",
       "displayName": "Euro",
       "carId": "wendtStrom",
@@ -349,6 +333,39 @@
         "Chrome"
       ],
       "tris": 4373,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_roof_sunroofTilted",
+      "displayName": "Tilted Sunroof",
+      "carId": "wendtStrom",
+      "slot": "roof",
+      "file": "parts/wendtStrom_roof_sunroofTilted.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Glass"
+      ],
+      "tris": 362,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_roof_sunroofDelete",
+      "displayName": "Sunroof Delete",
+      "carId": "wendtStrom",
+      "slot": "roof",
+      "file": "parts/wendtStrom_roof_sunroofDelete.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 514,
       "generated": true
     },
     {
