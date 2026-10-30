@@ -406,32 +406,6 @@
       "generated": true
     },
     {
-      "id": "wendtStrom_spoiler_sportMildMid",
-      "displayName": "Sport Mild Mid",
-      "carId": "wendtStrom",
-      "slot": "spoiler",
-      "file": "parts/wendtStrom_spoiler_sportMildMid.glb",
-      "hides": [],
-      "materialSlots": [
-        "Paint"
-      ],
-      "tris": 652,
-      "generated": true
-    },
-    {
-      "id": "wendtStrom_spoiler_sportWildMid",
-      "displayName": "Sport Wild Mid",
-      "carId": "wendtStrom",
-      "slot": "spoiler",
-      "file": "parts/wendtStrom_spoiler_sportWildMid.glb",
-      "hides": [],
-      "materialSlots": [
-        "Paint"
-      ],
-      "tris": 652,
-      "generated": true
-    },
-    {
       "id": "wendtStrom_spoiler_trackMild",
       "displayName": "Track Mild",
       "carId": "wendtStrom",
