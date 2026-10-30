@@ -323,25 +323,27 @@
       "hides": [
         "Bumper_Rear",
         "Exhaust",
-        "Muffler"
+        "Muffler",
+        "Floor_Rear"
       ],
       "exhaustTips": [
         [
-          0.065,
-          0.257,
-          -2.01
+          0,
+          0.345,
+          -2.045
         ],
         [
-          -0.065,
-          0.257,
-          -2.01
+          0,
+          0.345,
+          -2.045
         ]
       ],
       "materialSlots": [
         "Paint",
-        "Black"
+        "Black",
+        "Chrome"
       ],
-      "tris": 886,
+      "tris": 2707,
       "generated": true
     },
     {
