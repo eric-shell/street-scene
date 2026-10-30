@@ -1,7 +1,7 @@
 /**
  * The windshield, split from a car's glass once per loaded model (CarAssetLibrary.carModel), so the build's tint
  * dresses only the side and rear windows (the windshield stays clear) and the banner, a band across its top of the
- * tint (the windshield's own glass, tinted there) or of vinyl over it, can be drawn on it. No car model names its windshield: it is the glass in the front half
+ * tint's film under the glass or of vinyl over it, can be drawn on it. No car model names its windshield: it is the glass in the front half
  * that leans forward and up (its inside back and down) with little sideways lean (WINDSHIELD), in the one glass mesh
  * with the most of it (a sunroof in a mesh of its own has a few such faces on its bevels), which picks it on every
  * shipped car and leaves the side glass, the backlight and a sunroof. The windshield and the banner are two
@@ -166,7 +166,8 @@ export function splitWindshield(root: THREE.Object3D, isGlass: (m: THREE.Materia
       placeholder.userData.carMaterial = key satisfies WindshieldMaterial;
       const part = new THREE.Mesh(shieldGeo, placeholder);
       part.name = name;
-      // The windshield draws after the banner's vinyl (the car's opaque order, maskVehicleMesh).
+      // The windshield draws after the banner (the car's opaque order, maskVehicleMesh), so a tint film, which is
+      // see-through like the glass, lies under it.
       part.renderOrder = key === 'Banner' ? VEHICLE_ORDER : VEHICLE_ORDER + 1;
       mesh.add(part);
     }
