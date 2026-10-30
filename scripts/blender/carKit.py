@@ -2057,19 +2057,32 @@ def fastener(o, center, normal, washer_r=0.014, head_r=0.0098, washer_t=0.003, n
     dome_head(o, c + n * (washer_t + 0.0005), n, head_r, name)
 
 
-def surface_plate(o, surfaces, origin, u, v, direction, size, thick=0.005, below=0.002, steps=(4, 6), name='Black'):
+def surface_plate(o, surfaces, origin, u, v, direction, size, thick=0.005, below=0.002, steps=(4, 6), corner=0.0,
+                  arc=3, name='Black'):
     """A flat-cut mounting plate laid on a curved surface: a grid of steps[0] x steps[1] cells over
     `size` = (along u, along v) m centred on `origin`, each point cast along `direction` onto `surfaces`
     (BVH trees), its top `thick` m above the hit and its bottom `below` m under it along the hits' mean
     normal, closed with walls. Use it where a plate must follow a panel the plate's own plane cannot (a
     hatch face that yaws and curves under a wing upright); `cut_plate` extruded across x floats on one side
-    of a yawed panel. Returns the mean normal (for `fastener`)."""
+    of a yawed panel. `corner` m rounds its four corners in plan (the user: square plates read unfinished):
+    `arc` extra rows at each end, each row narrowed to the rounded rectangle's width there, so the grid
+    stays quads and still follows the panel. Returns the mean normal (for `fastener`)."""
     o0, u, v, d = Vector(origin), Vector(u).normalized(), Vector(v).normalized(), Vector(direction).normalized()
     nu, nv = steps
+    W, L = size
+    r = min(corner, W / 2, L / 2)
+    if r > 0:
+        # Rows: the straight middle between the corner arcs, then `arc` rows round each end.
+        mid = [-(L / 2 - r) + (L - 2 * r) * j / nv for j in range(nv + 1)]
+        ends = [(L / 2 - r + r * math.sin(math.pi / 2 * k / arc), W / 2 - r + r * math.cos(math.pi / 2 * k / arc)) for k in range(1, arc + 1)]
+        rows = [(-a, w) for a, w in reversed(ends)] + [(a, W / 2) for a in mid] + ends
+    else:
+        rows = [(L * (j / nv - 0.5), W / 2) for j in range(nv + 1)]
+    nv = len(rows) - 1
     hits, normals = [], []
-    for j in range(nv + 1):
+    for a, hw in rows:
         for i in range(nu + 1):
-            p = o0 + u * size[0] * (i / nu - 0.5) + v * size[1] * (j / nv - 0.5)
+            p = o0 + u * hw * (2 * i / nu - 1) + v * a
             best = None
             for t in surfaces:
                 h = t.ray_cast(p - d * 1.0, d, 3.0)
