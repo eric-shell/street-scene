@@ -580,8 +580,14 @@ function renderPower(host: TabHost): void {
 }
 
 /** The unique features' names, and which tab lists each: the shapes on Body, the paint on Paint. */
-const FEATURE_LABELS: Record<BodyFeature, string> = { euroMirrors: 'Euro mirrors', shavedHatch: 'Shaved hatch', blackGrille: 'Black grille' };
-const BODY_SHAPE_FEATURES: readonly BodyFeature[] = ['euroMirrors', 'shavedHatch'];
+const FEATURE_LABELS: Record<BodyFeature, string> = {
+  euroMirrors: 'Euro mirrors',
+  shavedHatch: 'Shaved hatch',
+  shavedRubstrip: 'Shaved rubstrip',
+  halfCupHandles: 'Half cup handles',
+  blackGrille: 'Black grille',
+};
+const BODY_SHAPE_FEATURES: readonly BodyFeature[] = ['euroMirrors', 'shavedHatch', 'shavedRubstrip', 'halfCupHandles'];
 const PAINT_FEATURES: readonly BodyFeature[] = ['blackGrille'];
 
 /** A tab's Unique features panel: a switch for each of `features` the car's manifest offers (bodyFeatures), or nothing when it offers none. */

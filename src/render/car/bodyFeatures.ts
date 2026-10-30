@@ -6,6 +6,9 @@
  *   while it is on; its box only says the car offers it. The Wendt Strom's shavedHatch is the hatch handle at the
  *   source's full detail and the hatch skin closed flush over the same hole (carDonors.py feature_nodes). Pressing
  *   the reduced body's recess flat at load, as it first did, left the lock's and the cup's black slivers showing.
+ *   Its shavedRubstrip is the faces round the side strip as shipped and the same faces pressed onto the skin
+ *   (carDonors.py strip_nodes). A feature with a box and no nodes or reshape (halfCupHandles, for now) is a switch
+ *   that changes nothing.
  * - blackGrille: the Paint pieces wholly inside the box (the grille's bars) become a child that takes the Black
  *   material of the lips and diffusers.
  * - euroMirrors: the box is the left mirror's (mirrored for the right). Every face inside it, any material, the caps

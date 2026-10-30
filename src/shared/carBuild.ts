@@ -79,10 +79,11 @@ const GLOW_RENAMES: Record<string, GlowPattern> = { breathe: 'pulse', alternate:
 
 /**
  * A car's unique features, each a switch a car's manifest offers (`bodyFeatures`, render/car/bodyFeatures.ts):
- * Euro mirrors narrow the mirror housings, a shaved hatch loses its handle, a black grille paints the grille's
- * body colored bars flat black like the lips and diffusers.
+ * Euro mirrors narrow the mirror housings, a shaved hatch loses its handle, a shaved rubstrip loses the moulded
+ * strip along the doors and the quarters, half cup handles (not built yet: the switch alone) and a black grille
+ * paints the grille's body colored bars flat black like the lips and diffusers.
  */
-export const BODY_FEATURES = ['euroMirrors', 'shavedHatch', 'blackGrille'] as const;
+export const BODY_FEATURES = ['euroMirrors', 'shavedHatch', 'shavedRubstrip', 'halfCupHandles', 'blackGrille'] as const;
 export type BodyFeature = (typeof BODY_FEATURES)[number];
 
 /** Tire shapes (render/car/tireShapes.ts draws each). */

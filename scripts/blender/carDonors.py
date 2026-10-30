@@ -1770,6 +1770,76 @@ def feature_nodes(o, skin, rect, y_min, inset=0.005, ring=0.025, step=0.01, off=
     return crop, plug
 
 
+def strip_nodes(o, skin, y0, y1, z_lo, z_hi, x_min=0.8, off='shavedRubstrip_off', on='shavedRubstrip_on'):
+    """A body side feature the garage switches (render/car/bodyFeatures.ts) where feature_nodes' rectangular hole
+    cannot go: a moulded strip along both sides (the Wendt Strom's rubstrip, across the door's rear shut line).
+    The vertices strictly between z_lo(y) and z_hi(y) (callables, m, just outside the strip's lower and upper
+    edges) at |x| > x_min and y0 < y < y1 are the strip; every face using one leaves o for `off`, unchanged,
+    and a copy of those faces becomes `on` with the strip's vertices pressed in x onto the skin's side seen from
+    outside, the lerp in z of the skin at z_lo and z_hi at the same y, so the door's edge curls and the shut
+    line's gap carry on through where the strip was. Every corner of `on` takes the skin's normal there (lerped
+    the same way on the strip) and the region's boundary corners on o and `off` the skin's too, so the three
+    meet without a shading step. Both pieces go into o's collection as `<prefix>.<off>` and `<prefix>.<on>`.
+    Returns (off, on)."""
+    prefix = o.name.split('.')[0]
+    me = o.data
+    sbm, ssn, trees = _skin_trees(skin)
+    tree, fs = trees['Paint']
+    key = lambda co: tuple(round(c, 5) for c in co)
+
+    def side(y, z, s):
+        """The skin's outermost Paint surface (x) at (y, z) on side s, and its normal there."""
+        loc, _, fi, _ = tree.ray_cast(Vector((s * 1.4, y, z)), Vector((-s, 0, 0)))
+        if loc is None:
+            raise RuntimeError(f'strip_nodes: no skin at y {y:.3f} z {z:.3f}')
+        return loc.x, _skin_normal(fs[fi], ssn, loc)
+
+    strip = {v.index for v in me.vertices if abs(v.co.x) > x_min and y0 < v.co.y < y1 and z_lo(v.co.y) < v.co.z < z_hi(v.co.y)}
+    faces = [p for p in me.polygons if any(i in strip for i in p.vertices)]
+    region = {i for p in faces for i in p.vertices}
+    pressed, normal = {}, {}
+    for i in region:
+        c = me.vertices[i].co
+        s = 1 if c.x > 0 else -1
+        if i in strip:
+            a, b = z_lo(c.y), z_hi(c.y)
+            (xa, na), (xb, nb) = side(c.y, a, s), side(c.y, b, s)
+            t = (c.z - a) / (b - a)
+            pressed[key(c)] = Vector((xa + (xb - xa) * t, c.y, c.z))
+            normal[key(c)] = na.lerp(nb, t).normalized()
+        else:
+            normal[key(c)] = side(c.y, c.z, s)[1]
+    sbm.free()
+    boundary = {key(me.vertices[i].co) for i in region - strip}
+    centers = {key(p.center) for p in faces}
+    off_o = split_off(o, f'{prefix}.{off}', lambda c, m, n: key(c) in centers)
+    on_o = off_o.copy()
+    on_o.data = off_o.data.copy()
+    on_o.name = on_o.data.name = f'{prefix}.{on}'
+    o.users_collection[0].objects.link(on_o)
+    for v in on_o.data.vertices:
+        if key(v.co) in pressed:
+            v.co = pressed[key(v.co)]
+    on_o.data.update()
+
+    def renormal(obj, keys, at):
+        """Corners whose vertex (by its position before the press) is in `keys` take normal[that position]."""
+        m = obj.data
+        ns = [Vector(c.vector) for c in m.corner_normals]
+        for li, lp in enumerate(m.loops):
+            k = at(lp.vertex_index)
+            if k in keys:
+                ns[li] = normal[k]
+        m.normals_split_custom_set(ns)
+
+    before = {key(p): k for k, p in pressed.items()}
+    renormal(on_o, normal, lambda i: before.get(key(on_o.data.vertices[i].co), key(on_o.data.vertices[i].co)))
+    for obj in (o, off_o):
+        renormal(obj, boundary, lambda i, obj=obj: key(obj.data.vertices[i].co))
+    print(f'strip_nodes: {len(strip)} strip vertices pressed, {len(faces)} faces in {off} and {on}, {len(boundary)} on the boundary')
+    return off_o, on_o
+
+
 def handle_tail(o, fit, y0, y1, zc, hw, proud, rc=0.012, r=0.003, crown=0.002, sink=(0.008, 0.003), cup=(0.322, 0.335),
                 material='Paint', step=0.008, arc=5, rounds=3):
     """A door handle's bar carried on to its rear end, on both sides (built at +x and mirrored): the bar's
