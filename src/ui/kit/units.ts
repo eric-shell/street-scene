@@ -15,6 +15,9 @@ export const MS_PER_MPH = 0.44704;
 /** km/h in one mph. */
 export const KMH_PER_MPH = 1.609344;
 
+/** Kilograms in a pound. */
+export const KG_PER_LB = 0.45359237;
+
 /** Watts in one (mechanical) horsepower. */
 export const W_PER_HP = 745.7;
 /** lb-ft in one Nm. */
@@ -22,6 +25,9 @@ export const LBFT_PER_NM = 0.7376;
 
 /** Engine power in watts as horsepower. */
 export const horsepower = (watts: number): number => watts / W_PER_HP;
+
+/** A mass in kg as pounds. */
+export const pounds = (kg: number): number => kg / KG_PER_LB;
 
 /** Engine torque in Nm as lb-ft. */
 export const poundFeet = (nm: number): number => nm * LBFT_PER_NM;

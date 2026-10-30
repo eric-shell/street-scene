@@ -34,6 +34,8 @@ export interface CarStats {
   power: number;
   /** Peak engine torque (Nm), the same way. */
   torque: number;
+  /** The car's mass (kg), as tuned: an engine swap moves it. */
+  mass: number;
 }
 
 /**
@@ -114,11 +116,12 @@ export function measureStats(t: CarTuning): CarStats {
     nitrous: (t.nitrous.capacity * t.nitrous.force) / 1000,
     power: curve.peakPower,
     torque: curve.peakTorque,
+    mass: t.mass,
   };
 }
 
 /** 0..1 bars for the UI. */
-export function statBars(s: CarStats): { topSpeed: number; acceleration: number; handling: number; nitrous: number; power: number } {
+export function statBars(s: CarStats): { topSpeed: number; acceleration: number; handling: number; nitrous: number; power: number; weight: number } {
   const n = (v: number, lo: number, hi: number) => Math.max(0.03, Math.min(1, (v - lo) / (hi - lo)));
   return {
     topSpeed: n(s.topSpeed, 170, 330),
@@ -127,5 +130,7 @@ export function statBars(s: CarStats): { topSpeed: number; acceleration: number;
     nitrous: n(s.nitrous, 8, 32),
     // The stock roster runs from about 150 kW to 390 kW at the crank.
     power: n(s.power, 130_000, 400_000),
+    // Not better or worse, so the bar simply grows with the mass: the roster runs from about 1,270 to 1,940 kg.
+    weight: n(s.mass, 1100, 2000),
   };
 }

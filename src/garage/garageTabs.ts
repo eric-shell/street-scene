@@ -553,7 +553,7 @@ function renderPower(host: TabHost): void {
   const car = manifestCar(b.carId);
   const drive = getBaseTuning(b.carId).drivetrain.layout;
   const swaps = car.engineSwaps ?? [];
-  host.body.append(section('Stats', statLines(b)));
+  host.body.append(section('Stats', statLines(b, { weight: true })));
   const stock = { value: null, label: `Stock ${car.engine.layout}`, sub: engineFigures(tuningForBuild(b.carId, { ...b.performance, swap: undefined })), tags: specBadges(car.engine, drive) };
   const list = choiceList<string | null>(
     [stock, ...swaps.map((s) => ({ value: s.id, label: s.name, sub: engineFigures(tuningForBuild(b.carId, { ...b.performance, swap: s.id })), tags: specBadges(s.engine, drive, s.name) }))],
@@ -685,7 +685,7 @@ function renderPerformance(host: TabHost): void {
   const b = host.build;
   // The build card's stat lines, so the stats and the setup fit the column together. A slider swaps them for
   // the new setup's in place: re-rendering the tab would take focus off the notch the keyboard or pad is on.
-  let stats = statLines(b);
+  let stats = statLines(b, { weight: true });
   host.body.append(section('Stats', stats));
   // Launch control: the rpm the two-step holds at the line while the throttle is down through the countdown,
   // and on a turbo car the rpm rolling antilag holds (its own limit, as on an ECU). Each slider's bottom step
@@ -727,7 +727,7 @@ function renderPerformance(host: TabHost): void {
       ...SETUP_SLIDERS.map((s) =>
         setupSlider(s, b.performance[s], (p) => {
           b.performance[s] = p;
-          const next = statLines(b);
+          const next = statLines(b, { weight: true });
           stats.replaceWith(next);
           stats = next;
           host.changed();

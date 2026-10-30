@@ -4,7 +4,7 @@
  * shared palette of swatches), the paint picker (that color over a finish, and
  * the matches a surface can wear instead: the body's paint, the wheel's, the
  * center cap's), the link toggle, labelled sliders, the choice
- * list, and the stat lines the build card and the Tune tab share. Plain DOM
+ * list, and the stat lines the build card and the Power and Tune tabs share. Plain DOM
  * built with the kit's helpers; the garage partials beside this file style them.
  */
 import { CHROME_COLOR, CarBuild, Paint, AccentPaint, AccentFinish } from '../shared/carBuild';
@@ -14,7 +14,7 @@ import type { SpecBadge } from '../shared/carSpec';
 import { measureStats, statBars } from '../sim/stats';
 import type { CarStats } from '../sim/stats';
 import { btn, cycler, h, prefersReducedMotion, selectMenu, sheen, specChip } from '../ui/kit/dom';
-import { KMH_PER_MPH, horsepower } from '../ui/kit/units';
+import { KMH_PER_MPH, horsepower, pounds } from '../ui/kit/units';
 import type { IconNode } from '../ui/kit/icons';
 
 /** A label from a lower case id: "metallic" reads "Metallic". */
@@ -29,8 +29,16 @@ function statsFor(b: CarBuild): CarStats {
   return st;
 }
 
-/** The measured stats the build card and the Tune tab show, in order, each bar in its ink (`.ink-*` in _tune-stat.scss). */
-const STATS: readonly { ink: string; bar: keyof ReturnType<typeof statBars>; name: string; value: (s: CarStats) => string }[] = [
+/** A stat line: its ink (`.ink-*` in _tune-stat.scss), its bar, its name and its value. */
+interface Stat {
+  ink: string;
+  bar: keyof ReturnType<typeof statBars>;
+  name: string;
+  value: (s: CarStats) => string;
+}
+
+/** The measured stats the build card and the Power and Tune tabs show, in order, each bar in its ink. */
+const STATS: readonly Stat[] = [
   { ink: 'speed', bar: 'topSpeed', name: 'Top speed', value: (s) => `${Math.round(s.topSpeed / KMH_PER_MPH)} mph` },
   { ink: 'accel', bar: 'acceleration', name: '0-60', value: (s) => `${s.zeroTo60.toFixed(2)} s` },
   { ink: 'grip', bar: 'handling', name: 'Grip', value: (s) => `${s.grip.toFixed(2)} g` },
@@ -38,14 +46,17 @@ const STATS: readonly { ink: string; bar: keyof ReturnType<typeof statBars>; nam
   { ink: 'power', bar: 'power', name: 'Power', value: (s) => `${Math.round(horsepower(s.power))} hp` },
 ];
 
-/** A build's measured stats: a line each, the measure, its bar in its ink and the value in yellow. */
-export function statLines(b: CarBuild): HTMLElement {
+/** The weight line, on the Power and Tune tabs only (a swap moves it; the build card keeps to how the car goes). */
+const WEIGHT: Stat = { ink: 'weight', bar: 'weight', name: 'Weight', value: (s) => `${Math.round(pounds(s.mass)).toLocaleString('en-US')} lb` };
+
+/** A build's measured stats: a line each, the measure, its bar in its ink and the value in yellow; `weight` adds the car's weight last. */
+export function statLines(b: CarBuild, opts: { weight?: boolean } = {}): HTMLElement {
   const st = statsFor(b);
   const bars = statBars(st);
   return h(
     'div',
     { class: 'car-card__stats' },
-    ...STATS.map((t) =>
+    ...(opts.weight ? [...STATS, WEIGHT] : STATS).map((t) =>
       h('div', { class: `car-card__stat ink-${t.ink}` }, h('span', { class: 'car-card__stat-name' }, t.name), h('span', { class: 'stat-bar' }, h('span', { class: 'stat-bar__fill', style: `width:${bars[t.bar] * 100}%` })), h('span', { class: 'car-card__stat-value' }, t.value(st))),
     ),
   );
