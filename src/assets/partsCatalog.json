@@ -262,7 +262,8 @@
       "file": "parts/wendtStrom_rearBumper_trackBase.glb",
       "hides": [
         "Bumper_Rear",
-        "Exhaust"
+        "Exhaust",
+        "Well_Rear"
       ],
       "exhaustTips": [
         [
@@ -280,7 +281,7 @@
         "Paint",
         "Black"
       ],
-      "tris": 2234,
+      "tris": 2656,
       "generated": true
     },
     {
@@ -293,7 +294,8 @@
         "Bumper_Rear",
         "Exhaust",
         "Muffler",
-        "Floor_Rear"
+        "Floor_Rear",
+        "Well_Rear"
       ],
       "exhaustTips": [
         [
@@ -311,7 +313,7 @@
         "Paint",
         "Black"
       ],
-      "tris": 3390,
+      "tris": 3964,
       "generated": true
     },
     {
@@ -326,7 +328,8 @@
         "Muffler",
         "Floor_Rear",
         "Floor_Mid",
-        "Floor_Boot"
+        "Floor_Boot",
+        "Well_Rear"
       ],
       "exhaustTips": [
         [
@@ -345,7 +348,7 @@
         "Black",
         "Chrome"
       ],
-      "tris": 2983,
+      "tris": 3531,
       "generated": true
     },
     {
