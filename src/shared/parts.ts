@@ -62,8 +62,9 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   fenders: 6000,
   // A kit skirt with its own blade and vents (the Tachibana Zenith's, reduced to this).
   sideSkirts: 3000,
-  // A GT wing on swan neck stands with end plates (the Tachibana Zenith's APR and kit wings: 1,300 to 3,000).
-  spoiler: 4000,
+  // A GT wing on swan neck stands with end plates (the Tachibana Zenith's APR and kit wings: 1,300 to 3,000);
+  // the Wendt Strom's Track Wild, with X rods, links and fastened hatch plates: 4,323.
+  spoiler: 4500,
   hood: 2500,
   roof: 2000,
   wheels: 12000,

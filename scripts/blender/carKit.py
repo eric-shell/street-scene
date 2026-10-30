@@ -2027,6 +2027,74 @@ def tube(o, center, axis_dir, r, length, name, n=10):
     add_geom(o, verts, faces, name)
 
 
+def dome_head(o, center, normal, r, name='Chrome', sides=None):
+    """A round domed bolt head sitting on a surface at `center` facing `normal`: a fan of `sides` triangles
+    (12, or 8 under 5 mm) rising 0.37 r to its crown, its rim 0.3 mm into the surface so no gap shows, open
+    underneath, smooth. The house head: Track Wild's wing swapped the Arashi's square fasteners for these, and
+    every bolt on a part since uses them (`fastener`)."""
+    n = Vector(normal).normalized()
+    sides = sides or (8 if r < 0.005 else 12)
+    u = n.orthogonal().normalized()
+    w = n.cross(u)
+    c = Vector(center)
+    ring = [c - n * 0.0003 + (u * math.cos(2 * math.pi * i / sides) + w * math.sin(2 * math.pi * i / sides)) * r for i in range(sides)]
+    verts = [tuple(c + n * 0.37 * r)] + [tuple(p) for p in ring]
+    faces = [(0, 1 + i, 1 + (i + 1) % sides) for i in range(sides)]
+    me = o.data
+    f0 = len(me.polygons)
+    add_geom(o, verts, faces, name, outward=n)
+    for p in me.polygons[f0:]:
+        p.use_smooth = True
+
+
+def fastener(o, center, normal, washer_r=0.014, head_r=0.0098, washer_t=0.003, name='Chrome'):
+    """The house bolt: a 10-sided flat washer (`tube`, the 28 mm washers under Track Wild's rods) on the
+    surface at `center`, a `dome_head` on top, both facing `normal`. Scale it with the plate it holds
+    (Track Mild's tabs: 13 mm washers; Track Wild's hatch plates 16 mm)."""
+    n = Vector(normal).normalized()
+    c = Vector(center) - n * 0.0005
+    tube(o, c, n, washer_r, washer_t + 0.0005, name, n=10)
+    dome_head(o, c + n * (washer_t + 0.0005), n, head_r, name)
+
+
+def surface_plate(o, surfaces, origin, u, v, direction, size, thick=0.005, below=0.002, steps=(4, 6), name='Black'):
+    """A flat-cut mounting plate laid on a curved surface: a grid of steps[0] x steps[1] cells over
+    `size` = (along u, along v) m centred on `origin`, each point cast along `direction` onto `surfaces`
+    (BVH trees), its top `thick` m above the hit and its bottom `below` m under it along the hits' mean
+    normal, closed with walls. Use it where a plate must follow a panel the plate's own plane cannot (a
+    hatch face that yaws and curves under a wing upright); `cut_plate` extruded across x floats on one side
+    of a yawed panel. Returns the mean normal (for `fastener`)."""
+    o0, u, v, d = Vector(origin), Vector(u).normalized(), Vector(v).normalized(), Vector(direction).normalized()
+    nu, nv = steps
+    hits, normals = [], []
+    for j in range(nv + 1):
+        for i in range(nu + 1):
+            p = o0 + u * size[0] * (i / nu - 0.5) + v * size[1] * (j / nv - 0.5)
+            best = None
+            for t in surfaces:
+                h = t.ray_cast(p - d * 1.0, d, 3.0)
+                if h[0] is not None and (best is None or h[3] < best[3]):
+                    best = h
+            if best is None:
+                raise ValueError('surface_plate: no surface under %s' % tuple(round(x, 3) for x in p))
+            hits.append(best[0])
+            normals.append(best[1] if best[1].dot(d) < 0 else -best[1])
+    n = sum(normals, Vector()).normalized()
+    k = len(hits)
+    verts = [tuple(h + n * thick) for h in hits] + [tuple(h - n * below) for h in hits]
+    idx = lambda i, j: j * (nu + 1) + i
+    faces = []
+    for j in range(nv):
+        for i in range(nu):
+            a, b, c2, e = idx(i, j), idx(i + 1, j), idx(i + 1, j + 1), idx(i, j + 1)
+            faces += [(a, b, c2, e), (k + a, k + e, k + c2, k + b)]
+    rim = [idx(i, 0) for i in range(nu)] + [idx(nu, j) for j in range(nv)] + [idx(i, nv) for i in range(nu, 0, -1)] + [idx(0, j) for j in range(nv, 0, -1)]
+    for a, b in zip(rim, rim[1:] + rim[:1]):
+        faces.append((a, k + a, k + b, b))
+    add_geom(o, verts, faces, name)
+    return n
+
+
 def mount_on_body(sp, body_objs, dys, foot=0.15, clear=0.01, glass_gap=0.025):
     """Mount a spoiler on the body. For each shift along y (dys, nearest first) the spoiler needs
     every foot vertex (the lowest `foot` share of its height) over a non Glass surface; it is

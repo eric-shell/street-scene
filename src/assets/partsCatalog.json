@@ -340,10 +340,10 @@
       "file": "parts/wendtStrom_spoiler_trackMild.glb",
       "hides": [],
       "materialSlots": [
-        "Chrome",
-        "Black"
+        "Black",
+        "Chrome"
       ],
-      "tris": 2798,
+      "tris": 3046,
       "generated": true
     },
     {
@@ -357,7 +357,7 @@
         "Black",
         "Chrome"
       ],
-      "tris": 3587,
+      "tris": 4323,
       "generated": true
     },
     {
