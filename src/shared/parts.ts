@@ -48,13 +48,14 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   // canards: 4,973; its Track Wild, a dropped splitter with its air dam, spats, rods, a tow strap and a trim
   // plate round oval speed holes: 7,357).
   frontBumper: 7500,
-  rearBumper: 5500,
+  // The Wendt Strom's Track Wild: a full diffuser, rods, trim plates and the Shippu canister in its centre tunnel: 6,001.
+  rearBumper: 6500,
   // Both front wings in one piece, cut from a donor shell along its shut lines (the Wendt Strom's: 1,122), and a
   // part may add bolt-on flares round all four arches (its Voomeran Overs, with a shut line where each crosses a
   // bumper's joint: 3,754).
   fenders: 4000,
   sideSkirts: 2000,
-  spoiler: 1500,
+  spoiler: 3000,
   hood: 2000,
   roof: 2000,
   wheels: 12000,

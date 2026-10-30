@@ -319,12 +319,12 @@
         [
           0,
           0.3,
-          -2.15
+          -2.18
         ],
         [
           0,
           0.3,
-          -2.15
+          -2.18
         ]
       ],
       "materialSlots": [
@@ -332,7 +332,7 @@
         "Black",
         "Chrome"
       ],
-      "tris": 5162,
+      "tris": 6001,
       "generated": true
     },
     {
@@ -376,9 +376,10 @@
       "file": "parts/wendtStrom_spoiler_trackWild.glb",
       "hides": [],
       "materialSlots": [
-        "Black"
+        "Black",
+        "Chrome"
       ],
-      "tris": 344,
+      "tris": 2443,
       "generated": true
     },
     {
