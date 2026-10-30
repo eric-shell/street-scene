@@ -14,7 +14,7 @@ Authored cars: albrechtKombi, daltonFiend, kazamaRotor, nakayaHorizon, tachibana
 | nakayaHorizon | 222.1 KB |
 | tachibanaRunabout | 141.7 KB |
 | tachibanaZenith | 1887.7 KB |
-| wendtStrom | 1989.2 KB |
+| wendtStrom | 1986.4 KB |
 
 ## Material vocabulary
 
@@ -116,7 +116,7 @@ Source: `assets/source/eshell/tachibanaZenith/tachibanaZenith.blend` (authored i
 
 Source: `assets/source/eshell/wendtStrom/wendtStrom.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/wendtStrom.glb`: 869.9 KB, 36741 tris, nodes `Body`, `Bumper_Front`, `Bumper_Rear`, `Roof`, `Exhaust`, `Muffler`, `Floor_Rear`, `Floor_Mid`, `Floor_Boot`, `Well_Rear`, `Fenders`, `shavedHatch_on`, `shavedHatch_off`, `shavedRubstrip_off`, `shavedRubstrip_on`, `fogLights_on`, `shavedMarkers_off`, `shavedMarkers_on`.
+- Base car `public/cars/wendtStrom.glb`: 867.0 KB, 36613 tris, nodes `Body`, `Bumper_Front`, `Bumper_Rear`, `Roof`, `Exhaust`, `Muffler`, `Floor_Rear`, `Floor_Mid`, `Floor_Boot`, `Well_Rear`, `Fenders`, `shavedHatch_on`, `shavedHatch_off`, `fogLights_on`, `shavedMarkers_off`, `shavedMarkers_on`, `shavedRubstrip_off`.
 - Parts: frontBumper euro, frontBumper speedholes, frontBumper cupraR, frontBumper trackBase, frontBumper trackMild, frontBumper trackWild, sideSkirts trackMild, sideSkirts trackWild, rearBumper euro, rearBumper sectioned, rearBumper sectionedEuro, rearBumper centerExhaust, rearBumper trackBase, rearBumper trackMild, rearBumper trackWild, roof sunroofTilted, roof sunroofDelete, spoiler trackMild, spoiler trackWild, fenders overMild, fenders voomeran.
 - WARNING: wheel radius 0.309 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.309 m, width 0.24 m, wheelbase 2.518 m, track 1.492 m.

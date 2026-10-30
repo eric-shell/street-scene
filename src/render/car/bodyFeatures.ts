@@ -6,8 +6,8 @@
  *   while it is on; its box only says the car offers it. The Wendt Strom's shavedHatch is the hatch handle at the
  *   source's full detail and the hatch skin closed flush over the same hole (carDonors.py feature_nodes). Pressing
  *   the reduced body's recess flat at load, as it first did, left the lock's and the cup's black slivers showing.
- *   Its shavedRubstrip is the faces round the side strip as shipped and the same faces pressed onto the skin
- *   (carDonors.py strip_nodes). Its fogLights is an `_on` node alone (the lamps in the outer intakes, outside
+ *   Its shavedRubstrip is an `_off` node alone, the side strip's own shell, lying on a door panel that runs on
+ *   underneath it (carDonors.py strip_nodes). Its fogLights is an `_on` node alone (the lamps in the outer intakes, outside
  *   every front bumper part, so they show on any of them), and its shavedMarkers a patch cut out of the stock
  *   fenders and of every fender part that carries those faces, so the switch works whichever fenders are on.
  *   A feature with a box and no nodes or reshape (halfCupHandles, for now) is a switch
