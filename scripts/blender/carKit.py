@@ -1487,17 +1487,19 @@ def end_plate(target, edge, base, heights, thick=0.006, curl=0.025, curl_height=
     return secs
 
 
-def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.07, width_end=0.5, proud=0.04, thick=0.005,
-                foot=0.003, nose=0.002, bulge=0.004, stations=33, bolts=5, bolt_r=0.006, bolt_at=0.72, bolt_margin=10,
+def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.09, width_end=0.5, proud=0.06, thick=0.005,
+                foot=0.003, nose=0.002, bulge=0.004, stations=33, bolts=5, bolt_r=0.006, bolt_inset=0.012, bolt_margin=10,
                 material='Paint', bolt_material='Black', x_min=0.78):
     """A bolt-on over-fender flare (Voomeran style) round one arch: a thin FRP band laid over the painted
     arch edge, `proud` m out at the lip, sloping back to sit on the panel `width` m up from the lip at the
     top of the arch and `width_end` of that at both legs' ends (a cosine taper: the user wanted the ends
     half the middle's height, "more fluid"), `thick` m thick (its outer edge shows as a small step on the
-    panel). The inner face is a flat wall square to the panel, from the lip straight down onto the arch's
-    painted edge (`foot` m inside it, so it lands on the lip where the skin rolls in) with a `nose` m round
-    at the top: a slanted return hanging inside the opening read as a loose edge, the wall rejoins the
-    fender. `bolts` button heads sit on the band `bolt_at` of the local width up from the lip. The arch is
+    panel). The inner face is a flat wall straight out along x (an extrusion of the panel's outline round
+    the opening), `proud` measured from the panel's outermost face within 3 cm of the arch edge, not from
+    the painted edge: on a donor's rear arches that edge rolls 5 to 7 mm in behind the face, and a wall
+    standing on it started tucked behind the panel and read as leaning. The wall runs `foot` m inside the
+    edge from the painted edge itself up to the lip, with a `nose` m round at the top. `bolts` button heads
+    sit on the band `bolt_inset` m in from its outer edge. The arch is
     measured, never assumed: at each station angle about `center` (y, z of the wheel), rays along -x from
     outside find the painted edge (the first Paint hit outboard of `x_min`, so the well's black lip is
     skipped) and the panel above it; the edge radius and x are smoothed over three stations so the donor's
@@ -1505,7 +1507,7 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.07,
     at the rear) over the top to the middle, so the legs end where a real kit's do: a0 ahead over the
     bumper, a1 behind near the sill. `skin_objs` are every piece the band may sit on (the body, the
     fenders, the bumper). The band is one `sweep` (capped square at both ends) and the heads are `tube`s.
-    Returns the stations' (deg, band width, edge r, edge x, panel x at the outer edge) and the heads."""
+    Returns the stations' (deg, band width, edge r, edge x, panel face x, panel x at the outer edge) and the heads."""
     from mathutils.bvhtree import BVHTree
     dg = bpy.context.evaluated_depsgraph_get()
     trees = [(o, BVHTree.FromObject(o, dg)) for o in skin_objs]
@@ -1557,6 +1559,11 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.07,
         xs = [x for x in xs if x is not None]
         xo.append(sum(xs) / len(xs) if xs else xe[i] - 0.02)
     xo = [sm(xo, i) for i in range(stations)]
+    xf = []
+    for i, a in enumerate(angs):
+        xs = [skin_x(a, re[i] + d) for d in (0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03)]
+        xf.append(max([x for x in xs if x is not None] + [xe[i]]))
+    xf = [sm(xf, i) for i in range(stations)]
 
     def p3(a, r, x):
         y, z = at(a, r)
@@ -1564,17 +1571,17 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.07,
 
     def on_band(i, t):
         """The band's x at share t of its width up from the lip, with its bulge."""
-        return xe[i] + proud + (xo[i] + thick - xe[i] - proud) * t + bulge * max(0.0, 1 - abs(t - 0.45) / 0.55)
+        return xf[i] + proud + (xo[i] + thick - xf[i] - proud) * t + bulge * max(0.0, 1 - abs(t - 0.45) / 0.55)
 
     secs = []
     for i, a in enumerate(angs):
-        r, x, xw, w = re[i], xe[i], xo[i], ws[i]
+        r, x, xw, w, xp = re[i], xe[i], xo[i], ws[i], xf[i]
         x_in = skin_x(a, r + 0.012)
         x_in = (x_in if x_in is not None else x) + 0.001
         secs.append([
-            p3(a, r - foot, x + 0.002),          # the wall's foot, on the arch's painted edge
-            p3(a, r - foot, x + proud - nose),   # the wall's top
-            p3(a, r + 0.001, x + proud),         # the nose
+            p3(a, r - foot, x + 0.002),            # the wall's foot, on the arch's painted edge
+            p3(a, r - foot, xp + proud - nose),    # the wall's top, straight out from the panel's face
+            p3(a, r - foot + nose, xp + proud),    # the nose
             p3(a, r + w * 0.45, on_band(i, 0.45)),  # the band, a touch convex
             p3(a, r + w, xw + thick),            # the outer edge, on the panel
             p3(a, r + w, xw + 0.0005),           # the step down to the panel
@@ -1586,11 +1593,12 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.07,
         deg = a0 + bolt_margin + (a1 - a0 - 2 * bolt_margin) * k / max(bolts - 1, 1)
         a = math.radians(deg)
         i = min(range(stations), key=lambda j: abs(degs[j] - deg))
-        r, x, xw, w = re[i], xe[i], xo[i], ws[i]
-        rb = r + w * bolt_at
-        xb = on_band(i, bolt_at)
+        r, x, xw, w, xp = re[i], xe[i], xo[i], ws[i], xf[i]
+        rb = r + w - bolt_inset
+        t = (rb - (r - foot + nose)) / (w + foot - nose)
+        xb = on_band(i, t)
         # The band's outward normal in the (r, x) plane, turned into the car's frame at this angle.
-        dr, dx = w, (xw + thick) - (x + proud)
+        dr, dx = w + foot - nose, (xw + thick) - (xp + proud)
         n_r, n_x = -dx, dr
         ln = math.hypot(n_r, n_x)
         n_r, n_x = n_r / ln, n_x / ln
@@ -1598,7 +1606,7 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.07,
         c = Vector(p3(a, rb, xb)) - d * 0.001
         tube(target, c, d, bolt_r, 0.0035, bolt_material, n=8)
         out.append(('bolt', round(deg, 1), round(rb, 3), round(xb, 3)))
-    return [(round(degs[i], 1), round(ws[i], 3), round(re[i], 4), round(xe[i], 4), round(xo[i], 4)) for i in range(stations)] + out
+    return [(round(degs[i], 1), round(ws[i], 3), round(re[i], 4), round(xe[i], 4), round(xf[i], 4), round(xo[i], 4)) for i in range(stations)] + out
 
 
 def end_cap(surface, target, y, x_out, bot, ztop, toward, width=0.15, thick=0.004, samples=10, material='Black'):
