@@ -1489,7 +1489,8 @@ def end_plate(target, edge, base, heights, thick=0.006, curl=0.025, curl_height=
 
 def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032, width_end=1.0, proud=0.07, proud_end=0.25,
                 lean=0.004, shelf=0.06, shelf_end=0.5, thick=0.004, foot=0.003, nose=0.002, stations=33, bolts=5,
-                bolt_r=0.006, bolt_inset=0.012, bolt_margin=10, material='Paint', bolt_material='Black', x_min=0.78):
+                bolt_r=0.006, bolt_inset=0.012, bolt_margin=10, bolt_degs=None, material='Paint', bolt_material='Black',
+                x_min=0.78):
     """A bolt-on over-fender flare round one arch: the stock arch flange pushed straight out, a box in
     section. `proud` m out at the top of the arch and `proud_end` of that at both legs' ends (a cosine
     taper: the user wanted the ends half the middle, "more fluid"); the band, the face seen from the side,
@@ -1502,7 +1503,9 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
     the painted edge: on a donor's rear arches that edge rolls 5 to 7 mm in behind the face, and a wall
     standing on it started tucked behind the panel and read as leaning. The wall runs `foot` m inside the
     edge from the painted edge itself up to the lip, with a `nose` m round at the top. `bolts` button heads
-    sit on the shelf `bolt_inset` m from its edge on the body (the user: "on the body side of the shelf").
+    sit on the shelf `bolt_inset` m from its edge on the body (the user: "on the body side of the shelf"),
+    evenly `bolt_margin` degrees in from the ends or at `bolt_degs` (a piece split by a shut line wants
+    its heads per segment: two on the short one, the first and last close to the ends).
     What failed before this: a band that sloped from
     the lip back to the panel (7 cm at 40 degrees, then 3.2 cm at 26 degrees once the stand-out grew) read
     as a sloped shelf from below, not a flange standing out; the user's words for the box are "the extrusion
@@ -1602,8 +1605,7 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
         ])
     sweep(target, secs, material)
     out = []
-    for k in range(bolts):
-        deg = a0 + bolt_margin + (a1 - a0 - 2 * bolt_margin) * k / max(bolts - 1, 1)
+    for deg in (bolt_degs or [a0 + bolt_margin + (a1 - a0 - 2 * bolt_margin) * k / max(bolts - 1, 1) for k in range(bolts)]):
         a = math.radians(deg)
         i = min(range(stations), key=lambda j: abs(degs[j] - deg))
         r, x, xw, w, xp, pr, hh = re[i], xe[i], xo[i], ws[i], xf[i], ps[i], hs[i]
