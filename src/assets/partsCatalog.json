@@ -365,6 +365,21 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_spoiler_none",
+      "displayName": "None",
+      "carId": "wendtStrom",
+      "slot": "spoiler",
+      "file": "parts/wendtStrom_spoiler_none.glb",
+      "hides": [
+        "Spoiler"
+      ],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 736,
+      "generated": true
+    },
+    {
       "id": "wendtStrom_spoiler_sportMildRoof",
       "displayName": "Sport Mild Roof",
       "carId": "wendtStrom",
@@ -400,7 +415,7 @@
       "materialSlots": [
         "Paint"
       ],
-      "tris": 1100,
+      "tris": 652,
       "generated": true
     },
     {
@@ -413,7 +428,7 @@
       "materialSlots": [
         "Paint"
       ],
-      "tris": 1100,
+      "tris": 652,
       "generated": true
     },
     {

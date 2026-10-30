@@ -13,6 +13,12 @@ export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'splitter', 'canards'
 /** Slots where "none" is a valid choice (nothing rendered, base meshes still visible unless hidden). */
 export const OPTIONAL_SLOTS: PartSlot[] = ['spoiler', 'splitter', 'canards', 'diffuser', 'exhaust', 'mirrors'];
 
+/** The node in a car's GLB that is an optional slot's stock piece (the Wendt Strom's roof spoiler is `Spoiler`): a car that has it lists the empty choice as Stock, not None. */
+export const STOCK_NODES: Partial<Record<PartSlot, string>> = { spoiler: 'Spoiler', splitter: 'Splitter', diffuser: 'Diffuser', exhaust: 'Exhaust', mirrors: 'Mirrors' };
+
+/** A part that takes the stock piece off and closes the body behind it (`<slot>_none`, shown as None): the garage lists it first, ahead of Stock. */
+export const isRemovalPart = (p: { id: string }): boolean => p.id.endsWith('_none');
+
 export const SLOT_LABELS: Record<PartSlot, string> = {
   body: 'Body kit',
   frontBumper: 'Front bumper',

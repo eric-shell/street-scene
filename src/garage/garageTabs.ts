@@ -15,7 +15,7 @@
  */
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partById, partsFor } from '../render/car/carAssets';
-import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
+import { BODY_PART_SLOTS, isRemovalPart, OPTIONAL_SLOTS, PartEntry, PartSlot, SLOT_LABELS, STOCK_NODES } from '../shared/parts';
 import { loadPurchases, owns, ownsFeature, stripParts, unownedParts } from '../shared/purchases';
 import { featureBuyable, partBuyable, type Buyable } from '../shared/economy';
 import { loadStats } from '../shared/stats';
@@ -537,7 +537,16 @@ export function renderTabContent(host: TabHost): void {
         const optional = OPTIONAL_SLOTS.includes(slot);
         // The aero and trim slots exist only for cars that ship parts for them: no menu at all otherwise.
         if (!parts.length && HIDE_WHEN_EMPTY.includes(slot) && ![...host.assets.devParts.values()].some((d) => d.slot === slot)) continue;
-        const items: { value: string | null; label: string; sub?: string; extra?: Node }[] = [{ value: null, label: optional ? 'None' : 'Stock' }, ...parts.map((p) => ({ value: p.id, label: p.displayName, extra: partTagEl(partTag(b.carId, p, saved, stats)) ?? undefined }))];
+        // An optional slot's empty choice is Stock when the car carries a stock piece there (read off the model, or off the
+        // parts that hide it while the model loads); a part that removes that piece is listed first as None.
+        const stockNode = STOCK_NODES[slot];
+        const stock = !optional || (stockNode !== undefined && (host.scene.car?.hasNode(stockNode) ?? parts.some((p) => p.hides.includes(stockNode))));
+        const item = (p: PartEntry) => ({ value: p.id, label: p.displayName, extra: partTagEl(partTag(b.carId, p, saved, stats)) ?? undefined });
+        const items: { value: string | null; label: string; sub?: string; extra?: Node }[] = [
+          ...parts.filter(isRemovalPart).map(item),
+          { value: null, label: stock ? 'Stock' : 'None' },
+          ...parts.filter((p) => !isRemovalPart(p)).map(item),
+        ];
         const dev = [...host.assets.devParts.entries()].filter(([, d]) => d.slot === slot).map(([id, d]) => ({ value: id, label: d.name, sub: 'Dev preview' }));
         items.push(...dev);
         const group = section(

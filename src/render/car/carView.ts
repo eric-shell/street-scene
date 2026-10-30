@@ -1024,6 +1024,12 @@ export class CarView {
     }
   }
 
+  /** Whether the base model has a node of this name (a stock piece), or null while the model is still loading. */
+  hasNode(name: string): boolean | null {
+    if (!this.baseModel) return null;
+    return !!this.baseModel.getObjectByName(name);
+  }
+
   /** Whether the car has a roof to paint apart: a stock Roof piece in the model or a roof part on it, or null while the model is still loading. */
   hasRoof(): boolean | null {
     if (!this.baseModel) return null;
