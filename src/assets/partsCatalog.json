@@ -292,7 +292,8 @@
       "hides": [
         "Bumper_Rear",
         "Exhaust",
-        "Muffler"
+        "Muffler",
+        "Floor_Rear"
       ],
       "exhaustTips": [
         [
