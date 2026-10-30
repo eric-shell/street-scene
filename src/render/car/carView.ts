@@ -8,6 +8,7 @@ import { BODY_PART_SLOTS, PartSlot } from '../../shared/parts';
 import { STANCE_LIMITS, TireShape, VisualBuild, defaultVisual } from '../../shared/carBuild';
 import { CarAssetLibrary, ManifestCar, manifestCar, partById, partsFor } from './carAssets';
 import { CarMaterialSet, LAMP_GLOW, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBannerDepth, setBrake } from './carMaterials';
+import type { MirrorCapMaterial } from './mirrorCaps';
 import { bannerDepth, type WindshieldMaterial, type WindshieldSpan } from './windshield';
 import { makeRadialGlow } from '../textures/textures';
 import { DecalLayerView } from './decals';
@@ -649,7 +650,7 @@ export class CarView {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !visibleInTree(mesh, this.model)) return;
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      if (mats.includes(this.materials.Paint) || mats.includes(this.materials.RoofPaint)) out.push(mesh);
+      if (mats.includes(this.materials.Paint) || mats.includes(this.materials.RoofPaint) || mats.includes(this.materials.MirrorPaint)) out.push(mesh);
     });
     return out;
   }
@@ -1020,7 +1021,7 @@ export class CarView {
   /**
    * Assign shared runtime materials by source material name. The Paint faces of the stock Roof node and of a
    * roof part (`roofPart`) take the roof's own paint material instead of the body's; the windshield and its banner,
-   * split from the glass at load, name theirs (windshield.ts).
+   * split from the glass at load, and the mirror caps, split from the paint, name theirs (windshield.ts, mirrorCaps.ts).
    */
   bindMaterials(obj: THREE.Object3D, roofPart = false): void {
     obj.traverse((o) => {
@@ -1029,7 +1030,7 @@ export class CarView {
       let roof = roofPart;
       for (let n: THREE.Object3D | null = mesh; !roof && n && n !== obj.parent; n = n.parent) roof = n.name === ROOF_NODE;
       const swap = (m: THREE.Material): THREE.Material => {
-        const own = m.userData.carMaterial as WindshieldMaterial | undefined;
+        const own = m.userData.carMaterial as WindshieldMaterial | MirrorCapMaterial | undefined;
         if (own) return this.materials[own];
         const name = (m.userData.sourceName as string) ?? m.name;
         const resolved = resolveMaterialName(name, this.car.materialMap);

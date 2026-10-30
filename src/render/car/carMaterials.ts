@@ -17,7 +17,7 @@ import { chromeEnvironment } from './chromeEnv';
  * can differ, the brake unit's rotor and caliper (brakes.ts), which no part GLB names, and the windshield and
  * its banner (windshield.ts), split from the glass at load.
  */
-export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material; RimLipRear: THREE.Material; RimCapRear: THREE.Material; Rotor: THREE.Material; Caliper: THREE.Material; RoofPaint: THREE.Material; Lug: THREE.Material; LugRear: THREE.Material; Hardware: THREE.Material; HardwareRear: THREE.Material; Windshield: THREE.Material; Banner: THREE.Material };
+export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material; RimLipRear: THREE.Material; RimCapRear: THREE.Material; Rotor: THREE.Material; Caliper: THREE.Material; RoofPaint: THREE.Material; MirrorPaint: THREE.Material; Lug: THREE.Material; LugRear: THREE.Material; Hardware: THREE.Material; HardwareRear: THREE.Material; Windshield: THREE.Material; Banner: THREE.Material };
 
 /** Each painted material's environment reflection strength (the boost createCarMaterials gives it); candy raises it. */
 const PAINT_ENV = { Paint: 1.9, Trim: 1.3, Rim: 1.8, RimLip: 1.8, RimCap: 1.8, Caliper: 1.2 } as const;
@@ -194,6 +194,8 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   };
   // The roof's Paint faces (bindRoof in carView.ts): a clone of the body paint, so a matched roof is the same look.
   m.RoofPaint = m.Paint.clone();
+  // The mirror caps' Paint faces (mirrorCaps.ts), the same way: a matched cap is the body's look.
+  m.MirrorPaint = m.Paint.clone();
   // The windshield: the glass's look, never tinted, except in a tint banner's band, where it is the side glass's
   // tinted glass itself (filmColor, filmOpacity): one surface, so its sheen runs on over the band and the film reads
   // as glass, not as a sticker over it.
@@ -317,6 +319,7 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
   applyPaint(m.Paint as THREE.MeshPhysicalMaterial, v.paint, PAINT_ENV.Paint);
   // The roof's own copy of the body paint: the same look while matched, its own paint otherwise.
   applyPaint(m.RoofPaint as THREE.MeshPhysicalMaterial, v.roof.match ? v.paint : v.roof, PAINT_ENV.Paint);
+  applyPaint(m.MirrorPaint as THREE.MeshPhysicalMaterial, accent(v.mirrors), PAINT_ENV.Paint);
   applyPaint(m.Rim as THREE.MeshPhysicalMaterial, accent(v.wheels.paint), PAINT_ENV.Rim, true);
   applyPaint(m.RimRear as THREE.MeshPhysicalMaterial, accent(v.wheels.rearPaint), PAINT_ENV.Rim, true);
   // A trim resolves per axle: its own paint, the body's, or that axle's face or cap.
@@ -398,6 +401,7 @@ export function disposeCarMaterials(m: CarMaterialSet): void {
   (m.Caliper as THREE.MeshStandardMaterial).map?.dispose();
   m.Caliper.dispose();
   m.RoofPaint.dispose();
+  m.MirrorPaint.dispose();
   m.Windshield.dispose();
   m.Banner.dispose();
 }

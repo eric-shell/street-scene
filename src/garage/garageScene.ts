@@ -101,6 +101,8 @@ const FRAMES: Record<TabFrame, { shot: string | CameraPreset; spin: boolean }> =
   'paint:body': { shot: 'Three quarter', spin: true },
   'paint:wheels': { shot: 'Wheel', spin: false },
   'paint:roof': { shot: { name: 'Roof', pos: [3.6, 3.1, 3.6], target: [0, 0.9, 0] }, spin: true },
+  // The left mirror from ahead and above, the cap's face and top in view.
+  'paint:mirrors': { shot: { name: 'Mirror', pos: [2.4, 1.7, 2.2], target: [0.8, 0.95, 0.4] }, spin: false },
   'paint:calipers': { shot: 'Wheel', spin: false },
   'paint:hardware': { shot: 'Wheel', spin: false },
   vinyl: { shot: 'Three quarter', spin: false },

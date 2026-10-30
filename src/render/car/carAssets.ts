@@ -12,6 +12,7 @@ import catalogJson from '../../assets/partsCatalog.json';
 import type { PartEntry, PartSlot, PartsCatalog } from '../../shared/parts';
 import type { EngineSpec } from '../../shared/carSpec';
 import { resolveMaterialName } from './carMaterials';
+import { splitMirrorCaps, type MirrorCapBox } from './mirrorCaps';
 import { splitWindshield } from './windshield';
 
 export interface ManifestCar {
@@ -46,6 +47,8 @@ export interface ManifestCar {
   engine: EngineSpec;
   /** Each exhaust tip's opening in car space (m, x left, y up, z forward), where the nitrous and backfire flames sit and the dyno's extraction funnels stand; missing, a tip each side at the tail, empty, none. Measured off the GLB's tip rings (the rearmost circle of each pipe's opening: Chrome on most cars, Black on the Wendt Strom and Kazama Rotor), one entry per real tip; a twin tip muffler lists both. */
   exhaustTips?: [number, number, number][];
+  /** The left mirror cap's box (car space, m; mirrored for the right), whose Paint faces wear the mirror paint (mirrorCaps.ts); missing, the mirrors keep the body paint and the garage lists no mirror paint. */
+  mirrorCaps?: MirrorCapBox;
 }
 
 export const MANIFEST = manifestJson as unknown as { version: number; cars: ManifestCar[] };
@@ -96,6 +99,7 @@ export class CarAssetLibrary {
     if (!scene.userData.split) {
       scene.userData.split = true;
       splitWindshield(scene, (m) => resolveMaterialName(m.name, car.materialMap) === 'Glass');
+      if (car.mirrorCaps) splitMirrorCaps(scene, car.mirrorCaps, (m) => resolveMaterialName(m.name, car.materialMap) === 'Paint');
     }
     return scene.clone(true);
   }

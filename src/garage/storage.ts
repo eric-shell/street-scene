@@ -246,6 +246,7 @@ const SHORT: Record<string, string> = {
   hood: 'hd',
   // Also the roof's paint (visual.roof): the two never share an object, so one key reads both.
   roof: 'rf',
+  mirrors: 'mr',
   body: 'bd',
 };
 const LONG: Record<string, string> = Object.fromEntries(Object.entries(SHORT).map(([k, v]) => [v, k]));

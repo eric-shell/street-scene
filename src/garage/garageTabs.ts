@@ -47,10 +47,10 @@ export const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan',
 
 /**
  * The Paint tab's surfaces, listed in this order: the body, the roof (only on a car with a roof piece, matching the
- * body or a contrast), the calipers, the wheels (the face, the lip and the center cap) and the hardware (the lug nuts
+ * body or a contrast), the mirror caps (only on a car whose manifest boxes them, chrome too), the calipers, the wheels (the face, the lip and the center cap) and the hardware (the lug nuts
  * and the bolts). The one last touched frames the camera.
  */
-export const PAINT_SURFACES = ['body', 'roof', 'calipers', 'wheels', 'hardware'] as const;
+export const PAINT_SURFACES = ['body', 'roof', 'mirrors', 'calipers', 'wheels', 'hardware'] as const;
 export type PaintSurface = (typeof PAINT_SURFACES)[number];
 
 /** The tire stretch as the Stance tab lists it (TIRE_SHAPES' order, render/car/tireShapes.ts draws them): none is the standard tire, full the stretched one. */
@@ -309,6 +309,8 @@ export function renderTabContent(host: TabHost): void {
         surface('body', section('Body', paintPicker(v.paint, PAINT_FINISHES, () => host.changed()))),
         // A contrast roof is real paint or a wrap, so the body's finishes; only cars with a roof piece list it.
         ...(roofShown ? [surface('roof', section('Roof', paintPicker(v.roof, PAINT_FINISHES, () => host.changed(), [matchBody(v.roof, v.paint)]), note('The roof panel only: the pillars keep the body paint.')))] : []),
+        // Mirror caps take chrome too, like a factory brightwork option; only cars with boxed caps list them.
+        ...(manifestCar(b.carId).mirrorCaps ? [surface('mirrors', section('Mirror caps', paintPicker(v.mirrors, ACCENT_FINISHES, () => host.changed(), [matchBody(v.mirrors, v.paint)]), note('The housings only: the stalks keep the body paint.')))] : []),
         // One caliper paint for all four corners, whatever the axle switch says.
         surface('calipers', section('Calipers', paintPicker(v.calipers, ACCENT_FINISHES, () => host.changed(), [matchBody(v.calipers, v.paint)]), note('One paint for all four corners.'))),
         surface(

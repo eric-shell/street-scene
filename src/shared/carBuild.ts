@@ -32,7 +32,7 @@ export interface Paint<F extends AccentFinish = PaintFinish> {
   finish: F;
 }
 
-/** An accent's paint (wheels, calipers, roof): its own, or the body's while matched (it follows later body changes). */
+/** An accent's paint (wheels, calipers, roof, mirror caps): its own, or the body's while matched (it follows later body changes). */
 export interface AccentPaint<F extends AccentFinish = PaintFinish> extends Paint<F> {
   match: boolean;
 }
@@ -155,6 +155,8 @@ export interface VisualBuild {
   calipers: AccentPaint<AccentFinish>;
   /** The roof's paint (the stock Roof piece and any roof part): its own, or the body's while matched. Builds from before it read matched. */
   roof: AccentPaint;
+  /** The mirror caps' paint (on cars whose manifest boxes them, render/car/mirrorCaps.ts): its own, chrome, or the body's while matched. Builds from before it read matched. */
+  mirrors: AccentPaint<AccentFinish>;
   decals: DecalLayer[];
   stance: { front: AxleStance; rear: AxleStance };
   /** The side and rear windows' tint; the windshield stays clear. */
@@ -204,6 +206,7 @@ export function defaultVisual(): VisualBuild {
     wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false, lip: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, cap: { mode: 'face', color: '#c9ced8', finish: 'metallic' }, lugNuts: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' }, hardware: { mode: 'paint', color: CHROME_COLOR, finish: 'chrome' } },
     calipers: { color: '#c41e3a', finish: 'gloss', match: false },
     roof: { color: '#d11f3f', finish: 'metallic', match: true },
+    mirrors: { color: '#d11f3f', finish: 'metallic', match: true },
     decals: [],
     stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
@@ -331,6 +334,7 @@ export function validateVisual(v: unknown): VisualBuild {
     wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire), lettering: wheels.lettering === true, lip: validTrim(wheels.lip, d.wheels.lip, 'lip'), cap: validTrim(wheels.cap, d.wheels.cap, 'cap'), lugNuts, hardware: validTrim(wheels.hardware, d.wheels.hardware, 'hardware') },
     calipers: validAccent(o.calipers, d.calipers, ACCENT_FINISHES),
     roof: validAccent(o.roof, d.roof, PAINT_FINISHES),
+    mirrors: validAccent(o.mirrors, d.mirrors, ACCENT_FINISHES),
     decals,
     stance: {
       front: axle(stance.front, stance.camberFront),
