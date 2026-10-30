@@ -72,7 +72,7 @@ Only `HeadLight`, `TailLight` and `BrakeLight` glow: a lamp that is not one of t
 | rearBumper | 6500 |
 | fenders | 4000 |
 | sideSkirts, hood, roof | 2000 |
-| spoiler | 3500 |
+| spoiler | 4000 |
 | wheels | 12000 |
 | body | 20000 |
 
