@@ -2306,16 +2306,21 @@ def inset_polygon(pts, d):
     as the moved edges' intersection would (that blew a sliver window out of its plate), and a region
     thinner than 2 `d` comes back empty. Convex only: a concave edge's half plane, extended, clips
     the far side of the polygon away (a window bounded by the hatch skin's bulge came back empty).
-    Winding is normalised; the result is counterclockwise."""
-    area = sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1] for i in range(len(pts)))
+    `d` may be a list, one inset per edge (edge i runs from pts[i] to pts[i + 1]): a truss window sits
+    further from the edge that carries the load (Track Mild's swan necks: the leading edge read weak at
+    the common rim). Winding is normalised; the result is counterclockwise."""
+    n = len(pts)
+    ds = list(d) if isinstance(d, (list, tuple)) else [d] * n
+    area = sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1] for i in range(n))
     if area < 0:
         pts = pts[::-1]
+        ds = [ds[(n - 2 - i) % n] for i in range(n)]
     poly = [Vector(p) for p in pts]
-    for i in range(len(pts)):
-        a, b = Vector(pts[i]), Vector(pts[(i + 1) % len(pts)])
+    for i in range(n):
+        a, b = Vector(pts[i]), Vector(pts[(i + 1) % n])
         e = (b - a).normalized()
         nrm = Vector((-e.y, e.x))  # left of the edge, the inside of a counterclockwise loop
-        p0 = a + nrm * d
+        p0 = a + nrm * ds[i]
         inside = lambda q: (q - p0).dot(nrm) >= -1e-9
         out = []
         for k in range(len(poly)):
