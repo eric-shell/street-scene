@@ -650,7 +650,7 @@ function renderPower(host: TabHost): void {
 const BODY_SHAPE_FEATURES: readonly BodyFeature[] = ['euroMirrors', 'shavedHatch', 'shavedRubstrip', 'halfCupHandles'];
 const PAINT_FEATURES: readonly BodyFeature[] = ['blackGrille'];
 /** The body part slot a feature belongs to: its switch sits under that slot's part list. */
-const SLOT_FEATURES: Partial<Record<BodyFeature, PartSlot>> = { fogLights: 'frontBumper', shavedMarkers: 'fenders' };
+const SLOT_FEATURES: Partial<Record<BodyFeature, PartSlot>> = { fogLights: 'frontBumper', shavedMarkers: 'fenders', windSplitters: 'roof' };
 
 /**
  * A feature's switch row, with its tag (owned, price or locked). Switching on one the car does not own previews it

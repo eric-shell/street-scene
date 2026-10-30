@@ -1404,6 +1404,66 @@ def side_lip(body, target, y0, y1, top, thick=0.013, proud=0.02, tuck=0.04, cham
     return secs
 
 
+def ditch_fin(surfaces, target, y0, y1, x_guess, heights=(0.012, 0.017), ramp=0.08, root=0.005, tip=0.003,
+              stations=26, scan=0.02, smooth=3, sink=0.001, ditch='Black', material='Black'):
+    """Wind splits on the roof's drip rails, both sides: a rubber blade standing up out of each roof
+    ditch from y0 (the windshield's top edge) to y1 (the spoiler's front), after the BMW 3.0 CSL's fender
+    fins (the Wendt Strom's Wind splits). The ditch is read per station by downward rays over
+    x_guess(y) +- `scan`: its `ditch` material run (the black bottom) gives the centre and width, its
+    lowest hit the bottom, the higher of the paint either side the lip. The section is a foot filling the
+    ditch from `sink` below its bottom up to the lip, then a blade tapering from `root` to `tip` thick
+    with a rounded top, `heights` m over the lip at y0 and y1 (linear between: short, a little taller at
+    the back), its front rising from the lip over `ramp` m (a swept leading edge) and its back square
+    against whatever follows. Centre, bottom and lip are smoothed along the car (`smooth` passes) so the
+    donor's facets do not wobble the line. Built on +x and mirrored. Returns the +x sections."""
+    from mathutils.bvhtree import BVHTree
+    dg = bpy.context.evaluated_depsgraph_get()
+    trees = [(o, BVHTree.FromObject(o, dg)) for o in surfaces]
+
+    def down(x, y):
+        best = None
+        for o, t in trees:
+            h = t.ray_cast(Vector((x, y, 3)), Vector((0, 0, -1)))
+            if h[0] is not None and (best is None or h[3] < best[1]):
+                best = (h[0].z, h[3], o.material_slots[o.data.polygons[h[2]].material_index].material.name.split('.')[0])
+        return best
+
+    raw = []
+    # Six stations over the front ramp, where the height changes fastest, the rest evenly behind it.
+    ys = [y0 + ramp * k / 5 for k in range(5)] + [y0 + ramp + (y1 - y0 - ramp) * k / (stations - 6) for k in range(stations - 5)]
+    for y in ys:
+        xs = [x_guess(y) - scan + 0.001 * j for j in range(int(2 * scan / 0.001) + 1)]
+        hits = [(x, down(x, y)) for x in xs]
+        bl = [(x, h[0]) for x, h in hits if h and h[2] == ditch]
+        if not bl:
+            continue
+        xa, xb = bl[0][0], bl[-1][0]
+        inner = [h[0] for x, h in hits if h and x < xa]
+        outer = [h[0] for x, h in hits if h and x > xb]
+        lip = max(inner[-1] if inner else bl[0][1], outer[0] if outer else bl[-1][1])
+        raw.append([y, (xa + xb) / 2, (xb - xa) / 2 + 0.0005, min(z for _, z in bl), lip])
+    for _ in range(smooth):
+        raw = [raw[0]] + [[r[0]] + [raw[i - 1][j] * 0.25 + r[j] * 0.5 + raw[i + 1][j] * 0.25 for j in range(1, 5)]
+                          for i, r in enumerate(raw[1:-1], 1)] + [raw[-1]]
+    secs = []
+    for y, xc, half, zb, lip in raw:
+        u = (y - y0) / (y1 - y0)
+        h = heights[0] + (heights[1] - heights[0]) * u
+        h = max(h * _sstep((y - y0) / ramp), 0.0015)
+        top = lip + h
+        r, t = root / 2, tip / 2
+        rc = min(t, h / 2)
+        secs.append([(xc - half, y, zb - sink), (xc + half, y, zb - sink), (xc + half, y, lip), (xc + r, y, lip + 0.001),
+                     (xc + t, y, top - rc), (xc + t * 0.7, y, top - rc * 0.3), (xc, y, top), (xc - t * 0.7, y, top - rc * 0.3),
+                     (xc - t, y, top - rc), (xc - r, y, lip + 0.001), (xc - half, y, lip)])
+    carry = stash_normals(target)
+    sweep(target, secs, material)
+    sweep(target, [[(-x, y, z) for x, y, z in s] for s in secs], material)
+    if carry:
+        restore_normals(target)
+    return secs
+
+
 def spat(target, front, rear, base, height=0.15, rake=0.05, curl=(0.015, 0.045), curl_height=0.04, thick=0.006,
          stations=6, rows=4, fillet=None, material='Black'):
     """A splitter spat (end plate) as race cars run them: a flat plate standing on a splitter's outer

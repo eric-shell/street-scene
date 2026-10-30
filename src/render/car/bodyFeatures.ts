@@ -10,6 +10,8 @@
  *   underneath it (carDonors.py strip_nodes). Its fogLights is an `_on` node alone (the lamps in the outer intakes, outside
  *   every front bumper part, so they show on any of them), and its shavedMarkers a patch cut out of the stock
  *   fenders and of every fender part that carries those faces, so the switch works whichever fenders are on.
+ *   Its windSplitters is an `_on` node alone, the fins in the roof's drip rails (carKit.py ditch_fin), outside every
+ *   roof part.
  *   Its halfCupHandles is a swap patch over each door handle's upper cup: `_off` the stock cup, `_on` the door
  *   pressed flush down to behind the bar's middle with a ledge onto the lower cup (carDonors.py half_cup_nodes).
  *   A feature with a box and no nodes or reshape is a switch that changes nothing.
