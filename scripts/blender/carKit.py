@@ -2027,6 +2027,34 @@ def tube(o, center, axis_dir, r, length, name, n=10):
     add_geom(o, verts, faces, name)
 
 
+def fillet_polygon(points, radii, segs=4):
+    """A 2D outline (a list of (a, b)) with each corner rounded by its radius in `radii` (one per point, 0
+    keeps it sharp; convex and concave corners alike), each arc `segs` segments, for `cut_plate` outlines
+    and windows: a swan neck's corners and lightening holes (sheet parts are cut with radii, and square
+    corners read unfinished). A radius too big for its two edges shrinks to fit half of the shorter one."""
+    out = []
+    k = len(points)
+    for i in range(k):
+        a, b, c = Vector(points[i - 1]), Vector(points[i]), Vector(points[(i + 1) % k])
+        r = radii[i]
+        u, v = a - b, c - b
+        lu, lv = u.length, v.length
+        u.normalize()
+        v.normalize()
+        th = math.acos(max(-1.0, min(1.0, u.dot(v))))
+        if r <= 0 or th < 1e-4 or th > math.pi - 1e-4:
+            out.append((b.x, b.y))
+            continue
+        t = min(r / math.tan(th / 2), lu / 2, lv / 2)
+        r = t * math.tan(th / 2)
+        p, q = b + u * t, b + v * t
+        ctr = b + (u + v).normalized() * (r / math.sin(th / 2))
+        a0, a1 = math.atan2(p.y - ctr.y, p.x - ctr.x), math.atan2(q.y - ctr.y, q.x - ctr.x)
+        da = (a1 - a0 + math.pi) % (2 * math.pi) - math.pi
+        out += [(ctr.x + r * math.cos(a0 + da * s / segs), ctr.y + r * math.sin(a0 + da * s / segs)) for s in range(segs + 1)]
+    return out
+
+
 def dome_head(o, center, normal, r, name='Chrome', sides=None):
     """A round domed bolt head sitting on a surface at `center` facing `normal`: a fan of `sides` triangles
     (12, or 8 under 5 mm) rising 0.37 r to its crown, its rim 0.3 mm into the surface so no gap shows, open
