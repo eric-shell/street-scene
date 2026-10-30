@@ -116,7 +116,7 @@ Source: `assets/source/eshell/tachibanaZenith/tachibanaZenith.blend` (authored i
 
 Source: `assets/source/eshell/wendtStrom/wendtStrom.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/wendtStrom.glb`: 888.4 KB, 38589 tris, nodes `Body`, `Bumper_Front`, `Bumper_Rear`, `Roof`, `Exhaust`, `Muffler`, `Floor_Rear`, `Floor_Mid`, `Floor_Boot`, `Well_Rear`, `Fenders`, `shavedHatch_on`, `shavedHatch_off`, `fogLights_on`, `shavedMarkers_off`, `shavedMarkers_on`, `shavedRubstrip_off`, `Spoiler`, `halfCupHandles_off`, `halfCupHandles_on`, `windSplitters_on`.
+- Base car `public/cars/wendtStrom.glb`: 888.3 KB, 38589 tris, nodes `Body`, `Bumper_Front`, `Bumper_Rear`, `Roof`, `Exhaust`, `Muffler`, `Floor_Rear`, `Floor_Mid`, `Floor_Boot`, `Well_Rear`, `Fenders`, `shavedHatch_on`, `shavedHatch_off`, `fogLights_on`, `shavedMarkers_off`, `shavedMarkers_on`, `shavedRubstrip_off`, `Spoiler`, `halfCupHandles_off`, `halfCupHandles_on`, `windSplitters_on`.
 - Parts: frontBumper euro, frontBumper speedholes, frontBumper cupraR, frontBumper trackBase, frontBumper trackMild, frontBumper trackWild, sideSkirts trackMild, sideSkirts trackWild, rearBumper euro, rearBumper sectioned, rearBumper sectionedEuro, rearBumper centerExhaust, rearBumper trackBase, rearBumper trackMild, rearBumper trackWild, roof sunroofTilted, roof sunroofDelete, fenders overMild, fenders voomeran, spoiler none, spoiler sportMildRoof, spoiler sportWildRoof, spoiler sexSpec, spoiler trackMild, spoiler trackWild.
 - WARNING: wheel radius 0.309 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.309 m, width 0.24 m, wheelbase 2.518 m, track 1.492 m.
