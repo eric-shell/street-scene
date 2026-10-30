@@ -238,7 +238,7 @@ export function routeRuns(g: RoadGraph, nodes: number[], edges: number[], closed
 export function circuitStart(g: RoadGraph, nodes: number[]): { index: number; t: number; run: RouteRun } {
   const edges = polylineFrom(g, nodes, true);
   const runs = routeRuns(g, nodes, edges, true);
-  const channel = (r: RouteRun) => r.edges.some((e) => isChannelEdge(g.edges[e]) || g.edges[e].crossing !== undefined);
+  const channel = (r: RouteRun) => r.edges.some((e) => isChannelEdge(g.edges[e]) || g.edges[e].crossing !== undefined || g.edges[e].trench === true);
   let best = runs[0];
   for (const r of runs) {
     const rb = channel(r);

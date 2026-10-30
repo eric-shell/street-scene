@@ -1464,6 +1464,170 @@ export const CITY = {
       /** Sidewalk a shelter needs (m). */
       minSidewalk: 3.2,
     },
+    // Weekend specials (weekend.ts, docs/weekend.md): each worker fills its own block; the plumbing only needs the switch.
+    /**
+     * The Rail Yard (districts/railYard.ts, docs/weekend.md): a freight classification yard laid along a street both
+     * routes drive, one rectangle per block (two blocks along the street when the city has them), so a racer dives
+     * in at one of three gate mouths. Sizes in m unless noted; lengths along the street are `u`, depth into the block `v`.
+     *  - site: the least route frontage of the first block, for a two block site and for the single block fallback.
+     *  - rect: the yard's footprint in a block: depth range, length range, the room it keeps from the block ring and
+     *    from the cross street's corner.
+     *  - fence: chain link `inset` inside the frontage line, `pitch` apart, runs of `run` panels with `gap` m between;
+     *    the solid fence round the other three sides is `thick` thick; gate posts `post` square.
+     *  - mouth: gate mouths on the frontage (`count`, `width` m between the posts, cobbled `depth` onto the yard).
+     *  - apron: the open ground behind the gates (a drift zone), then the lead track, then the consist tracks `pitch` apart
+     *    ([min, max] tracks, `minPitch` the tightest a shallow block squeezes them to); `backAisle` between the last consist
+     *    and the dock face.
+     *  - rail: gauge, tie size and spacing, rail head width, and the ballast bed's width; all paint (nothing over 3 cm).
+     *  - cars: a railcar's body width and the coupler gap between cars; `run` cars per consist [min, max] and `gap` between
+     *    consists [min, max]; `fill` the share of consist tracks that stand loaded; kinds by `weights`, each [length, height].
+     *  - hump: the ridge across every track: its `rise`, the run-up `grade`, the flat `top`, the eased `lip` share of each slope,
+     *    the `edge` it tapers over across the tracks, and the clear ground kept beyond it: `land` on the far side (to the end fence) and `near` toward the freight.
+     *  - dock: the loading platform along the back: `height`, `depth`, the ramps' `grade`, the `ease` of the hard edge, and the
+     *    share (`topFrac`) of the height under which a car is stopped by its face.
+     *  - bank: the turnaround at the far end: `height`, the `rise` width of the cross-section, the `hold` flat at its crest, the
+     *    `fall` behind it, the angular `taper`, and the largest radius.
+     *  - lights: four towers (mast height, pool radius), the yard tower's cab height.
+     *  - junk: soft clutter on the back aisles: a prop every `step` m [min, max] along them.
+     */
+    railYard: {
+      enabled: true,
+      site: { minFrontage: 80, minFrontageSingle: 110 },
+      rect: { depth: [66, 88], length: [96, 150], margin: 1.4, endClear: 5 },
+      fence: { inset: 1, pitch: 1.7, run: [3, 7], gap: [1.2, 3.4], thick: 0.4, post: 0.9 },
+      mouth: { count: 3, width: 12, depth: 7 },
+      apron: 11,
+      lead: 3.2,
+      pitch: 8,
+      minPitch: 7.2,
+      tracks: [6, 8],
+      backAisle: 5.5,
+      rail: { gauge: 1.435, head: 0.07, tie: [2.6, 0.26], tiePitch: 0.62, ballast: 3.8 },
+      cars: { width: 3.05, coupler: 0.9, run: [2, 5], gap: [8, 14], fill: 0.85, weights: { boxcar: 4, tank: 3, hopper: 2, flatcar: 2, caboose: 1 }, kinds: { boxcar: [15.2, 3.7], tank: [14.6, 3.6], hopper: [12.8, 3.5], flatcar: [16.2, 1.4], caboose: [9.6, 3.9] } },
+      hump: { rise: 2, grade: 0.12, top: 3, lip: 0.3, edge: 3.5, land: 5, near: 2 },
+      dock: { height: 1.1, depth: 7, grade: 0.1, ease: 1.1, topFrac: 0.5 },
+      bank: { height: 1.2, rise: 5, hold: 0.6, fall: 2.4, taper: 24, radius: 28 },
+      lights: { towers: 4, mast: 18, pool: 28, cab: 9 },
+      junk: { step: [5, 11] },
+    },
+    /**
+     * The Underground (districts/underground.ts): a two block run of one street sunk into a lit concrete trench, its old
+     * street level kept on both sides as service roads. All sizes in metres unless noted. The street's own width is the
+     * floor's (so the floor is the road), and the frame is the straight chord of the run: the carve straightens it.
+     */
+    underground: {
+      enabled: true,
+      /** Grid cells kept between the run (and its blocks) and the map edge. */
+      edgeCells: 1,
+      /** Candidate runs tried (cheapest checks first; the channel's plan is run on a copy for each survivor). */
+      tries: 14,
+      /** The run's middle junction moves onto the chord of its ends by at most this much (m); more and the run is not straight enough. */
+      maxStray: 16,
+      /** The run keeps this far (m) from the channel's centerline: the channel merges the streets of its two bank rows (a block and a half out), which would take the run's pieces. */
+      channelRowClear: 105,
+      /** Shortest run (m, end node to end node): the ramps, the flat floor and both junctions' reach all have to fit. */
+      minLength: 262,
+      /** Trench depth under grade (m): the floor's level mid-run. */
+      depth: 5,
+      /** Solid body between the floor and a service road (m): its floor face is the retaining wall, its top a kerb. */
+      plinth: 1.6,
+      /** Kerb: a flying car above this over grade passes over the plinth (m). */
+      kerb: 0.7,
+      /** Service road beside each plinth (m), asphalt at grade. */
+      service: 7,
+      /** Depth behind the old building line that buildings are kept out of and the frontage is opened to (m). */
+      frontBack: 9,
+      /** Ramps begin this far past a junction's reach (m). */
+      junctionGap: 3,
+      /** Ramp run from grade to the floor (m), with this share eased (quadratic) at the top and at the foot: peak grade depth / (run x (1 - ease)) = 10.8%. */
+      rampRun: 62,
+      rampEase: 0.25,
+      /** Shortest flat floor half length (m) the layout needs (travel positions below are within it). */
+      minFloorHalf: 36,
+      /** Half depth of the area polygon on both sides of the street (m): both blocks' frontage, the service roads and the abutments. */
+      areaHalf: 40,
+      /** Route preference: the run's edges weigh this much of their length for the route finders (below 1 draws routes along them). */
+      routeBias: 0.45,
+      /** Along a sprint, the run keeps this far (m) from the finish line: the finish plus its node clearance and the start of its crowd (route.ts sprintFinishOffset). */
+      sprintTailClear: 262,
+      /** Demolished section: half length of the gap in the plinth (m), the taper of the rubble back to the wall (m), the rubble's run from the floor edge to its lip (m, a 5 m drop: a steep bevel), the hoarding's gap (m). */
+      demolished: { half: 15, taper: 4, run: 4, gap: 4, panelStep: 1.7, panelBack: 0.35 },
+      /**
+       * Construction kicker: a spoil heap under steel plates angled toward the service road across the street. Height of the
+       * lip over the floor, grade at the lip (a car at 40 m/s leaves at 40 x grade m/s upward), the share of the run eased
+       * at the foot, the width of the plates, the bevel either side, the drop behind the lip, the speed (m/s) whose throw the kicker's heading is aimed to land mid service road
+       * across the street, how far the lip stands in from the curb line (m: off the middle, where the race line runs), and the barrier along each flank (offset past the plates, width, height).
+       */
+      kicker: { lip: 2.2, grade: 0.28, ease: 0.3, width: 4.6, edge: 0.9, drop: 1.8, aimSpeed: 40, lipInset: 4, flankGap: 1.1, flankWidth: 0.5, flankHeight: 1.0, landMargin: 2 },
+      /** Where things stand along the travel direction (m from the middle; the ramps are beyond +-floorHalf): the kicker's lip, the window's centre, the bus's centre, the two jet fan gantries and two footbridges. */
+      at: { kicker: -30, window: 20, bus: -3, gantries: [-64, 66], bridges: [-54, 88] },
+      /** The stalled articulated bus: length, width, height (m), yaw off the lane (deg), and the gap it leaves to the retaining wall (m): it has pulled over to the kerb, the other lane and the middle stay open. */
+      bus: { length: 18, width: 2.55, height: 3.3, yawDeg: 0, wallGap: 0.35 },
+      /** Works vehicles parked on the service roads: length, width, height (m), the gap kept between them (m), how far from the plinth side the vehicle's centre stands (m). */
+      works: { length: 6.2, width: 2.4, height: 2.8, gap: 24, inset: 5.7 },
+      /** Footbridge: deck clearance over grade (m), deck width (m), how far past the service road the abutments stand (m), their size (m). */
+      bridge: { clear: 5.2, width: 2.6, abutOut: 2.4, abut: 1.6 },
+      /** Jet fan gantry: beam height over grade (m). */
+      gantryHeight: 3.2,
+      /** Lamps: spacing along the plinth (m) and height of the wall lamps over the floor (m); service lamps on the plinth top: post height over grade and arm reach over the road (m). */
+      lamps: { spacing: 11, wallHeight: 3.6, post: 4.6, arm: 2.2 },
+    },
+    scrapyard: {
+      enabled: true,
+      /** Least route frontage (m) of the block the yard takes. */
+      minFrontage: 70,
+      /**
+       * Bowl sizes tried largest first: the crest radius (m) of each of the two banked bowls. The yard takes the first
+       * that fits a site; the canyon's stack count and everything else follows from it.
+       */
+      crestRadii: [22, 19, 16],
+      /**
+       * A bowl's cross-section (districts/banking.ts): the floor dips `dip` below grade, the bank rises over `bankWidth`
+       * to `rise` above the floor (so `rise - dip` above grade at the crest), and the rim falls back to grade over `rimWidth`.
+       */
+      bank: { dip: 1, rise: 1.5, bankWidth: 5.5, rimWidth: 4 },
+      /** Clear ground (m) the stacks and bowls keep from the fence: the perimeter aisle, the safe line round the yard. */
+      perimeter: 6,
+      /** A bowl's middle island: stacks in a ring of this radius (m), how many, and the ring road's inner edge (m from the bowl's centre) that nothing else enters. */
+      island: { radius: 4.5, count: 5, ringInner: 7.5 },
+      /** A stack of crushed cars: footprint length along its row and depth (m); tiers are 0.8 m a crushed car (with the crumpled roofs and the debris between), two or three high. */
+      stack: { length: 5, depth: 2.4, gap: 0.3, tier: 0.8 },
+      /**
+       * The back canyon, run from the pit (its kicker end) to its entrance in the back lane: the aisle between its two walls
+       * (m, each wall two stacks deep), stacks a wall (the length is count x stack.length), and how far (fraction of a bowl's rim
+       * radius) it stands toward the far bowl's middle from the neck between the bowls, so the jump lands on that bowl's bank.
+       */
+      canyon: { aisle: 5, stacks: [6, 5, 4], offset: 0.4 },
+      /**
+       * The kicker (the channel's `table` rise, one sided: a car runs up it and the ground ends): the lip is `lipFrom` m past the
+       * bowls' rim line (S = twice the rim radius), the rise is `rise` m high over `run` m (a slope of rise / run at the lip, over
+       * 25%), `fall` m the descent past the lip (its slope is about half the rise's), `edge` the bevel at its sides, `ease` the share of the run eased in at its foot (the slope at the lip is rise / run / (1 - ease / 2), 29%). A car leaves it at speed times slope upward:
+       * measured with the sim (the speed at the lip, a Kazama coasting off it): 9 m/s lands in the pit (the car climbs out), 12 m/s just
+       * clears it, 15 m/s lands on the far bowl's rim, 17 to 20 m/s on its bank and 22 m/s and up over the bank onto the floor.
+       */
+      kicker: { lipFrom: 10, rise: 1.15, run: 4.6, fall: 9.5, edge: 0.5, ease: 0.3 },
+      /** The crusher's pit, past the lip: a shallow dip `depth` m deep, `length` m along the jump, `halfWidth` m each side of the canyon. */
+      pit: { depth: 1, length: 8, halfWidth: 7 },
+      /** The crusher's body beside the pit: footprint (m), and the press gate across the canyon. */
+      crusher: { length: 7, depth: 5, height: 4.2 },
+      /**
+       * The press across the canyon, a timed gate (sim/gates.ts): it stands `pressFrom` m up the canyon past the kicker's foot,
+       * a cycle of `period` s with the warning lamps for `warn` s, lowering for `lower` s, down for `closed` s and rising for `raise` s
+       * (so it blocks for about a third of the period), each yard's phase drawn from `scrapyard:crusher`.
+       */
+      press: { pressFrom: 6, period: 18, warn: 2, lower: 0.6, closed: 5.4, raise: 1.2 },
+      /** The open fill rows round the canyon: a double row's aisle (m), the least run of a row and how often a stack is left out (a cross cut). */
+      rows: { aisle: 6.5, skip: 0.12, startFrom: 14 },
+      /** Curb cuts onto the route streets (busBays.ts mouthBay): the width at full depth, the flare each side, room kept from a street piece's ends (m), and the most cuts. */
+      cut: { width: 8, flare: 3.5, endClear: 6, count: 3 },
+      /** The fence: thickness (m, the solid's body, inward from the block's edge), its drawn height, and the longest piece of solid (m). */
+      fence: { thickness: 0.6, height: 2.8, piece: 9 },
+      /** Floodlight towers at the four corners: base footprint (m, a solid) and the lamp head's height (m). */
+      tower: { base: 0.9, height: 11, inset: 1.6 },
+      /** Drivable ground grade a site may have (rise per run) and the spread of height across the yard's rectangle (m). */
+      maxGrade: 0.06,
+      maxRise: 5,
+    },
   },
 } as const;
 

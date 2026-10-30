@@ -37,6 +37,9 @@ import { driftZoneRenderer } from './driftZones';
 import { carParkRenderer } from './carPark';
 import { parkingLotRenderer } from './parkingLot';
 import { cableCarRenderer } from './cableCar';
+import { railYardRenderer } from './railYard';
+import { undergroundRenderer } from './underground';
+import { scrapyardRenderer } from './scrapyard';
 
 export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   downtownRenderer,
@@ -59,6 +62,9 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   marketRenderer,
   roadworksRenderer,
   cableCarRenderer,
+  railYardRenderer,
+  undergroundRenderer,
+  scrapyardRenderer,
   // Markings over the lots and the plaza that pay a drift bonus (sim/driftZones.ts).
   driftZoneRenderer,
 ];

@@ -36,6 +36,7 @@ import type { Terrain } from '../terrain';
 import type { DistrictPropSpec } from '../props';
 import type { EventFlavourId } from '../events';
 import type { RoutePass } from '../route';
+import type { WeekendPick } from '../weekend';
 
 export type AreaKind =
   | 'downtown'
@@ -56,6 +57,10 @@ export type AreaKind =
   | 'carPark'
   | 'parkingLot'
   | 'highway'
+  // Weekend specials (weekend.ts, docs/weekend.md): a large set-piece area on a Saturday or Sunday seed.
+  | 'railYard'
+  | 'underground'
+  | 'scrapyard'
   // Water: one side of the map as a harbor, a lake of merged blocks.
   | 'waterfront'
   | 'lake'
@@ -135,6 +140,9 @@ export const COBBLE_PRIORITY = 6;
  *   three high) lining its container lane, parked forklifts, and the steel gate posts either side of a
  *   mouth onto the quay that carry its string lights (waterfront, waterfrontYard.ts).
  * cableCar: a cable car terminal's waiting shelter on the sidewalk beside the stop (cableCar).
+ * railcar / yardFence: a stopped freight car's side, the rail yard's fence (railYard, weekend.ts).
+ * trenchWall: the underground trench's retaining wall (underground).
+ * carStack / scrapFence / crusher: crushed cars stacked, the scrapyard's fence, the crusher's body (scrapyard).
  * lifeguard / surf: a beach's lifeguard towers (solids on the sand) and the break along its waterline, the
  *   one-sided wall that stops a car where the sand meets the sea (waterfront, waterfrontBeach.ts). Its pier
  *   is a solid of look 'pier' (out from the boardwalk over the sand), and its palms 'tree' trunks.
@@ -181,9 +189,15 @@ export type WallLook =
   | 'quayPost'
   | 'cableCar'
   | 'lifeguard'
-  | 'surf';
+  | 'surf'
+  | 'railcar'
+  | 'yardFence'
+  | 'trenchWall'
+  | 'carStack'
+  | 'scrapFence'
+  | 'crusher';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'plaza', 'lotFence', 'lotKiosk', 'container', 'forklift', 'quayPost', 'cableCar', 'lifeguard', 'surf'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'plaza', 'lotFence', 'lotKiosk', 'container', 'forklift', 'quayPost', 'cableCar', 'lifeguard', 'surf', 'railcar', 'yardFence', 'trenchWall', 'carStack', 'scrapFence', 'crusher'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -398,6 +412,8 @@ export interface PlanContext {
   late?: LateContext;
   /** Present for the modules planned after the topology hook, when it returned one. */
   event?: PlannedEvent;
+  /** The weekend special this seed reads as (weekend.ts), set for every module; the weekend module of that kind plans its area from it. */
+  weekend?: WeekendPick;
   /** Polygons route shortcuts must not cut through (car park sites held while the alleys are carved, see world.ts). */
   keepOut?: Vec2[][];
 }
@@ -436,6 +452,14 @@ export interface DistrictModule {
   passes?(g: RoadGraph, area: Area): RoutePass[];
 }
 
+/**
+ * Areas a racing car inside the polygon of counts as on the route corridor (sim/race.ts updateLost): their
+ * set pieces are drivable ground that may lie further than LOST.lateral (60 m) from the route's streets, and a
+ * car racing through one is not lost. The weekend specials (weekend.ts); a route's car parks and a harbor's
+ * quay cut keep their own exemptions (carPark/progress.ts onCarPark, harborCut.ts onQuayCut), unchanged.
+ */
+export const CORRIDOR_AREAS: ReadonlySet<AreaKind> = new Set<AreaKind>(['railYard', 'underground', 'scrapyard']);
+
 /** areaAt priority: more specific kinds win where footprints overlap. */
 export const AREA_PRIORITY: Record<AreaKind, number> = {
   downtown: 1,
@@ -456,6 +480,10 @@ export const AREA_PRIORITY: Record<AreaKind, number> = {
   carPark: 11,
   parkingLot: 8,
   highway: 4,
+  // Weekend specials: over downtown and infill like the car park, which they replace on their blocks.
+  railYard: 11,
+  underground: 11,
+  scrapyard: 11,
   waterfront: 2,
   lake: 2,
   // The line's carriageway: over a hill's rise, so the free roam chip names the line on it.
@@ -494,6 +522,10 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   parkingLot: { fill: 'rgba(147,146,147,0.2)', stroke: 'rgba(147,146,147,0.32)', width: 1.2 },
   // The freeway: a wide pale band (the deck line), solid where the El is dashed.
   highway: { stroke: 'rgba(252,252,250,0.32)', width: 9 },
+  // Weekend specials: rust for the yard, dark concrete for the trench, oil brown for the scrapyard.
+  railYard: { fill: 'rgba(214,106,60,0.3)', stroke: 'rgba(214,106,60,0.5)', width: 1.5 },
+  underground: { fill: 'rgba(70,74,84,0.5)', stroke: 'rgba(147,146,147,0.45)', width: 1.5 },
+  scrapyard: { fill: 'rgba(138,98,52,0.34)', stroke: 'rgba(138,98,52,0.55)', width: 1.5 },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
   // The cable car: a thin solid line down its street, the El's weight in a cable car red.

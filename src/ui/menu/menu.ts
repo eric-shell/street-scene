@@ -55,6 +55,7 @@ import {
   Settings as SettingsIcon,
   Shuffle,
   SlidersHorizontal,
+  Sparkles,
   SquareParking,
   Store,
   TrainFront,
@@ -104,8 +105,8 @@ export interface MenuBuild {
 export interface MenuOptions {
   seed: string;
   isDaily: boolean;
-  /** The seed's named event (city/events.ts), the event card's headline. */
-  event?: { name: string; tagline: string };
+  /** The seed's named event (city/events.ts), the event card's headline; `special` is a weekend's set piece the city really has (a chip, and its tagline replaces the flavour's). */
+  event?: { name: string; tagline: string; special?: { name: string; tagline: string } };
   /** The event city: the home map, the courses' backdrop and what the city has. */
   world: World;
   /** The event's courses (the drift lap runs the circuit; the waypoint race's is its suggested route). */
@@ -328,7 +329,8 @@ export function mainMenu(o: MenuOptions): MainMenu {
       { class: 'event-card', 'aria-label': 'Event' },
       h('div', { class: 'event-card__top' }, kicker, seedControl()),
       h('h2', { class: 'event-card__name' }, o.event?.name ?? 'Street race'),
-      o.event && h('p', { class: 'event-card__tagline' }, o.event.tagline),
+      o.event?.special && h('div', { class: 'event-card__special' }, chip('Weekend special', Sparkles, '--ink'), h('span', { class: 'event-card__special-name' }, o.event.special.name)),
+      o.event && h('p', { class: 'event-card__tagline' }, o.event.special?.tagline ?? o.event.tagline),
       map,
       cityFeatures(o.world),
       enter,

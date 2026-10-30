@@ -398,6 +398,8 @@ export function hillFitter(ctx: Pick<PlanContext, 'graph' | 'areas' | 'event'>):
       return { poly, rim: samplePath([...poly, poly[0]], 10) };
     });
   const carParks = ctx.areas.filter((a) => a.kind === 'carPark');
+  // The Underground's trench (underground.ts) is dug to a set profile: no slope under its blocks.
+  const trenches = ctx.areas.filter((a) => a.kind === 'underground' && a.polygon.length >= 3).map((a) => ({ poly: a.polygon, rim: samplePath([...a.polygon, a.polygon[0]], 10) }));
   // A lake (lake.ts) stands level whatever the ground does: slopes keep off its block, promenade and all.
   const lakes = ctx.areas.filter((a) => a.kind === 'lake').map((a) => samplePath([...a.polygon, a.polygon[0]], 10));
   // A back alley's jump exit (alleyShortcuts.ts) is sized for level ground (its run-up speed and flight
@@ -443,6 +445,10 @@ export function hillFitter(ctx: Pick<PlanContext, 'graph' | 'areas' | 'event'>):
     }
     // A car park's ramp climbs a fixed height to a roof at a fixed height over the ground: no slope under it.
     for (const c of carParks) for (const p of c.polygon) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+    for (const t of trenches) {
+      if (pointInPolygon(s.cx, s.cz, t.poly)) return false;
+      for (const p of t.rim) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+    }
     for (const rim of lakes) for (const p of rim) if (plateauDistance(s, p.x, p.z).d < s.w + CITY.districts.lake.clearance) return false;
     for (const path of jumpRuns) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
     for (const path of quay) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;

@@ -110,6 +110,8 @@ export interface RoadEdge {
   bridge?: boolean;
   /** Crosses the El's tracks at grade (a bluff's level crossing, districts/bluff.ts) this far from node a (m). */
   crossing?: number;
+  /** A piece of the Underground's sunken run (districts/underground.ts): no start grid or finish line stands on it. */
+  trench?: true;
 }
 
 export interface RoadGraph {

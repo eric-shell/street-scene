@@ -82,6 +82,10 @@ export const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   tunnel: { ink: PALETTE.soft, fill: rgba('muted', 0.22), width: 1.5, dash: [4, 3], tag: true },
   overpass: { ink: PALETTE.muted, width: 3, dash: [3, 3], tag: false },
   roadworks: { ink: PALETTE.yellow, fill: rgba('yellow', 0.55), width: 1, tag: false },
+  // The weekend specials (city/weekend.ts): rust for the rail yard, a dark concrete grey for the trench, oil brown for the scrapyard.
+  railYard: { ink: PALETTE.orange, fill: rgba('orange', 0.3), width: 1.5, tag: true },
+  underground: { ink: PALETTE.muted, fill: rgba('bg3', 0.7), width: 1.5, tag: true },
+  scrapyard: { ink: '#b8864e', fill: 'rgba(138,98,52,0.4)', width: 1.5, tag: true },
 };
 
 /**

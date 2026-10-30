@@ -26,13 +26,14 @@ import type { World } from '../city/world';
 import type { Area, AreaBuild } from '../city/districts/types';
 import { pointInPolygon, polygonBounds } from '../city/districts/geom';
 import { lotZone } from '../city/districts/parkingLot/layout';
+import { yardZone } from '../city/districts/scrapyardLayout';
 import type { Vec2 } from './math';
 import { driftRefillRate, fillNitrous } from './car';
 import { DT, TICK_HZ } from './constants';
 import { DRIFT_ZONES } from './tuning';
 import type { RaceState } from './race';
 
-export type DriftZoneKind = 'plaza' | 'lot' | 'dock' | 'beach';
+export type DriftZoneKind = 'plaza' | 'lot' | 'dock' | 'beach' | 'scrap' | 'yard';
 
 export interface DriftZone {
   /** Index in the zone list (driftZones()). */
@@ -77,6 +78,8 @@ export function driftZoneKind(a: Area): DriftZoneKind | null {
   if (a.kind === 'monument') return 'plaza';
   if (a.kind === 'parkingLot') return lotZone(a) ? 'lot' : null;
   if (a.kind === 'waterfront') return a.variant === 'beach' ? 'beach' : 'dock';
+  if (a.kind === 'scrapyard') return yardZone(a) ? 'scrap' : null;
+  if (a.kind === 'railYard') return 'yard';
   if (a.kind !== 'infill' || a.variant !== 'lot') return null;
   const depth = a.params.depth ?? 0;
   const length = a.params.length ?? 0;
@@ -100,7 +103,7 @@ export function driftZones(world: DriftZoneSource): DriftZone[] {
   for (const a of areas) {
     const kind = driftZoneKind(a);
     // A parking lot's zone is its forecourt, a harbor's its skid pad and a beach's its strip, not the whole area.
-    const polygon = a.kind === 'parkingLot' ? lotZone(a) : kind === 'dock' ? world.districts?.builds[a.id]?.hints.find((h) => h.kind === 'skidPad')?.points : kind === 'beach' ? world.districts?.builds[a.id]?.hints.find((h) => h.kind === 'beachZone')?.points : a.polygon;
+    const polygon = a.kind === 'parkingLot' ? lotZone(a) : kind === 'dock' ? world.districts?.builds[a.id]?.hints.find((h) => h.kind === 'skidPad')?.points : kind === 'beach' ? world.districts?.builds[a.id]?.hints.find((h) => h.kind === 'beachZone')?.points : a.kind === 'scrapyard' ? yardZone(a) : kind === 'yard' ? world.districts?.builds[a.id]?.hints.find((h) => h.kind === 'apron')?.points : a.polygon;
     if (!kind || !polygon || polygon.length < 3) continue;
     const bb = polygonBounds(polygon);
     zones.push({ index: zones.length, area: a.id, kind, polygon, ...bb });

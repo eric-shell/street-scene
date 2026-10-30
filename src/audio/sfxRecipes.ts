@@ -6,6 +6,7 @@
  * render every bank headless; Sfx (sfx.ts) turns the samples into buffers.
  */
 import type { BeachPropKind, ConstructionPropKind, DockPropKind, MarketPropKind, PropKind } from '../city/props';
+import type { ScrapPropKind } from '../city/props';
 
 export type WallHitKind = 'wall' | 'barrier' | 'rail';
 /**
@@ -13,7 +14,7 @@ export type WallHitKind = 'wall' | 'barrier' | 'rail';
  * streetlights; construction pieces, most neighbourhood furniture and the night market's pieces
  * borrow the nearest material; a wooden power pole splinters like a crate).
  */
-type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | BeachPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine' | 'utilityPole'>;
+type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | BeachPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine' | 'utilityPole' | ScrapPropKind>;
 export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework' | 'thump' | 'glass' | 'manhole' | 'tramRail';
 type Bank = SfxBank;
 export const PROP_SOUND: Record<PropKind, PropSound> = {
@@ -41,6 +42,8 @@ export const PROP_SOUND: Record<PropKind, PropSound> = {
   // Dock clutter: a steel drum rings like a bin, a cable spool splinters like a crate.
   drum: 'garbageCan',
   cableSpool: 'crate',
+  // The scrapyard's tyre stacks: a hollow rubber bounce, the barrel's.
+  tyreStack: 'barrel',
   // Beach furniture: a canopy and its pole folding go like a cafe table, a lounger and a net panel like a crate and a bench.
   umbrella: 'cafeTable',
   lounger: 'crate',

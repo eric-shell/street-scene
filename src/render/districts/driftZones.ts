@@ -334,8 +334,24 @@ function edgeWash(kit: DistrictKit, gb: GeoBuilder, poly: Vec2[], width: number,
   }
 }
 
+/** A rail yard's apron (a rectangle behind the gates, polygon corners in order): the zone box and a line of studs down its middle for the slalom. */
+function yardMarks(kit: DistrictKit, poly: Vec2[], paint: THREE.Color): void {
+  const M = DRIFT_MARK;
+  zoneBox(kit, poly, M.liftLot, paint);
+  if (poly.length !== 4) return;
+  const a = { x: (poly[0].x + poly[3].x) / 2, z: (poly[0].z + poly[3].z) / 2 };
+  const b = { x: (poly[1].x + poly[2].x) / 2, z: (poly[1].z + poly[2].z) / 2 };
+  const len = Math.hypot(b.x - a.x, b.z - a.z);
+  for (let d = M.slalomGap; d < len - M.slalomGap / 2; d += M.slalomGap) {
+    const x = a.x + ((b.x - a.x) * d) / len;
+    const z = a.z + ((b.z - a.z) * d) / len;
+    const y = kit.h(x, z) + M.liftLot;
+    cylinder(kit.glow, x, z, M.studR * 1.4, y - 0.01, y + 0.02, 8, M.stud);
+  }
+}
+
 export const driftZoneRenderer: DistrictRenderer = {
-  kinds: ['infill', 'monument', 'parkingLot', 'waterfront'],
+  kinds: ['infill', 'monument', 'parkingLot', 'waterfront', 'railYard'],
   build(kit) {
     const zones = driftZones(kit.world);
     if (!zones.length) return;
@@ -353,6 +369,11 @@ export const driftZoneRenderer: DistrictRenderer = {
         if (pad) dockMarks(kit, z.polygon, pad.values[0], pad.values[1], pad.values[2], a.params.seed ?? a.id, rubberCount, paint, rubber);
       } else if (z.kind === 'beach') beachMarks(kit, z.polygon, a.params.seed ?? a.id, rubberCount, paint, rubber);
       else if (z.kind === 'plaza') plazaMarks(kit, a, rubberCount, paint, rubber);
+      // The scrapyard's eight carries its own tracks in its dirt (render/districts/scrapyard.ts); only the edge wash below.
+      else if (z.kind === 'scrap') {
+        // No marks: the dirt shows the tracks.
+      }
+      else if (z.kind === 'yard') yardMarks(kit, z.polygon, paint);
       else lotMarks(kit, a, z.polygon, rubberCount, paint, rubber);
       if (washOn) edgeWash(kit, wash, z.polygon, paved ? M.washPlaza : M.washLot, (paved ? M.liftPlaza : M.liftLot) + 0.02, M.wash);
     }

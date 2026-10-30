@@ -49,6 +49,8 @@
  * neighbouring seeds rarely share one. Pure and deterministic.
  */
 import { CITY, ROUTE } from './config';
+import { WEEKEND_FEATURES, weekendOf } from './weekend';
+import type { WeekendKind } from './weekend';
 import type { RoadGraph } from './roadGraph';
 import { edgeBetween, isBendNode } from './roadGraph';
 import { turnAngle } from './route';
@@ -273,6 +275,8 @@ export interface CityEvent {
   tagline: string;
   /** The flavour the seed drew (differs from id when its routes could not deliver it). */
   drawn: EventFlavourId;
+  /** The weekend special this city really has (weekend.ts): set only when the seed is a weekend date and its area was planned, so the menu never promises one the city lacks. */
+  special?: { kind: WeekendKind; name: string; tagline: string };
 }
 
 /** A route as the planners pass it around: graph nodes in driving order, closed for circuits. */
@@ -702,5 +706,13 @@ export function eventRating(id: EventFlavourId, g: RoadGraph, areas: readonly Ar
 export function resolveEvent(seed: number, drawn: EventFlavourId, g: RoadGraph, areas: readonly Area[], routes: readonly EventRoute[]): CityEvent {
   const ok = routes.every((r) => eventRating(drawn, g, areas, r) >= 1);
   const id: EventFlavourId = ok ? drawn : 'downtownDash';
-  return { id, ...eventTitle(seed, id), drawn };
+  const event: CityEvent = { id, ...eventTitle(seed, id), drawn };
+  // The special is named only when its module really planned an area (a stub or a seed with no site plans none).
+  const weekend = weekendOf(seed);
+  // An area left unplanned (params.planned 0: the Underground's carve found its site spoiled by a later district) promises nothing.
+  if (weekend && areas.some((a) => a.kind === weekend.kind && a.params.planned !== 0)) {
+    const f = WEEKEND_FEATURES.find((w) => w.kind === weekend.kind);
+    if (f) event.special = { kind: f.kind, name: f.name, tagline: f.tagline };
+  }
+  return event;
 }

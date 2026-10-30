@@ -292,6 +292,7 @@ export class Sfx {
       pallets: 0.6,
       drum: 0.7,
       cableSpool: 0.75,
+      tyreStack: 0.6,
       umbrella: 0.45,
       lounger: 0.4,
       volleyNet: 0.5,

@@ -11,6 +11,7 @@ import { createCity, createWorld, World, City, RouteProgress } from '../city/wor
 import { GridSlot, Route, RouteKind, RouteWaypoint, routeSample } from '../city/route';
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
 import { onQuayCut, quayCutProgress } from '../city/districts/harborCut';
+import { CORRIDOR_AREAS } from '../city/districts/types';
 import { highwayResetPose } from '../city/districts/highway/settle';
 import { CarState, crashNitrous, createCar, gridRev, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
 import { relocateCar, teleportCar } from './reset';
@@ -892,6 +893,15 @@ function updateLost(r: RaceState, rc: RaceCar, p: RouteProgress): void {
   if (onQuayCut(route, c.x, c.z)) {
     rc.stuckTime = Math.max(0, rc.stuckTime - DT);
     return;
+  }
+  // Inside a weekend special (a set piece that may lie beyond LOST.lateral of the route's streets) the car is on the corridor.
+  // Only weekend seeds look: a weekday city's tick does no extra work.
+  if (r.world.weekend) {
+    const here = r.world.areaAt(c.x, c.z);
+    if (here && CORRIDOR_AREAS.has(here.kind)) {
+      rc.stuckTime = Math.max(0, rc.stuckTime - DT);
+      return;
+    }
   }
   // Lost: far outside the route corridor (beyond any corner cut, plaza, lot or
   // park crossing), or off every drivable surface (inside a block), for a while.

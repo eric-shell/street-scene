@@ -167,7 +167,7 @@ function cloneGraph(g: RoadGraph): RoadGraph {
  * The channel's params as it would plan them on these streets with no lake (its own stream, on a copy of
  * the graph), or null for a city without one. The channel plans right after the lake carves.
  */
-function channelWithout(ctx: PlanContext): Record<string, number> | null {
+export function channelWithout(ctx: PlanContext): Record<string, number> | null {
   const g = cloneGraph(ctx.graph);
   const areas: Area[] = [];
   const trial: PlanContext = {

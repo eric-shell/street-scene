@@ -17,15 +17,20 @@ import { Terrain, createTerrain } from './terrain';
 import { RoadProfile, createRoadProfile } from './roadProfile';
 import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { settleChannel } from './districts/channel';
+import { settleUnderground, undergroundKeepOut, undergroundPreference } from './districts/underground';
 import { CityDistricts, districtModule, planDistricts } from './districts';
 import { settleAlleyLips, shortcutJumpRails } from './districts/alleyDressing';
+import { settleRailYard } from './districts/railYard';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alleyShortcuts';
 import { ROUTE_INDEX, carParkGates, carParkRails, carParkSites, planCarParks, railsClearOf, settleCarParks } from './districts/carPark';
 import { bayRoadDistance, baysByEdge } from './busBays';
 import { previewHarbor, quayCuts } from './districts/harborShore';
+import { weekendOf } from './weekend';
+import type { WeekendPick } from './weekend';
 import { CityEvent, EventFlavourId, eventKeepOut, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
 import type { GateSet } from '../sim/gates';
 import { LevelCrossing, addLevelCrossings } from './levelCrossings';
+import { addScrapyardGates } from './districts/scrapyardGates';
 import { highwayGates, settleHighway, settleHighwayWalls } from './districts/highway/settle';
 
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
@@ -77,6 +82,8 @@ export interface City {
   routeNodes: Record<PlannedRouteKind, number[]>;
   /** The seed's named event (Hill Climb, Channel Run, ...; see events.ts), which the routes were picked to match. */
   event: CityEvent;
+  /** The weekend special the seed's date reads as (weekend.ts), null on a weekday seed; `event.special` says whether the city delivered it. */
+  weekend: WeekendPick | null;
   /** The road surface's crown and speed humps (roadProfile.ts), already folded into `terrain`. */
   roadProfile: RoadProfile;
   /** The drag strip's nodes, picked once the city is final (the humps keep off it); null when the city has no straight to race. */
@@ -123,6 +130,7 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
       flavour = forceFlavour ?? pickEventFlavour(seed, eventOffer(g, ctx.areas, harbor));
       const preferCircuit = eventRoutePreference(flavour, ctx, true, harbor);
       const preferSprint = eventRoutePreference(flavour, ctx, false, harbor);
+      Object.assign(preferCircuit, undergroundPreference(ctx, preferCircuit, true)); Object.assign(preferSprint, undergroundPreference(ctx, preferSprint, false));
       // The circuit is checked against the first sprint pick (whose start and finish it must keep clear).
       const firstSprint = { nodes: findSprintNodes(g, seed, 0, preferSprint), closed: false };
       const circuit = pick((v, p) => findCircuitNodes(g, seed, v, p ? preferCircuit : undefined), true, [firstSprint]);
@@ -134,13 +142,15 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
       const held = eventKeepOut(flavour, ctx);
       ctx.keepOut = held;
       if (held.length && hasShortcutSpot(ctx, circuit, [sprint]) && hasShortcutSpot(ctx, sprint, [circuit])) keep.push(...held);
+      keep.push(...undergroundKeepOut(ctx));
       for (const site of carParkSites(ctx, [circuit, sprint])) {
         ctx.keepOut = keep.concat(site);
         if (hasShortcutSpot(ctx, circuit, [sprint]) && hasShortcutSpot(ctx, sprint, [circuit])) keep.push(...site);
       }
       ctx.keepOut = keep;
       carveRouteShortcuts(ctx, [circuit, sprint]);
-      ctx.keepOut = undefined;
+      // Only the Underground's blocks stay held from here on: the re-picks' cuts and the car parks keep off them too.
+      ctx.keepOut = undergroundKeepOut(ctx);
       // A route left without a cut (the other route's cuts took its only spot) is re-picked on the
       // carved graph and carved again, the other route kept clear as before.
       let sprint2 = sprint;
@@ -254,11 +264,13 @@ export function createCity(seed: number): City {
   // and so do the highway's deck, its ramps and their walls.
   settleChannel(graph, districts.areas, districts.builds, terrain);
   settleHighway(districts.areas, districts.builds, terrain);
+  settleUnderground(districts.areas, districts.builds, terrain);
   const blocks = generateBlocks(seed, graph, terrain, districts.blocksInput);
   // Every wall under the highway's deck stops only cars beneath it.
   settleHighwayWalls(districts.areas, districts.builds, blocks.walls, terrain);
   settleCarParks(districts.areas, districts.builds, terrain);
   settleAlleyLips(districts.areas, districts.builds, terrain);
+  settleRailYard(districts.areas, districts.builds, terrain);
   districts.finalize();
   // Humps go on side streets no route drives: the circuit, the sprint and the drag strip (picked here, from the final city).
   let dragNodes: number[] | null = null;
@@ -278,7 +290,7 @@ export function createCity(seed: number): City {
       return a === null || a.kind === 'downtown';
     },
   });
-  return { seed, graph, terrain, blocks, districts, routeNodes, event, roadProfile, dragNodes };
+  return { seed, graph, terrain, blocks, districts, routeNodes, event, weekend: weekendOf(seed), roadProfile, dragNodes };
 }
 
 /** Rails are planned around node centers; roundabouts get none (their ring has its own outer walls). */
@@ -671,6 +683,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   // Timed gates (sim/gates.ts): the level crossings' (city/levelCrossings.ts) fill the set.
   const timedGates: GateSet = { cycles: [], gates: [] };
   const levelCrossings = addLevelCrossings(city, timedGates);
+  // The scrapyard's press across its canyon (weekend special, districts/scrapyardGates.ts).
+  addScrapyardGates(city, timedGates);
   const pad = 60;
   const wallGrid = SpatialGrid.forBounds(graph.bounds.minX - pad, graph.bounds.minZ - pad, graph.bounds.maxX + pad, graph.bounds.maxZ + pad, CITY.broadphaseCell);
   walls.forEach((w, i) => wallGrid.insertSegment(i, w.ax, w.az, w.bx, w.bz, 0.5));

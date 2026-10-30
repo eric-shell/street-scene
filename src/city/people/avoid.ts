@@ -11,6 +11,7 @@ import type { World } from '../world';
 import type { IdleAvoid } from './idleSpots';
 import type { PeopleGate } from './gates';
 import { MARKET_HINT } from '../districts/market';
+import { pointInPolygon } from '../districts/geom';
 import { SpatialGrid } from '../spatial';
 
 /** How far behind a barrier or rail the meet's ground reaches (m): MEET.maxDepth with room to spare. */
@@ -67,5 +68,8 @@ export function peopleAvoid(world: World, gates: readonly PeopleGate[]): IdleAvo
     }
     return false;
   };
-  return { gates, markets: pens, blocked };
+  // The Underground is a works site: nobody strolls its service roads or the trench's edge (districts/underground.ts).
+  const trenches = world.areas.filter((a) => a.kind === 'underground' && a.polygon.length >= 3);
+  const shut = trenches.length ? (x: number, z: number): boolean => blocked(x, z) || trenches.some((a) => pointInPolygon(x, z, a.polygon)) : blocked;
+  return { gates, markets: pens, blocked: shut };
 }

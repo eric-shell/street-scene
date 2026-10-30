@@ -47,11 +47,14 @@ export type MarketPropKind = 'marketStall' | 'fruitCrates' | 'foodCart';
 export type DockPropKind = 'drum' | 'cableSpool';
 /** A beach's furniture (districts/waterfrontBeach.ts): umbrellas and loungers on the sand, volleyball net panels, the boardwalk's low picket fence. */
 export type BeachPropKind = 'umbrella' | 'lounger' | 'volleyNet' | 'picketFence';
+/** The scrapyard's tyre stacks (districts/scrapyard.ts): four tyres piled, in rows along the canyon and as walls round the bowls. */
+export type ScrapPropKind = 'tyreStack';
 /**
  * Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. Park lamps light parks and
  * plazas (render/street/areaLights.ts); bollards fence the middle of a roundabout island (districts/roundabout.ts).
  */
-export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | BeachPropKind;
+export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | BeachPropKind
+  | ScrapPropKind;
 export type PropKind = StreetPropKind | DistrictPropKind;
 
 export interface Prop {
@@ -171,6 +174,8 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   // about a tenth of the speed, and holds a car that only nudges it.
   drum: { radius: 0.32, mass: 70, height: 0.9, anchor: 1, breakSpeed: 0.7 },
   cableSpool: { radius: 0.8, mass: 150, height: 1.5, anchor: 1, breakSpeed: 1.2 },
+  // Four tyres piled: a dull, heavy bounce that goes over at any speed worth the name and costs a fast 1.5 t car about 3% of it.
+  tyreStack: { radius: 0.5, mass: 60, height: 0.9, anchor: 1, breakSpeed: 0.3 },
   // Beach furniture, all soft: a beach umbrella (a pole in the sand under a canopy) and a plastic lounger go down at any
   // speed and cost a fast car about 1%; a net panel (two poles' worth of netting) and a picket panel a couple of percent.
   umbrella: { radius: 1.0, mass: 16, height: 2.5, anchor: 1, breakSpeed: 0.04 },

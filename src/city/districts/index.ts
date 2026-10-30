@@ -40,10 +40,11 @@ import type { RoadGraph, Renumber } from '../roadGraph';
 import { sortNodeEdges } from '../roadGraph';
 import { BlockFace, Sector, computeFaces, computeMouths, computeSectors } from '../blocks';
 import { Rng, deriveSeed } from '../../sim/prng';
+import { weekendOf } from '../weekend';
 import { PolygonIndex, pointInPolygon, polygonBounds } from './geom';
 import type { Vec2 } from '../../sim/math';
 import type { Area, AreaBuild, AreaKind, BuildContext, Claims, DistrictModule, HeightMod, LateContext, PlanContext, PlannedEvent, SurfacePatch } from './types';
-import { AREA_PRIORITY, emptyBuild } from './types';
+import { AREA_PRIORITY, CORRIDOR_AREAS, emptyBuild } from './types';
 import { channelModule } from './channel';
 import { subwayModule } from './subway';
 import { bluffModule } from './bluff';
@@ -61,6 +62,9 @@ import { lakeModule } from './lake';
 import { downtownModule } from './downtown';
 import { infillModule } from './infill';
 import { marketModule } from './market';
+import { railYardModule } from './railYard';
+import { undergroundModule } from './underground';
+import { scrapyardModule } from './scrapyard';
 import { roadworksModule } from './roadworks';
 import { parkingLotModule } from './parkingLot';
 import { carParkModule, CAR_HALF, carParks, flightCorridor } from './carPark';
@@ -75,6 +79,10 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   bluffModule,
   highwayModule,
   backAlleyModule,
+  // Weekend specials (weekend.ts): after the routes are picked, first pick of the blocks along them, before the market and the lots.
+  railYardModule,
+  undergroundModule,
+  scrapyardModule,
   marketModule,
   carParkModule,
   // Claims its block here; its streets were deleted in its carve step, before the channel.
@@ -130,6 +138,7 @@ function makeContext(seed: number, g: RoadGraph, areas: Area[], claims: Claims, 
   let sectors: Sector[][] | null = null;
   return {
     seed,
+    weekend: weekendOf(seed) ?? undefined,
     rng: new Rng(deriveSeed(seed, stream)),
     graph: g,
     areas,
@@ -144,7 +153,8 @@ function makeContext(seed: number, g: RoadGraph, areas: Area[], claims: Claims, 
       return faces;
     },
     graphChanged(renumber) {
-      if (claims.face.size) throw new Error('graph edited after faces were claimed');
+      // A weekend special's block claim (CORRIDOR_AREAS) holds through the night market's width-only edit: no topology changes and the market keeps off the claimed nodes and edges, so the face stays as planned.
+      if ([...claims.face.values()].some((id) => !CORRIDOR_AREAS.has(areas[id].kind))) throw new Error('graph edited after faces were claimed');
       if (renumber) renumberClaims(areas, claims, renumber);
       sortNodeEdges(g);
       faces = null;

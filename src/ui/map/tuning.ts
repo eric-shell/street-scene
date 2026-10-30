@@ -104,7 +104,7 @@ export interface LegendLayer {
   label: string;
   kinds: readonly AreaKind[];
 }
-export type LayerKey = 'park' | 'water' | 'high' | 'monument' | 'market' | 'carPark' | 'infill' | 'subway' | 'cableCar' | 'highway' | 'alley' | 'backAlley' | 'tunnel' | 'overpass' | 'roundabout' | 'roadworks';
+export type LayerKey = 'park' | 'water' | 'high' | 'monument' | 'market' | 'carPark' | 'infill' | 'subway' | 'cableCar' | 'highway' | 'alley' | 'backAlley' | 'tunnel' | 'overpass' | 'roundabout' | 'roadworks' | 'weekend';
 
 /** The legend's district sections in order; layers missing from the city are left out, and a section with none. */
 export const LEGEND_SECTIONS: readonly { title: string; layers: readonly LegendLayer[] }[] = [
@@ -118,6 +118,7 @@ export const LEGEND_SECTIONS: readonly { title: string; layers: readonly LegendL
       { key: 'market', label: 'Night markets', kinds: ['market'] },
       { key: 'carPark', label: 'Parking garages', kinds: ['carPark'] },
       { key: 'infill', label: 'Plazas and lots', kinds: ['infill', 'parkingLot'] },
+      { key: 'weekend', label: 'Weekend special', kinds: ['railYard', 'underground', 'scrapyard'] },
     ],
   },
   {

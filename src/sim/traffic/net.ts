@@ -143,8 +143,8 @@ function buildNet(w: World): TrafficNet {
   // The cable car's line (districts/cableCar.ts): its edges' lanes keep the widest car parkClear off the track's strip.
   const track = new Set((w.areas ?? []).filter((a) => a.kind === 'cableCar').flatMap((a) => a.edges));
 
-  // Night markets (districts/market.ts) close their street to traffic, in an open world too.
-  const market = new Set((w.areas ?? []).filter((a) => a.kind === 'market').flatMap((a) => a.edges));
+  // Night markets (districts/market.ts) close their street to traffic, in an open world too, and so does the Underground's trench (districts/underground.ts).
+  const market = new Set((w.areas ?? []).filter((a) => a.kind === 'market' || a.kind === 'underground').flatMap((a) => a.edges));
 
   // Lanes: keep right, stopping short of each junction where its curbs start.
   for (const e of g.edges) {

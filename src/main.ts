@@ -478,7 +478,7 @@ function showMenu(step: MenuStep = 'home'): void {
 
 /** What the wipe into a race says: the event over the type, and its laps and field. */
 function raceCard(t: RaceType): WipeCard {
-  const event = stage?.world.event?.name;
+  const event = stage?.world.event?.special?.name ?? stage?.world.event?.name;
   const field = settings.opponents ? `${settings.opponents} rival${settings.opponents > 1 ? 's' : ''}` : 'Your ghost';
   // The course draws itself on the card while the race builds behind it (free roam has the whole city instead).
   const art = stageCourses && t !== 'roam' ? courseArt(courseRoute(stageCourses, t), t) : undefined;

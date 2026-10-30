@@ -347,7 +347,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
     const probe = { x: C.x + back.x * (corrIn + 3), z: C.z + back.z * (corrIn + 3) };
     const fi = faces.findIndex((f) => !f.outer && pointInPolygon(probe.x, probe.z, f.ring));
     // A block claimed, or held by a car park planned earlier in this hook (it claims its block later).
-    if (fi < 0 || ctx.claims.face.has(fi) || ctx.areas.some((a) => a.kind === 'carPark' && a.params.face === fi)) continue;
+    if (fi < 0 || ctx.claims.face.has(fi) || ctx.areas.some((a) => a.kind === 'carPark' && a.params.face === fi) || (ctx.keepOut ?? []).some((p) => pointInPolygon(probe.x, probe.z, p))) continue;
     const F = faces[fi];
     const sLip = rayHit(C, back, F.ring, corrIn + 6);
     if (sLip === null) continue;

@@ -390,7 +390,7 @@ describe('city generation', () => {
       // keeps it off the ring road). The channel and ramp edges run beneath the bridge decks,
       // whose sidewalks carry the crossing streets' lights a level above them.
       for (const p of props) {
-        if (p.area !== undefined && ['backAlley', 'carPark', 'channel', 'alley', 'roadworks', 'market', 'roundabout'].includes(w.areas[p.area].kind)) continue;
+        if (p.area !== undefined && ['backAlley', 'carPark', 'channel', 'alley', 'roadworks', 'market', 'roundabout', 'underground'].includes(w.areas[p.area].kind)) continue;
         for (const e of w.graph.edges) {
           if (isChannelEdge(e)) continue;
           const a = w.graph.nodes[e.a];
@@ -548,7 +548,8 @@ describe('districts', () => {
         }
         // A lane closure's plant stands in its closed curb lane; the face under a jump exit's lip stands across
         // its alley (the road drops under it, the car flies over it).
-        if (wall.look === 'roadworks' || wall.look === 'alleyLip') continue;
+        // The Underground's trench is the street's own road: its plinth stands on the curb line and the bus in a lane (underground.ts).
+        if (wall.look === 'roadworks' || wall.look === 'alleyLip' || wall.look === 'trenchWall') continue;
         // A bridge deck's parapets, piers and abutments stand on the road of the other level (Wall.top / bottom).
         if (wall.top !== undefined || wall.bottom !== undefined) continue;
         // Not on any road (sampled along the wall).

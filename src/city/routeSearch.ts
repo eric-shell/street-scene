@@ -196,7 +196,7 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
     const first = firstRun.edges.map((e) => g.edges[e]);
     const last = g.edges[edges[edges.length - 1]];
     // Nor across a level crossing's tracks (districts/bluff.ts).
-    if (firstRun.length < 90 || first.some((e) => isChannelEdge(e) || e.crossing !== undefined) || isChannelEdge(last) || last.crossing !== undefined) continue;
+    if (firstRun.length < 90 || first.some((e) => isChannelEdge(e) || e.crossing !== undefined || e.trench === true) || isChannelEdge(last) || last.crossing !== undefined || last.trench === true) continue;
     const len = pathLength(g, p, false);
     const stats = cornerStats(g, p, false);
     if (stats.maxTurn > ROUTE.maxTurnDeg && best) continue;

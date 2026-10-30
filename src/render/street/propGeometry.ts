@@ -354,6 +354,21 @@ function drumGeo(q: Quality): THREE.BufferGeometry {
   return s.build();
 }
 
+// ---------- Scrapyard clutter (districts/scrapyard.ts) ----------
+
+/** Four tyres piled: each a rounded drum a hair wider at its middle (two rings), alternating black and worn grey, a wheel's hub dish in the top one. */
+function tyreStackGeo(q: Quality): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const shades = [0x16171a, 0x1f2024, 0x121316, 0x1b1c20];
+  for (let i = 0; i < 4; i++) {
+    const y0 = i * 0.225;
+    cyl(s, 0, 0, y0, y0 + 0.11, 0.46, 0.5, 8, col(shades[i]), q, false);
+    cyl(s, 0, 0, y0 + 0.11, y0 + 0.225, 0.5, 0.46, 8, col(shades[i]), q, false);
+  }
+  cyl(s, 0, 0, 0.9, 0.91, 0.3, 0.3, 8, col(0x4a4c52), q);
+  return s.build();
+}
+
 /** A horizontal cylinder along local X from x0 to x1 at height cy (both end caps): a spool's flanges and core. */
 function hcyl(gb: GeoBuilder, x0: number, x1: number, cy: number, r: number, designSeg: number, color: THREE.Color, q: Quality): void {
   const seg = Math.min(designSeg, PROP_SEGMENTS[q] + 2);
@@ -648,6 +663,7 @@ const CLUTTER: Record<DistrictPropKind, { parts: { geo: (q: Quality) => THREE.Bu
   // Drums in the yard's colours: oil blue, fire red, black, safety yellow, rusty brown, green.
   drum: { parts: [{ geo: drumGeo, mat: 'solid', tint: true }], tints: [0x1d4f9a, 0xb0201c, 0x1c1d22, 0xe0a81c, 0x7a3a1a, 0x2a6a3a], spin: true },
   cableSpool: { parts: [{ geo: cableSpoolGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xe0d0b8, 0xc8b8a0], spin: true },
+  tyreStack: { parts: [{ geo: tyreStackGeo, mat: 'solid' }], tints: [0xffffff], spin: true },
   // Beach furniture: umbrellas in resort colours, loungers with towels, plain net panels, weathered pickets.
   umbrella: { parts: [{ geo: umbrellaPoleGeo, mat: 'solid' }, { geo: umbrellaCanopyGeo, mat: 'canopy', tint: true }], tints: [0xe8402e, 0x1d8ad8, 0xf2c81c, 0x1fb89a, 0xe8e8ea, 0xd83a8a, 0xf08a1a], spin: true },
   lounger: { parts: [{ geo: loungerGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xf2d27a, 0x7ad0e8, 0xf29aa8, 0xa8e0a0], spin: false },

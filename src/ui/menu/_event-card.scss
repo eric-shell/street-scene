@@ -48,6 +48,23 @@
       font-size: 28px;
     }
   }
+  /* A weekend's special (city/weekend.ts): a chip in a warm ink and the special's name, under the title. */
+  &__special {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    .chip {
+      --ink: #{palette.get(orange)};
+      flex: none;
+    }
+  }
+  &__special-name {
+    font: 700 13px var(--font);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: palette.get(orange);
+  }
   &__tagline {
     margin: 0;
     font-size: 14px;

@@ -1051,6 +1051,11 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
         }
         return;
       }
+      case 'tyreStack':
+        // The pile topples: four tyres bounce off in different directions, rubber dust off the road.
+        for (let k = 0; k < 4; k++) spawn(D_CYL, rnd(-0.15, 0.15), 0.11 + k * 0.225, rnd(-0.15, 0.15), rnd(0, 6.28), 0.48, 0.11, 0.48, rnd(0.6, 1), rnd(2.5, 5) + speed * 0.1, 8, col(0x1b1c20), rnd(5, 6.5), true);
+        debris.burst(p.x, p.y + 0.4, p.z, dx, dz, speed * 0.12 + 1, 5);
+        return;
       case 'foodCart': {
         spawn(D_BOX, 0, 0.8, 0, p.yaw + rnd(-0.3, 0.3), 0.75, 0.45, 0.4, rnd(0.3, 0.5), rnd(1.5, 3) + speed * 0.06, 3, tint.clone(), rnd(5.5, 6.5), true);
         spawn(D_BOX, 0, 2.18, 0.05, p.yaw + rnd(-0.6, 0.6), 0.9, 0.03, 0.58, rnd(0.25, 0.45), rnd(3, 4.5) + speed * 0.1, 5, tint.clone(), rnd(4.5, 6), true);
