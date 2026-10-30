@@ -378,7 +378,9 @@ async function main(): Promise<void> {
     const metaPath = join(out, 'car.json');
     const exporter = join(ROOT, 'scripts/blender/exportCar.py');
     const stale = !existsSync(metaPath) || statSync(metaPath).mtimeMs < Math.max(statSync(blend).mtimeMs, statSync(exporter).mtimeMs);
-    if (stale) execFileSync(blender as string, ['--background', blend, '--python', exporter, '--', out], { stdio: 'pipe' });
+    // --python-exit-code: Blender exits 0 when the script raises, so a failed export (an object left in Edit Mode
+    // in the saved file) would otherwise ship the previous export silently.
+    if (stale) execFileSync(blender as string, ['--background', blend, '--python-exit-code', '1', '--python', exporter, '--', out], { stdio: 'pipe' });
     const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as {
       car: { node: string; tris: number }[];
       parts: { slot: PartEntry['slot']; partId: string; displayName: string; hides: string[]; exhaustTips?: [number, number, number][]; tris: number }[];
@@ -578,7 +580,7 @@ async function main(): Promise<void> {
     const metaPath = join(out, 'car.json');
     const exporter = join(ROOT, 'scripts/blender/exportCar.py');
     const stale = !existsSync(metaPath) || statSync(metaPath).mtimeMs < Math.max(statSync(wheelBlend).mtimeMs, statSync(exporter).mtimeMs);
-    if (stale) execFileSync(blenderW, ['--background', wheelBlend, '--python', exporter, '--', out], { stdio: 'pipe' });
+    if (stale) execFileSync(blenderW, ['--background', wheelBlend, '--python-exit-code', '1', '--python', exporter, '--', out], { stdio: 'pipe' });
     const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { wheels: { name: string; displayName: string; group?: string; construction?: string; offset?: number | null; offsetBias?: number | null; lip?: string; lugs?: WheelLugs | null }[] };
     const section: string[] = ['## Wheel set', '', `Source: \`${relative(ROOT, wheelBlend)}\` (scripts/blender/carWheels.py).`, ''];
     for (const wh of meta.wheels) {

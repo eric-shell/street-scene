@@ -1778,6 +1778,9 @@ def save_working_copy(cids, path):
     collections, an object hidden with hide_set stays hidden and drops out of the export), hide the
     loose objects at the scene root, and save a copy of the session at `path` (the session's own file
     is untouched). Then: blender -b <path> --python scripts/blender/saveCar.py -- <cid> <cid>.blend."""
+    # An object left in Edit Mode (the user inspecting it) saves fine but breaks exportCar's select_all.
+    if bpy.context.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
     pc = bpy.data.collections.get('preview')
     if pc:
         for o in list(pc.objects):
