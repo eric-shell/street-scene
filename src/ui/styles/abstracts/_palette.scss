@@ -15,9 +15,10 @@ $colors: (
   'green': #a9dc76,
   'cyan': #78dce8,
   'purple': #ab9df2,
-  /* Beyond Monokai Pro's six, so the garage's eight categories each wear their own. */
+  /* Beyond Monokai Pro's six, so the garage's nine categories each wear their own. */
   'blue': #6ea4ff,
   'pink': #ff7ad9,
+  'violet': #c27bff,
 );
 
 /* Each accent's custom property (--accent is orange, --accent-2 yellow; the rest go by their names). */
@@ -30,6 +31,7 @@ $tokens: (
   'purple': 'purple',
   'blue': 'blue',
   'pink': 'pink',
+  'violet': 'violet',
 );
 
 /* Each race type's color (ui/menu.ts): the rule's three stops for the races (circuit orange, sprint

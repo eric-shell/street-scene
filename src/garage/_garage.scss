@@ -291,15 +291,16 @@ $step-rise: 0.58s, 0.45s, 0.32s;
 }
 
 /* Each category's hue, on its tab and, while it is open, on the body (garageUi.ts sets data-tab on the root).
-   Every category has its own: Model orange like the menu's Garage row, Stance purple, Wheels cyan, Paint red,
-   Tune green, Body yellow, Tint blue, Neon pink. Vinyls (behind FEATURES.vinyls) borrows Paint's red, and Power
-   Tune's green: the engine and the setup are the one performance category. */
+   Every category has its own: Model orange like the menu's Garage row, Power violet (electric, and clear of its
+   neighbours' orange and green), Stance purple, Wheels cyan, Paint red, Tune green, Body yellow, Tint blue, Neon
+   pink. Vinyls (behind FEATURES.vinyls) borrows Paint's red. */
 $tab-hues: (
   'orange': (model),
+  'violet': (power),
   'purple': (stance),
   'cyan': (wheels),
   'red': (paint, vinyl),
-  'green': (power, tune),
+  'green': (tune),
   'yellow': (body),
   'blue': (tint),
   'pink': (neon),

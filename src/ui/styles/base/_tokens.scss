@@ -65,6 +65,7 @@
   --purple: #{palette.get(purple)};
   --blue: #{palette.get(blue)};
   --pink: #{palette.get(pink)};
+  --violet: #{palette.get(violet)};
   /* The rule under the logo, reused wherever something is the active one (tab, loading bar). */
   --rule: linear-gradient(90deg, var(--accent-2), var(--accent) 60%, var(--red));
   /* A card's accent hairline: a short orange lead into a grey line, across the top (mixins.rule-line). */
@@ -114,7 +115,7 @@
   }
 }
 /* A row's or card's hue (rail.ts navRow, hudCard.ts): the palette's accents. */
-@each $name in 'orange', 'yellow', 'red', 'green', 'cyan', 'purple', 'blue', 'pink' {
+@each $name in 'orange', 'yellow', 'red', 'green', 'cyan', 'purple', 'blue', 'pink', 'violet' {
   .hue-#{$name} {
     @include palette.tint(hue, $name);
   }

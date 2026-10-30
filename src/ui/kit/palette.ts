@@ -25,9 +25,10 @@ export const PALETTE = {
   green: '#a9dc76',
   cyan: '#78dce8',
   purple: '#ab9df2',
-  /** Two hues beyond Monokai Pro's six, so the garage's eight categories each wear their own. */
+  /** Three hues beyond Monokai Pro's six, so the garage's nine categories each wear their own. */
   blue: '#6ea4ff',
   pink: '#ff7ad9',
+  violet: '#c27bff',
 } as const;
 
 export type PaletteColor = keyof typeof PALETTE;
