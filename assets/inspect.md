@@ -14,7 +14,7 @@ Authored cars: albrechtKombi, daltonFiend, kazamaRotor, nakayaHorizon, tachibana
 | nakayaHorizon | 222.1 KB |
 | tachibanaRunabout | 141.7 KB |
 | tachibanaZenith | 261.9 KB |
-| wendtStrom | 1897.4 KB |
+| wendtStrom | 1901.1 KB |
 
 ## Material vocabulary
 
@@ -116,7 +116,7 @@ Source: `assets/source/eshell/tachibanaZenith/tachibanaZenith.blend` (authored i
 
 Source: `assets/source/eshell/wendtStrom/wendtStrom.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/wendtStrom.glb`: 831.8 KB, 34319 tris, nodes `Body`, `Bumper_Front`, `Bumper_Rear`, `Roof`, `Exhaust`, `Muffler`, `Floor_Rear`.
+- Base car `public/cars/wendtStrom.glb`: 834.3 KB, 34347 tris, nodes `Body`, `Bumper_Front`, `Bumper_Rear`, `Roof`, `Exhaust`, `Muffler`, `Floor_Rear`, `Floor_Mid`, `Floor_Boot`.
 - Parts: frontBumper euro, frontBumper speedholes, frontBumper euroFogs, frontBumper cupraR, frontBumper cupraRFogs, frontBumper trackBase, frontBumper trackMild, frontBumper trackWild, sideSkirts trackMild, sideSkirts trackWild, roof sunroofDelete, rearBumper euro, rearBumper sectioned, rearBumper sectionedEuro, rearBumper centerExhaust, rearBumper trackBase, rearBumper trackMild, rearBumper trackWild.
 - WARNING: wheel radius 0.309 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.309 m, width 0.24 m, wheelbase 2.518 m, track 1.492 m.

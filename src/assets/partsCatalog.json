@@ -324,18 +324,20 @@
         "Bumper_Rear",
         "Exhaust",
         "Muffler",
-        "Floor_Rear"
+        "Floor_Rear",
+        "Floor_Mid",
+        "Floor_Boot"
       ],
       "exhaustTips": [
         [
           0,
-          0.345,
-          -2.045
+          0.3,
+          -2.15
         ],
         [
           0,
-          0.345,
-          -2.045
+          0.3,
+          -2.15
         ]
       ],
       "materialSlots": [
@@ -343,7 +345,7 @@
         "Black",
         "Chrome"
       ],
-      "tris": 2707,
+      "tris": 2983,
       "generated": true
     },
     {
