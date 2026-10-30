@@ -3,7 +3,8 @@
    their own on it: the card of how it went (_results-card.scss) with Retry on it, the style score's card, then
    the way on as rows in their hues. The parts rise in a beat after one another; a new best is a sticker
    slapped on in the accent sweep, the standings deal in a row at a time, and Retry glints on its own every few
-   seconds. Ten racers make a long card, so unlike the pause screen's this column scrolls. */
+   seconds. Ten racers make a long card, so unlike the pause screen's this column scrolls, inside the kit's
+   scroll hints (_scroll-hint.scss): the edges fade and a chevron bobs where more is past them. */
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 @use '../styles/abstracts/palette';
@@ -17,6 +18,23 @@
   }
   > .rail__edge {
     display: none;
+  }
+  /* The column's scroll hints (kit scrollHint) take the column's place on the rail: the hints' box has its
+     position and height, and the column scrolls inside, with a few px of room each side so focus rings and the
+     plates' edges clear the clip. */
+  &__scroll {
+    --col-top: #{mixins.safe(top, var(--gutter))};
+    position: absolute;
+    left: calc(var(--rail-pad) - 4px);
+    top: var(--col-top);
+    width: calc(var(--rail-content) + 8px);
+    max-height: calc(100% - var(--col-top) - 58px);
+    > .rail__col {
+      position: static;
+      width: auto;
+      max-height: none;
+      padding-inline: 4px;
+    }
   }
   /* The step casts one drop shadow under everything it stands on the race (chamfered plates clip their own). */
   .rail__step {

@@ -6,7 +6,7 @@
  * crashes cost, beside the event's best) on a card of its own, and what next
  * as rows. Styled by _results-screen.scss and _results-card.scss.
  */
-import { btn, h, prefersReducedMotion } from '../kit/dom';
+import { btn, h, prefersReducedMotion, scrollHint } from '../kit/dom';
 import { ChevronsRight, Flag, MapPinned, Medal, RotateCcw, Route, Share2, Sparkles, Trophy, Video, Wind, Wrench, LogOut, icon, type IconNode } from '../kit/icons';
 import { formatTime, ordinal } from '../kit/format';
 import { navRow, railScreen } from '../rail/rail';
@@ -171,7 +171,9 @@ export function resultsScreen(o: {
       { title: 'Tips', tips: [...(o.onReplay ? ['Replay watches the run again; C changes the camera.'] : []), 'Racing solo, your best on this event drives beside you as a ghost.'] },
     ],
   });
-  const root = railScreen('results-screen --scrim', col, help.el);
+  // Ten racers and the points make a column taller than a short screen: it scrolls inside the kit's hints
+  // (fades and chevrons at the edges that hold more, as the menu's and the garage's), which take its place on the rail.
+  const root = railScreen('results-screen --scrim', scrollHint(col, 'results-screen__scroll'), help.el);
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-label', 'Results');
   requestAnimationFrame(() => retry.focus({ preventScroll: true }));
