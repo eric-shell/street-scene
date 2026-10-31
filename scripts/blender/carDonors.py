@@ -474,14 +474,23 @@ DONORS = {
         # The floor is judged from below too (the underglow): a black plate between the pan's edge
         # and the sill, boxed in from the usual view directions, closes the slit along each side.
         'fromBelow': True,
-        # The tunnel's roof is open where the shifter and handbrake boots were (and a 1 cm slit
-        # behind them): rays up from the road reached the console. A black quad under each,
-        # inside the tunnel's arch, and one under the rear seat's step on the seam (y 0.51 to 0.62
-        # as the collapse leaves it). The rear tubs are open in the source along their inner edge
-        # over the tires (slits 1 cm wide, |x| 0.52 to 0.58): a strip under each, inboard of the tire.
-        'underPanels': [(-0.1, 0.1, -0.82, -0.63, 0.29), (-0.1, 0.1, -0.46, -0.28, 0.235), (-0.08, 0.08, -0.24, -0.15, 0.22),
-                        (-0.07, 0.07, 0.46, 0.68, 0.255)],
+        # The rear tubs are open in the source along their inner edge over the tires (slits 1 cm
+        # wide, |x| 0.52 to 0.58): a strip under each, inboard of the tire.
         'underStrips': [(0.51, 0.57, 0.96, 1.58)],
+        # A flat floor for the mod's chassis, as the Wendt Strom's (floor_plates): its frame rails,
+        # crossmembers, subframes and pan detail were 8,000 black triangles seen only from below,
+        # through the wheel wells and the intake. The pan's level (z 0.14, the skirts' bottom)
+        # under the cabin, narrowed between the wheels (±0.40 in front, clear of the tires at full
+        # lock; ±0.50 at the rear, inside the tubs' strips), and over the exhaust at the tail
+        # (z 0.29, inside the rear bumper, which bottoms at 0.22) with a riser at the step; walls
+        # box the front subframe from the wells and 33 cm behind the intake, and the rear axle
+        # from the wells. It also closes the tunnel's shifter and handbrake holes the
+        # `underPanels` covered. Body 25,058 → 20,184 triangles (Black 16,083 → 11,300, the Wendt
+        # Strom's body 11,348); no underglow ray meets Interior or Glass (4 of 93,555 before).
+        'floor': [(-0.78, 0.78, -0.88, 0.88, 0.138), (-0.40, 0.40, -1.62, -0.86, 0.138), (-0.62, 0.62, -1.98, -1.60, 0.138),
+                  (-0.50, 0.50, 0.86, 1.70, 0.138), (-0.68, 0.68, 1.62, 2.06, 0.29)],
+        'floorWalls': [('x', 0.40, -1.62, -0.86, 0.138, 0.55), ('y', -1.62, -0.40, 0.40, 0.138, 0.55),
+                       ('x', 0.50, 0.86, 1.70, 0.138, 0.50), ('y', 1.66, -0.50, 0.50, 0.138, 0.29)],
         # The stock pieces (split_donor, run by ship_donor), each the donor's own panels: the game
         # mod car models every panel as its own shell, so the pieces part on the car's shut lines by
         # taking whole islands (docs/carDonors.md section 17, parts skill section 6). First match wins.
@@ -3085,6 +3094,74 @@ def back_panels(o, panels, material='Black'):
     me.update()
 
 
+def floor_plates(o, plates, walls=(), others=(), material='Black', top=0.6, through=('Glass', 'Lens')):
+    """A flat floor in place of a donor's chassis, as the Wendt Strom's: recipe `floor`, flat quads
+    facing the road, one per `(x0, x1, y0, y1, z)`, and recipe `floorWalls`, upright quads boxing
+    the chassis in from the wheel wells and the intakes: `('x', x, y0, y1, z0, z1)` at ±x facing
+    out, `('y', y, x0, x1, z0, z1)` facing away from the middle. The black faces whose centres lie
+    inside a plate's rectangle and below it go; the plates and walls go in; then every black face
+    below `top` that no ray escapes from, from either side, in the view directions plus the
+    underglow's from below, goes too: the frame rails, crossmembers and pan detail they now box in.
+    The occluders are `o` and `others` (the stock pieces split off it), glass and lamp covers seen
+    through as in cull_hidden. A game mod's chassis kept 8,000 of the Nakaya Grove's triangles under
+    the cabin, the engine bay and the trunk, seen only through the wheel wells, the intake and by
+    the underglow. Plates must overlap in plan where they meet, so no ray straight up passes
+    between them, and stay inboard of the tires (the fronts' at full lock). Returns (below,
+    hidden) faces deleted."""
+    from mathutils.bvhtree import BVHTree
+    mi = mat_index(o, material)
+    inside = lambda c: any(x0 <= c.x <= x1 and y0 <= c.y <= y1 and c.z < z + 0.005 for x0, x1, y0, y1, z in plates)
+    me = o.data
+    # A shipped body keeps its authored normals through the bmesh edits; the plates come out flat.
+    stashed = stash_normals(o)
+    below = {p.index for p in me.polygons if p.material_index == mi and inside(p.center)}
+    _delete_indices(o, lambda p: p.index in below)
+    under_panels(o, plates, material)
+    quads = []
+    for axis, at, a0, a1, z0, z1 in walls:
+        if axis == 'x':
+            quads += [([(s * at, a0, z0), (s * at, a1, z0), (s * at, a1, z1), (s * at, a0, z1)], Vector((s, 0, 0))) for s in (1, -1)]
+        else:
+            quads.append(([(a0, at, z0), (a1, at, z0), (a1, at, z1), (a0, at, z1)], Vector((0, 1 if at > 0 else -1, 0))))
+    if quads:
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+        for corners, out in quads:
+            f = bm.faces.new([bm.verts.new(v) for v in corners])
+            f.material_index, f[own], f.smooth = mi, 1, False
+            f.normal_update()
+            if f.normal.dot(out) < 0:
+                f.normal_flip()
+        bm.to_mesh(me)
+        bm.free()
+        me.update()
+    plate = len(me.polygons) - len(plates) - len(quads)
+    # One tree of every occluder, the plates included.
+    verts, faces = [], []
+    for ob in (o,) + tuple(others):
+        clear = {i for i, m in enumerate(ob.data.materials) if m and m.name.split('.')[0] in through}
+        mw, base = ob.matrix_world, len(verts)
+        verts += [mw @ v.co for v in ob.data.vertices]
+        faces += [[base + i for i in p.vertices] for p in ob.data.polygons if p.material_index not in clear]
+    tree = BVHTree.FromPolygons(verts, faces)
+    dirs = _view_dirs() + [Vector((0, 0, -1))] + [Vector((math.sin(math.radians(25)) * math.cos(a), math.sin(math.radians(25)) * math.sin(a),
+                                                          -math.cos(math.radians(25)))) for a in (0, math.pi / 2, math.pi, 1.5 * math.pi)]
+    hidden = set()
+    for p in me.polygons:
+        if p.material_index != mi or p.index >= plate or p.center.z > top:
+            continue
+        c, n = p.center, p.normal
+        pts = [c] + [c.lerp(me.vertices[i].co, 0.8) for i in p.vertices]
+        if not any(tree.ray_cast(q + n * (side * 2e-3), d)[0] is None
+                   for side in (1, -1) for q in pts for d in dirs if d.dot(n) * side > 0.05):
+            hidden.add(p.index)
+    _delete_indices(o, lambda p: p.index in hidden)
+    if stashed:
+        restore_normals(o)
+    return len(below), len(hidden)
+
+
 def under_panels(o, panels, material='Black'):
     """Flat quads facing the road, one per recipe `underPanels` entry `(x0, x1, y0, y1, z)`: a black
     panel over a hole in the floor that opens into the cabin (the Grove's tunnel, open where the
@@ -3589,6 +3666,10 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
         under_panels(low, DONORS[cid]['underPanels'])
     if DONORS[cid].get('underStrips'):
         under_strips(low, DONORS[cid]['underStrips'])
+    # Recipe `floor`: a flat floor in place of the chassis, and what it boxes in culled.
+    if DONORS[cid].get('floor'):
+        below, hidden = floor_plates(low, DONORS[cid]['floor'], DONORS[cid].get('floorWalls', ()))
+        print(f'{cid}: flat floor, {below} faces below it and {hidden} boxed in culled')
     for points, height, material in DONORS[cid].get('strips', ()):
         lamp_strip(low, points, height, material)
     for center, radius, material, *yaw in DONORS[cid].get('discs', ()):
