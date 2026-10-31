@@ -527,10 +527,10 @@ describe('rotary voice', () => {
     return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length) / m;
   };
 
-  it('the Kazama Rotor ships the idle lope and the rasp, nobody else does', () => {
+  it('the Kazama Rotor ships the idle lope and the rasp; a cammed piston engine may lope too', () => {
     expect(car.voice).toMatchObject({ idleLope: 1, apexRasp: 1 });
     for (const c of manifest.cars as { id: string; engine: EngineSpec }[]) if (c.id !== 'kazamaRotor') expect(c.engine.voice ?? {}, c.id).not.toHaveProperty('idleLope');
-    expect(engineSpecErrors({ ...spec('I4'), voice: { idleLope: 1 } })).toEqual([expect.stringContaining('idleLope is for a rotary')]);
+    expect(engineSpecErrors({ ...spec('V8'), voice: { idleLope: 0.6 } })).toEqual([]);
     expect(engineSpecErrors({ ...spec('I4'), voice: { apexRasp: 1 } })).toEqual([expect.stringContaining('apexRasp is for a rotary')]);
     expect(engineSpecErrors({ ...spec('R2'), voice: { idleLope: 1, apexRasp: 3 } })).toEqual([expect.stringContaining('apexRasp 3 is not a number from 0 to 2')]);
     expect(buildProgram(spec('R2'), { lite: true }).rasp).toBe(0);

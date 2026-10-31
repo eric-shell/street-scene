@@ -418,7 +418,7 @@
     }
   },
   "swaps": {
-    "_": "The garage Power tab's engine swaps, per car: swaps.<carId>.<swapId> is an override merged over that car's tuning (cars.<carId> over base) when a build fits the swap (build.ts applyBuild, before the setup sliders). Same rules as cars: absolute values, arrays replace whole, unknown keys throw. The swapped engine's layout, aspiration and voice are the manifest car's engineSwaps (src/assets/carManifest.json), which must list the same ids in the same order. Donor data and what is estimated: docs/carEngines.md, Wendt Strom engine swaps.",
+    "_": "The garage Power tab's engine swaps, per car: swaps.<carId>.<swapId> is an override merged over that car's tuning (cars.<carId> over base) when a build fits the swap (build.ts applyBuild, before the setup sliders). Same rules as cars: absolute values, arrays replace whole, unknown keys throw. The swapped engine's layout, aspiration and voice are the manifest car's engineSwaps (src/assets/carManifest.json), which must list the same ids in the same order. Donor data and what is estimated: docs/carEngines.md, Wendt Strom engine swaps and Tachibana Zenith engine swaps.",
     "wendtStrom": {
       "vr36": {
         "_name": "3.6 VR6 (BWS, the Passat R36's): the 3.2's narrow angle six bored to 89.0 mm and stroked to 96.4 (3,598 cc, a 10.6 degree V), naturally aspirated. 300 PS (220 kW) at 6,600 rpm and 350 N\u00b7m from 2,400 to 5,300. The curve runs through those points (319 N\u00b7m at 6,600 is the power peak); the 6,900 redline is an estimate. About 10 kg over the 3.2 (estimate). torqueMul stays the car's 0.86, so the gain over the 3.2 is the real one.",
@@ -495,6 +495,63 @@
           "antilagRpm": 4500,
           "spoolTime": 0.4,
           "turboShare": 0.25
+        }
+      }
+    },
+    "tachibanaZenith": {
+      "ls3": {
+        "_name": "LS3 (the 2008-15 Corvette and Camaro SS's 6.2): 6,162 cc aluminium V8, 103.25 x 92.0 mm, pushrod two valve, 10.7:1, naturally aspirated. Stock 430 hp (321 kW) at 5,900 and 575 N·m (424 lb-ft) at 4,600 to a 6,600 limit. The swap adds the usual cam package (a mild duration, high lift cam with the overlap that makes it lope, beehive springs, long tube headers, a cold air intake and a dyno tune) for 650 N·m at 4,600 (the brief's target; an estimate) and about 530 PS at 6,200; the springs let it rev to 6,800 (estimate). The big overlap costs a little at the bottom. Aluminium block against the 2JZ-GTE's iron one with its twin turbos and piping: about 30 kg lighter (estimate). torqueMul stays the car's 0.83, so the gain over the 2JZ is the real one.",
+        "mass": 1480,
+        "engine": {
+          "redline": 6800,
+          "torqueCurve": [
+            [800, 330],
+            [1500, 430],
+            [2500, 545],
+            [3500, 610],
+            [4600, 650],
+            [5500, 635],
+            [6200, 600],
+            [6800, 545]
+          ]
+        },
+        "gearbox": {
+          "_": "A Tremec T56 Magnum six speed on the GM bellhousing, 2.66 / 1.78 / 1.30 / 1.00 / 0.80 (sourced, Tremec) on the Zenith's 3.8 final drive, with sixth at 0.694 instead of the overdrive 0.63 so its limiter (326 km/h) sits 1.1 times over the drag top speed (296), as on the stock cars. First is taller than the V160's (85 km/h at the limit against 61): the V8's torque pulls it.",
+          "ratios": [2.66, 1.78, 1.3, 1.0, 0.8, 0.694],
+          "finalDrive": 3.8
+        },
+        "launch": {
+          "_": "A big NA V8 with this much torque on street tires launches low, about 3,000: more only lights up the rears.",
+          "defaultRpm": 3000
+        }
+      },
+      "turbo1uz": {
+        "_name": "1UZ-FE turbo: the LS400's 3,968 cc aluminium V8 (87.5 x 82.5 mm, belt driven quad cam 32 valve, 10.0:1; the early non VVT-i engine, 260 PS at 5,400 and 353 N·m at 4,600 stock) on stock internals with one mid size turbo (62 to 67 mm) at 8 to 10 psi, a front mount intercooler, 550 cc injectors, a wastegate and a blow-off valve: 650 N·m at about 4,000 (the brief's target; an estimate) and about 475 PS at 6,000. Soft below 2,500, the boost arriving through 3,000 to 4,000. Rev limit 6,400 (estimate). Aluminium V8 plus the turbo, intercooler and piping: about 20 kg under the 2JZ-GTE (estimate).",
+        "mass": 1490,
+        "engine": {
+          "redline": 6400,
+          "torqueCurve": [
+            [800, 200],
+            [1500, 270],
+            [2500, 390],
+            [3200, 540],
+            [4000, 650],
+            [4800, 640],
+            [5500, 600],
+            [6000, 555],
+            [6400, 505]
+          ]
+        },
+        "gearbox": {
+          "_": "The Supra's V160 six speed stays behind an adapter plate (it is the stronger of the two Toyota boxes); a 2.95 final drive (from 3.8) puts sixth's limiter (313 km/h) at 1.1 times the drag top speed (284), as on the stock cars.",
+          "finalDrive": 2.95
+        },
+        "launch": {
+          "_": "A mid size single turbo wants 4,000 at the line: on boost and at the torque peak. Rolling antilag there too. Slower to spool than the 2JZ's sequential twins and more of the torque behind it.",
+          "defaultRpm": 4000,
+          "antilagRpm": 4000,
+          "spoolTime": 0.7,
+          "turboShare": 0.45
         }
       }
     }

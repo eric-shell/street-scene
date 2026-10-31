@@ -108,7 +108,10 @@ export const VOICE_RANGES = {
   camRpm: [4000, 9000],
   /** How hard that switch is heard (0 none, 1 a Honda VTEC; default 0.7 when `camRpm` is set). */
   camStep: [0, 1],
-  /** Rotary only: the idle lope of port overlap, as a depth (0 none, the default; 1 the 13B-REW). */
+  /**
+   * The idle lope of overlap, as a depth (0 none, the default; 1 the 13B-REW): a rotary's port overlap, or a piston
+   * engine's long duration cam holding both valves open, lets burnt gas back into the intake so some firings go weak.
+   */
   idleLope: [0, 1],
   /** Rotary only: the apex seal rasp, a noise burst per rotor face, as a multiple of the 13B-REW's (0 none, the default). */
   apexRasp: [0, 2],
@@ -175,7 +178,7 @@ export interface EngineVoiceSpec {
   camRpm?: number;
   /** Strength of the cam switch (VOICE_RANGES). */
   camStep?: number;
-  /** Rotary idle lope depth (VOICE_RANGES). */
+  /** Idle lope depth, a rotary's ports or a big cam's overlap (VOICE_RANGES). */
   idleLope?: number;
   /** Rotary apex seal rasp level (VOICE_RANGES). */
   apexRasp?: number;
@@ -322,7 +325,7 @@ export function engineSpecErrors(spec: unknown): string[] {
       const layout = s.layout as EngineLayout;
       if (voice.crank === 'oddfire' && layout !== 'V10') errors.push('engine.voice.crank "oddfire" is for a V10');
       if ('camStep' in voice && !('camRpm' in voice)) errors.push('engine.voice.camStep needs camRpm');
-      for (const k of ['idleLope', 'apexRasp']) if (k in voice && !ENGINE_LAYOUTS[layout]?.rotary) errors.push(`engine.voice.${k} is for a rotary`);
+      if ('apexRasp' in voice && !ENGINE_LAYOUTS[layout]?.rotary) errors.push('engine.voice.apexRasp is for a rotary');
       const fits = MANIFOLD_LAYOUTS[voice.manifold as keyof typeof MANIFOLD_LAYOUTS];
       if (fits && layout !== fits) errors.push(`engine.voice.manifold "${String(voice.manifold)}" is for an ${ENGINE_LAYOUTS[fits].name}`);
       if ('twinWhistle' in voice && s.aspiration !== 'turbo') errors.push('engine.voice.twinWhistle is for a turbo');

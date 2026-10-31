@@ -197,6 +197,34 @@ Shipped (`tachibanaZenith`) vs sourced: ratios 3.827 ... 1.000 match, sixth is d
 
 Sources fetched: https://en.wikipedia.org/wiki/Toyota_JZ_engine , https://en.wikipedia.org/wiki/Toyota_Supra (chars 0-200k) , https://toyota.jp/ucar/catalog/brand-TOYOTA/car-SUPRA/199708/1000971/ ; via search only: https://www.goo-net-exchange.com/catalog/TOYOTA__SUPRA/1000907 , https://carfromjapan.com/specifications/toyota/supra/581337df2afaa2c4b2867e11 , https://www.carsales.com.au/research/toyota/supra/1998/rz-s/ .
 
+## Tachibana Zenith engine swaps (the Power tab)
+
+The Supra's two V8 swaps (`engineSwaps` on the manifest car, physics in `drivingParams.json` `swaps.tachibanaZenith`), from the user's brief: both built to the same **650 N·m**, by opposite routes. Nothing was fetched for this section: displacement, bore x stroke, compression and the stock outputs are the engines' well known figures (as recalled); the build outputs are the brief's targets; everything else is **est.**
+
+### 6.2 LS3 (`ls3`): naturally aspirated, cammed, through a T56
+
+| | |
+|---|---|
+| Engine | V8 6,162 cc, **103.25 x 92.0 mm**, aluminium block, pushrod two valve, 10.7:1. Stock **430 hp (321 kW) at 5,900, 575 N·m (424 lb-ft) at 4,600**, 6,600 limit. |
+| Build | Mild duration, high lift cam with long overlap, beehive springs, long tube headers, cold air intake, dyno tune: **650 N·m at 4,600** (the brief); about **530 PS at 6,200** and a 6,800 limit **est.** The overlap costs a little at the bottom (330 N·m at idle, **est.**). |
+| Mass | aluminium V8 against the iron 2JZ-GTE with its twins and piping: about −30 kg, **est.** |
+| Gearbox | Tremec T56 Magnum 2.66 / 1.78 / 1.30 / 1.00 / 0.80 / 0.63 (as recalled); sixth shortened to 0.694 on the stock 3.8 final drive, so its limiter (326 km/h) is 1.1 times the 296 km/h drag top speed. First reaches 85 km/h (the V160's 61). |
+| Sound | The cam's idle chop, then a deep cross-plane roar through open long tubes; no turbo in the stream, no whistles or valves. |
+| Voice | `V8`, `na`, `displacement: 6.162`, `crank: cross`, `headers: equal`, `pipes: 2`, `crossover: h`, `muffler: sport` (the loudness trim levels every silencer, so `straight` bought only brightness), `idleLope: 0.6`. Its 0.77 l firings are the biggest in the game: the size's level gain is capped at +0.8 dB (`SIZE.levelMax`) to keep it inside the 2 dB loudness band. `idleLope` was rotary only until this swap: a long duration cam's overlap leaks burnt gas back into the intake the way a rotary's ports do, so the same weak-firing model (`LOPE`) serves both; depth 0.6 is **est.** |
+
+### 1UZ-FE turbo (`turbo1uz`): the LS400 V8 on a single turbo
+
+| | |
+|---|---|
+| Engine | V8 3,968 cc, **87.5 x 82.5 mm**, aluminium block, belt driven quad cam, 32 valve, about 10.0:1 (early non VVT-i). Stock about **260 PS at 5,400, 353 N·m at 4,600**. |
+| Build | One 62-67 mm turbo at 8-10 psi, wastegate, blow-off valve, front mount intercooler, 550 cc injectors, stock internals: **650 N·m at about 4,000** (the brief); about **475 PS at 6,000** and a 6,400 limit **est.** Soft below 2,500, boost through 3,000-4,000 (`spoolTime 0.7`, `turboShare 0.45`). |
+| Mass | aluminium V8 plus the turbo kit: about −20 kg on the 2JZ-GTE, **est.** |
+| Gearbox | the V160 stays behind an adapter plate; final drive 2.95 (from 3.8): sixth's limiter 313 km/h, 1.1 times the 284 km/h drag top speed. |
+| Sound | A quiet, smooth idle; under load a refined mechanical howl muffled by the turbine; intake hiss, spool whistle, and a venting blow-off valve's hiss on every lift. |
+| Voice | `V8`, `turbo`, `displacement: 3.968`, `crank: cross`, `headers: equal`, `pipes: 1` (one turbo, one pipe), `muffler: sport`, `diverter: vent`, `whoosh: 1.2`, `wastegate: 0.4` |
+
+Measured (stock setup, from rest, full throttle; 0-60 mph / 0-100 / 0-200 / top): stock 2JZ 4.92 / 5.20 / 22.9 s / 241 km/h; LS3 4.85 / 5.00 / 13.9 s / 296; 1UZ turbo 4.43 / 4.60 / 15.0 s / 284. With traction control: LS3 3.47 / 3.63 / 12.5 s, 1UZ 3.63 / 3.80 / 14.2 s. As with the Wendt's DAZA, the LS3's torque from idle spins the rears without traction control, where the 1UZ's lag keeps it under the grip; past 100 km/h, or with traction control, the LS3 is the quicker car.
+
 ## Tachibana Runabout: 1994-99 Toyota MR2 SW20 Turbo (3S-GTE)
 
 Source status key: **sourced** = read on a fetched page; **est.** = not found.

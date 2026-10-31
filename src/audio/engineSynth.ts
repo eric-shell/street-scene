@@ -27,7 +27,7 @@
  * output, dry, since a backfire goes off at the tip, past the silencer.
  * A few per car behaviours sit on top, each neutral unless the car's voice asks
  * for it: a cam changeover (CAM: the VTEC step), an odd-fire crank (V10odd), a
- * rotary's idle lope and apex seal rasp (LOPE, RASP), a straight six's high-rpm rasp (HOWL), a runner table per
+ * the idle lope of a rotary or a big cam and a rotary's apex seal rasp (LOPE, RASP), a straight six's high-rpm rasp (HOWL), a runner table per
  * manifold (MANIFOLD) and the cylinders' size (SIZE).
  * Deterministic: all randomness comes from a seeded xorshift.
  */
@@ -105,7 +105,7 @@ export interface EngineProgram {
   rough: number;
   /** High-lift cam changeover (CAM): the rpm it engages at and how hard the step is heard (0..1); null for a fixed cam. */
   cam: { rpm: number; step: number } | null;
-  /** Rotary idle lope depth (LOPE), 0..1; 0 is none. */
+  /** Idle lope depth (LOPE), 0..1; 0 is none. */
   lope: number;
   /** Apex seal rasp level (RASP), a multiple of the 13B-REW's; 0 is none. */
   rasp: number;
@@ -292,17 +292,19 @@ export const MANIFOLD = {
  * rise and decay stretch as the cube root of the volume ratio: valve area grows as volume^(2/3)) and carries more
  * energy (the level grows as the square root of the volume ratio, after the loudness trim, which otherwise holds every
  * program to one loudness). The exponents are physical reasoning, not measurement (no source gives a pulse width by
- * displacement); `level` and `time` are clamped so a tiny or huge engine stays inside the mix. At 0.6 l a firing (the
- * 3.6 VR6) the pulse is 6 % longer and 0.8 dB louder than at 0.5; the 3.2 VR6 (0.53) 2 % and 0.3 dB.
+ * displacement); `level` and `time` are clamped so a tiny or huge engine stays inside the mix, the level gain to
+ * `levelMax` (+0.8 dB), which keeps the biggest firings within the 2 dB every engine is held to (tests/engineVoice):
+ * the LS3's 0.77 l would be +1.9 dB. At 0.6 l a firing (the 3.6 VR6) the pulse is 6 % longer and 0.8 dB louder than at
+ * 0.5; the 3.2 VR6 (0.53) 2 % and 0.3 dB; the LS3 (0.77) 15 % and the capped 0.8 dB.
  */
-export const SIZE = { litres: 0.5, time: 1 / 3, level: 0.5, clamp: [0.6, 1.6] } as const;
+export const SIZE = { litres: 0.5, time: 1 / 3, level: 0.5, clamp: [0.6, 1.6], levelMax: 1.1 } as const;
 
 /** The pulse length and level factors for an engine of `displacement` litres over `cylinders` firings (both 1 when the size is missing). */
 export function sizeFactors(displacement: number | undefined, cylinders: number): { time: number; level: number } {
   if (!displacement) return { time: 1, level: 1 };
   const ratio = displacement / cylinders / SIZE.litres;
   const clamp = (x: number) => Math.max(SIZE.clamp[0], Math.min(SIZE.clamp[1], x));
-  return { time: clamp(ratio ** SIZE.time), level: clamp(ratio ** SIZE.level) };
+  return { time: clamp(ratio ** SIZE.time), level: Math.min(SIZE.levelMax, clamp(ratio ** SIZE.level)) };
 }
 
 /** The character each layout starts from before the car's own voice spec. */
@@ -353,8 +355,9 @@ export const CAM = {
 } as const;
 
 /**
- * A rotary's idle lope (voice.idleLope): at idle the intake and exhaust ports overlap and burnt gas leaks back into the
- * intake, so some strokes fire weak or not at all, in irregular groups, the slow uneven "brap" of a 13B-REW. Modelled
+ * The idle lope (voice.idleLope): at idle the intake and exhaust ports overlap (a rotary) or a long duration cam holds
+ * both valves open (a cammed V8) and burnt gas leaks back into the intake, so some strokes fire weak or not at all, in
+ * irregular groups, the slow uneven "brap" of a 13B-REW or the "chop" of a race cam. Modelled
  * as a chance that a firing is weak, which a slow pair of incommensurate waves (`hz`, groups of weak strokes a few
  * times a second) pushes up and down, strongest at low rpm and low pedal and gone by 2,500 rpm.
  * - fade: rpm where it starts to fade and where it is gone. loadCut: share removed at full pedal.

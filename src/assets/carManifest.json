@@ -651,6 +651,47 @@
           "handoverRpm": 4000
         }
       },
+      "engineSwaps": [
+        {
+          "id": "ls3",
+          "name": "6.2 LS3",
+          "note": "The Corvette's 6.2 pushrod V8 on a lumpy cam, long tube headers and a tune, naturally aspirated, through a T56.",
+          "engine": {
+            "layout": "V8",
+            "aspiration": "na",
+            "position": "front",
+            "displacement": 6.162,
+            "voice": {
+              "crank": "cross",
+              "headers": "equal",
+              "pipes": 2,
+              "crossover": "h",
+              "muffler": "sport",
+              "idleLope": 0.6
+            }
+          }
+        },
+        {
+          "id": "turbo1uz",
+          "name": "1UZ-FE Turbo",
+          "note": "The LS400's quad cam V8 on stock internals with a single turbo at 9 psi, on the Supra's own six speed.",
+          "engine": {
+            "layout": "V8",
+            "aspiration": "turbo",
+            "position": "front",
+            "displacement": 3.968,
+            "voice": {
+              "crank": "cross",
+              "headers": "equal",
+              "pipes": 1,
+              "muffler": "sport",
+              "diverter": "vent",
+              "whoosh": 1.2,
+              "wastegate": 0.4
+            }
+          }
+        }
+      ],
       "exhaustTips": [
         [
           0.53,
