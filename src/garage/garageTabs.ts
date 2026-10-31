@@ -680,7 +680,7 @@ function renderPower(host: TabHost): void {
 }
 
 /** Which tab lists each unique feature: the shapes on Body, the paint on Paint. A feature that dresses a part slot sits in that slot's section instead (`SLOT_FEATURES`). */
-const BODY_SHAPE_FEATURES: readonly BodyFeature[] = ['shavedHatch', 'shavedRubstrip', 'halfCupHandles'];
+const BODY_SHAPE_FEATURES: readonly BodyFeature[] = ['shavedHatch', 'shavedRubstrip', 'halfCupHandles', 'popOutWindows'];
 const PAINT_FEATURES: readonly BodyFeature[] = ['blackGrille'];
 /** The body part slot a feature belongs to: its switch sits under that slot's part list. */
 const SLOT_FEATURES: Partial<Record<BodyFeature, PartSlot>> = { fogLights: 'frontBumper', shavedMarkers: 'fenders', windSplitters: 'roof' };

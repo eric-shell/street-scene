@@ -85,9 +85,10 @@ const GLOW_RENAMES: Record<string, GlowPattern> = { breathe: 'pulse', alternate:
  * paints the grille's body colored bars flat black like the lips and diffusers. Fog lights are a pair of round
  * lamps in the front bumper's outer intakes, and fit every front bumper; shaved markers press the fenders' side
  * repeaters flush, on every fender option; wind splitters are black rubber fins standing in the roof's drip rails
- * from the windshield to the spoiler (after the BMW 3.0 CSL's fender fins), on every roof option. Every feature is bought per car, like a part (shared/economy.ts).
+ * from the windshield to the spoiler (after the BMW 3.0 CSL's fender fins), on every roof option; pop out windows
+ * swing the rear quarter glass out at the back on a latch, hinged at the front edge (a Grand Caravan's vents). Every feature is bought per car, like a part (shared/economy.ts).
  */
-export const BODY_FEATURES = ['shavedHatch', 'shavedRubstrip', 'halfCupHandles', 'blackGrille', 'fogLights', 'shavedMarkers', 'windSplitters'] as const;
+export const BODY_FEATURES = ['shavedHatch', 'shavedRubstrip', 'halfCupHandles', 'blackGrille', 'fogLights', 'shavedMarkers', 'windSplitters', 'popOutWindows'] as const;
 export type BodyFeature = (typeof BODY_FEATURES)[number];
 
 /** The features' names, for the garage's switches and the dialogs that list what a build wears. */
@@ -99,6 +100,7 @@ export const FEATURE_LABELS: Record<BodyFeature, string> = {
   fogLights: 'Fog lights',
   shavedMarkers: 'Shaved side markers',
   windSplitters: 'Wind splitters',
+  popOutWindows: 'Pop out windows',
 };
 
 /**
