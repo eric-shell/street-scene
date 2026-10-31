@@ -782,6 +782,25 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_headlights_twentieth",
+      "displayName": "20th",
+      "carId": "wendtStrom",
+      "slot": "headlights",
+      "file": "parts/wendtStrom_headlights_twentieth.glb",
+      "hides": [
+        "Headlights"
+      ],
+      "materialSlots": [
+        "Chrome",
+        "HeadLight",
+        "Black",
+        "Lens",
+        "Light"
+      ],
+      "tris": 5122,
+      "generated": true
+    },
+    {
       "id": "wendtStrom_headlights_eCode",
       "displayName": "E-Code",
       "carId": "wendtStrom",
