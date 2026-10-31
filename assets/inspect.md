@@ -8,13 +8,14 @@ Authored cars: albrechtKombi, daltonFiend, kazamaRotor, nakayaHorizon, tachibana
 
 | Car | Size |
 |---|---|
+| nakayaGrove | 837.1 KB |
 | albrechtKombi | 333.2 KB |
 | daltonFiend | 270.0 KB |
 | kazamaRotor | 267.6 KB |
 | nakayaHorizon | 222.1 KB |
 | tachibanaRunabout | 141.7 KB |
 | tachibanaZenith | 1887.7 KB |
-| wendtStrom | 2267.7 KB |
+| wendtStrom | 3302.8 KB |
 
 ## Material vocabulary
 
@@ -117,7 +118,7 @@ Source: `assets/source/eshell/tachibanaZenith/tachibanaZenith.blend` (authored i
 Source: `assets/source/eshell/wendtStrom/wendtStrom.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
 - Base car `public/cars/wendtStrom.glb`: 898.6 KB, 38884 tris, nodes `Body`, `Bumper_Front`, `Bumper_Rear`, `Roof`, `Exhaust`, `Muffler`, `Floor_Rear`, `Floor_Mid`, `Floor_Boot`, `Well_Rear`, `Fenders`, `shavedHatch_on`, `shavedHatch_off`, `fogLights_on`, `shavedMarkers_off`, `shavedMarkers_on`, `shavedRubstrip_off`, `Spoiler`, `halfCupHandles_off`, `halfCupHandles_on`, `windSplitters_on`, `Hood`, `Mirrors`, `Taillights`.
-- Parts: frontBumper euro, frontBumper speedholes, frontBumper cupraR, frontBumper trackBase, frontBumper trackMild, frontBumper trackWild, sideSkirts trackMild, sideSkirts trackWild, rearBumper euro, rearBumper sectioned, rearBumper sectionedEuro, rearBumper centerExhaust, rearBumper trackBase, rearBumper trackMild, rearBumper trackWild, roof sunroofTilted, roof sunroofDelete, fenders overMild, fenders voomeran, spoiler none, spoiler sportMildRoof, spoiler sportWildRoof, spoiler sexSpec, spoiler trackMild, spoiler trackWild, hood trackBase, hood boserMild, mirrors euro, mirrors shippu, taillights rccr.
+- Parts: frontBumper euro, frontBumper speedholes, frontBumper cupraR, frontBumper trackBase, frontBumper trackMild, frontBumper trackWild, sideSkirts trackMild, sideSkirts trackWild, rearBumper euro, rearBumper sectioned, rearBumper sectionedEuro, rearBumper centerExhaust, rearBumper trackBase, rearBumper trackMild, rearBumper trackWild, roof sunroofTilted, roof sunroofDelete, fenders overMild, fenders voomeran, spoiler none, spoiler sportMildRoof, spoiler sportWildRoof, spoiler sexSpec, spoiler trackMild, spoiler trackWild, hood trackBase, hood boserMild, mirrors euro, mirrors shippu, taillights beems, taillights sexSpecReds, taillights sexSpecClears, taillights sexSpecSmoked, taillights ambers, taillights clears, taillights smoked, taillights ocean, taillights rccr, taillights rssr, taillights magicYellows, taillights magicGreens, taillights magicBlues, taillights cityGolf, taillights allReds.
 - WARNING: wheel radius 0.309 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.309 m, width 0.24 m, wheelbase 2.518 m, track 1.492 m.
 - Car dimensions 4.17 x 2.03 x 1.28 m.
@@ -239,3 +240,13 @@ Source: `assets/source/eshell/wheels/wheels.blend` (scripts/blender/carWheels.py
 - `wheel_yuki` Yuki: 94.1 KB, 10128 tris.
 - `wheel_yuzu` Yuzu: 175.0 KB, 8759 tris.
 - `wheel_zan` Zan: 146.4 KB, 9599 tris.
+## nakayaGrove
+
+Source: `assets/source/eshell/nakayaGrove/nakayaGrove.blend` (authored in car space, exported with scripts/blender/exportCar.py).
+
+- Base car `public/cars/nakayaGrove.glb`: 837.1 KB, 30064 tris, nodes `Body`.
+- Parts: .
+- WARNING: wheel radius 0.344 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
+- Wheel radius 0.344 m, width 0.24 m, wheelbase 2.475 m, track 1.382 m.
+- Car dimensions 4.49 x 1.92 x 1.12 m.
+

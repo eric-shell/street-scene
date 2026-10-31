@@ -48,6 +48,8 @@ A race pays about three thousand points (a full nitrous stage is 1,000). The tab
 | Spoiler | 11,000 | 0.3 | 11,000 to 14,300 | 6 races |
 | Body kit | 32,000 | 0.4 | 32,000 to 44,800 | 10 races |
 
+A few parts are priced by hand instead (`ECONOMY.parts`, by catalog id): the Wendt Strom's All Reds taillights are 30,000 points after 6 races, about a body kit, since the real lamps are a rare collector's piece. Its Ambers are 3,600, above the Ocean (3,400) whose mesh they share. Its City Golf taillights are 25,000 after 6 races, just under the All Reds.
+
 ### Body features
 
 Every body feature (`BODY_FEATURES`: shaved hatch, shaved rubstrip, half cup handles, black grille, fog lights, shaved side markers) is bought per car like a part, at one price: `ECONOMY.features` is 15,000 points (about five races, above every bumper and fender part) after 6 races. The ledger id is `feature.<name>` in the same per-car list; `buyItem(carId, item)` buys a `Buyable` (a part via `partBuyable`, a feature via `featureBuyable`), and `buy` is its part form. Fog lights sit in the Front bumper section and shaved side markers in the Fenders section (`SLOT_FEATURES` in `garageTabs.ts`); the other features stay in the Unique features panels, all with the same tag as a part. The Wendt Strom's Euro mirrors were a feature until its mirrors became a part slot: saved builds and ledgers with `euroMirrors` read as its Euro mirrors part (`RETIRED_FEATURES` in `carBuild.ts`).

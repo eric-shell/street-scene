@@ -58,6 +58,11 @@ Parts must use the shared material names. The game swaps each one for a runtime 
 | `Light` | Indicators, side markers | amber lens, unlit |
 | `Reflector` | Red reflectors and markers | red lens, unlit |
 | `ClearLens` | White side markers and repeaters | white lens, unlit |
+| `RedLens` | A red lamp's chamber behind a clear section (All Reds) | bright red, shaded, a faint glow |
+| `SmokeLens` | A smoked lamp's insides behind the clear cover (Smoked) | dark grey, glossy, shaded |
+| `BlueLens` | A blue lamp's lens behind the clear cover (Magic Blues) | royal blue, glossy, shaded, a faint glow |
+| `BrakeLens` | A shaded red lens that lights under braking (the City Golf's donut) | RedLens at rest, brake glow when braking |
+| `GreenLens`, `YellowLens` | Magic Greens and Magic Yellows, the same way | the VW Harlequin's Pistachio green and Ginster yellow |
 | `Strap` | Woven webbing (tow straps) | matte red, never painted |
 | `Lens` | Clear lamp covers, reverse and fog lamps | clear, see-through, unlit |
 | `Interior` | Seats, dash | fixed |
@@ -76,7 +81,7 @@ Only `HeadLight`, `TailLight` and `BrakeLight` glow: a lamp that is not one of t
 | sideSkirts, hood, roof | 2000 |
 | spoiler | 5000 |
 | mirrors | 3000 |
-| taillights | 4500 |
+| taillights | 5500 |
 | wheels | 12000 |
 | body | 20000 |
 

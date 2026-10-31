@@ -43,12 +43,16 @@ export const SLOT_LABELS: Record<PartSlot, string> = {
  * lamps glow (`HeadLight`, `TailLight`, and `BrakeLight`, the third brake light,
  * only under braking); the other lamp lenses are unlit: `Light`
  * the amber indicators and side markers, `Reflector` red reflectors and markers,
- * `ClearLens` white side markers and repeaters, `Lens` the clear covers and unlit
+ * `ClearLens` white side markers and repeaters, `RedLens` a red lamp's unlit chamber
+ * (shaded, so a recessed row reads its depth where the glowing `TailLight` is flat), `BrakeLens` the same lit
+ * up under braking (the City Golf's donut), `SmokeLens` a smoked lamp's
+ * insides (the same, dark grey), `BlueLens`, `GreenLens` and `YellowLens` the
+ * coloured Magic lamps' (the same, in the VW Harlequin's colours), `Lens` the clear covers and unlit
  * clear lamps (reverse, fog), see-through so a
  * lamp's reflectors and bulbs show behind it. `Strap` is red woven webbing (a
  * motorsport tow strap): matte, never painted.
  */
-export const MATERIAL_NAMES = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap', 'Lens', 'Reflector', 'BrakeLight', 'ClearLens', 'Strap'] as const;
+export const MATERIAL_NAMES = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille', 'RimLip', 'RimCap', 'Lens', 'Reflector', 'BrakeLight', 'ClearLens', 'Strap', 'RedLens', 'SmokeLens', 'BlueLens', 'GreenLens', 'YellowLens', 'BrakeLens'] as const;
 export type MaterialName = (typeof MATERIAL_NAMES)[number];
 
 /** Triangle budgets per slot used by validation. */
@@ -84,8 +88,10 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   // narrowed, vertex for vertex.
   mirrors: 3000,
   // Both tail lamps with their clear covers, split off the body whole (the Wendt Strom's: 1,911); a part re-materials
-  // its rows and builds its clear rows as recessed chambers with bowls, a divider and bulbs (`lamp_chamber`; RCCR: 3,680).
-  taillights: 4500,
+  // its rows and builds its clear rows as recessed chambers with bowls, a divider and bulbs (`lamp_chamber`; RCCR: 3,680);
+  // the Sex Spec LED lamps, 52 LED cups in chambered rows (`led_field`): 4,700; the City Golf, three chambers round a
+  // stepped round reflector and its tube (`round_chamber`): 5,250.
+  taillights: 5500,
 };
 
 /** The lug circle of a wheel GLB, in the GLB's own space (glTF frame, meters, axle along X, face toward +X); render/car/lugNuts.ts seats the house nuts on it. */

@@ -52,6 +52,17 @@ export const ECONOMY = {
    * (about five races of points), not by triangles.
    */
   features: { price: 15000, unlock: 6 },
+  /**
+   * Parts priced by hand rather than by their slot and triangles (points, races to unlock): the collector's pieces.
+   * The All Reds (Inpro's) are rare in real life and the user wants them about a body kit's price.
+   */
+  // The Ambers share the Ocean's mesh, so their triangles price them alike; the user ranks them above the Ocean.
+  parts: {
+    wendtStrom_taillights_ambers: { price: 3600, unlock: 1 },
+    // The City Golf's round lamps are rare outside Canada; the user ranks them just under the All Reds.
+    wendtStrom_taillights_cityGolf: { price: 25000, unlock: 6 },
+    wendtStrom_taillights_allReds: { price: 30000, unlock: 6 },
+  } as Record<string, { price: number; unlock: number }>,
   /** A multi-piece wheel (a bolted lip and barrel round its face) costs this much more than a one-piece of the same size. */
   multiPiece: 1.25,
   /** Every price is a multiple of this (points). */
@@ -61,6 +72,7 @@ export const ECONOMY = {
 } as const satisfies {
   slots: Record<PartSlot, { base: number; spread: number; unlock: number }>;
   features: { price: number; unlock: number };
+  parts: Record<string, { price: number; unlock: number }>;
   multiPiece: number;
   round: number;
   free: readonly string[];
@@ -81,6 +93,8 @@ export const isStock = (carId: string, partId: string): boolean => stockWheel(ca
 /** A part's price in points (0: free). On `carId`'s own stock wheel, 0. */
 export function priceOf(part: PartEntry, carId?: string): number {
   if (!FEATURES.economy || (carId && isStock(carId, part.id))) return 0;
+  const set = ECONOMY.parts[part.id];
+  if (set) return set.price;
   const s = ECONOMY.slots[part.slot];
   const fill = Math.min(1, Math.max(0, part.tris / TRI_BUDGETS[part.slot]));
   const multi = part.slot === 'wheels' && part.construction === 'multi' ? ECONOMY.multiPiece : 1;
@@ -88,7 +102,7 @@ export function priceOf(part: PartEntry, carId?: string): number {
 }
 
 /** Races finished that unlock buying a part (0 with the economy off). */
-export const unlockRaces = (part: PartEntry): number => (FEATURES.economy ? ECONOMY.slots[part.slot].unlock : 0);
+export const unlockRaces = (part: PartEntry): number => (FEATURES.economy ? (ECONOMY.parts[part.id] ?? ECONOMY.slots[part.slot]).unlock : 0);
 
 /** Races still to finish before a part can be bought (0: unlocked). */
 export const racesToUnlock = (part: PartEntry, stats: StatsSave): number => Math.max(0, unlockRaces(part) - racesForUnlocks(stats));

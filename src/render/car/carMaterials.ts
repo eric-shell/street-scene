@@ -144,6 +144,18 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
   // The amber carries a faint emissive of its own so it reads orange at night, far below a lamp's glow (it lights nothing).
   m.Light = new THREE.MeshPhysicalMaterial({ name: 'Light', color: 0xff8a1a, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05, emissive: 0xff7a10, emissiveIntensity: 0.12 });
   m.ClearLens = new THREE.MeshPhysicalMaterial({ name: 'ClearLens', color: 0xf2f4f6, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
+  // A red lamp's chamber behind a clear section (the Wendt Strom's All Reds): ClearLens's gloss in a bright red, so its
+  // walls and bowls shade, with a faint glow so it stays red at night; TailLight's full glow reads flat.
+  m.RedLens = new THREE.MeshPhysicalMaterial({ name: 'RedLens', color: 0xc8121f, emissive: 0x4a0006, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
+  // A smoked lamp's insides behind the clear cover (the Wendt Strom's Smoked): the same gloss in dark grey, so its chambers shade.
+  m.SmokeLens = new THREE.MeshPhysicalMaterial({ name: 'SmokeLens', color: 0x2a2c31, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
+  // A blue lamp's lens behind the clear cover (the Wendt Strom's Magic Blues): the same gloss in royal blue, a faint glow at night.
+  m.BlueLens = new THREE.MeshPhysicalMaterial({ name: 'BlueLens', color: 0x1f3fd0, emissive: 0x050e3a, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
+  // The Magic Greens and Magic Yellows the same way, in the VW Harlequin's Pistachio green and Ginster yellow.
+  m.GreenLens = new THREE.MeshPhysicalMaterial({ name: 'GreenLens', color: 0x2fa874, emissive: 0x04281a, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
+  m.YellowLens = new THREE.MeshPhysicalMaterial({ name: 'YellowLens', color: 0xf0c418, emissive: 0x3a2c00, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
+  // RedLens that lights up under braking (the City Golf's donut): at rest its faint glow is RedLens's, so the facets shade.
+  m.BrakeLens = new THREE.MeshPhysicalMaterial({ name: 'BrakeLens', color: 0xc8121f, emissive: 0xff1a2a, emissiveIntensity: BRAKE_LENS_REST, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
   m.Reflector = new THREE.MeshPhysicalMaterial({ name: 'Reflector', color: 0x7a0610, metalness: 0, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 });
   m.Lens = new THREE.MeshPhysicalMaterial({ name: 'Lens', color: 0xdfe6ee, metalness: 0, roughness: 0.03, transparent: true, opacity: 0.22, depthWrite: false });
   m.Interior = new THREE.MeshStandardMaterial({ name: 'Interior', color: 0x1a1a1e, roughness: 0.8 });
@@ -351,12 +363,15 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
  * without blooming into blobs under the room's lights.
  */
 export const LAMP_GLOW = { head: 1.3, tail: 1.4, brake: 4.5 } as const;
+/** BrakeLens's emissive at rest: RedLens's faint glow (0x4a0006) as a share of the brake red. */
+const BRAKE_LENS_REST = 0.29;
 
 /** Brake lights follow the pedal; the rotors glow with their heat (0 cold to 1, the car view's rotorHeat); `lamps` scales the lenses (CarView.setLampLevel). */
 export function setBrake(m: CarMaterialSet, braking: boolean, heat = braking ? 1 : 0, lamps = 1): void {
   const tl = m.TailLight as THREE.MeshStandardMaterial;
   tl.emissiveIntensity = (braking ? LAMP_GLOW.brake : LAMP_GLOW.tail) * lamps;
   (m.BrakeLight as THREE.MeshStandardMaterial).emissiveIntensity = braking ? LAMP_GLOW.brake * lamps : 0;
+  (m.BrakeLens as THREE.MeshPhysicalMaterial).emissiveIntensity = braking ? LAMP_GLOW.brake * lamps : BRAKE_LENS_REST;
   (m.Rotor as THREE.MeshStandardMaterial).emissiveIntensity = BRAKE.glow * heat * heat;
 }
 

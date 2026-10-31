@@ -511,6 +511,149 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_taillights_beems",
+      "displayName": "Beems",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_beems.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "SmokeLens",
+        "Lens",
+        "TailLight"
+      ],
+      "tris": 3474,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_sexSpecReds",
+      "displayName": "Sex Spec Reds",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_sexSpecReds.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "RedLens",
+        "Lens",
+        "ClearLens",
+        "TailLight",
+        "Black"
+      ],
+      "tris": 4700,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_sexSpecClears",
+      "displayName": "Sex Spec Clears",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_sexSpecClears.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "ClearLens",
+        "Lens",
+        "TailLight",
+        "Black",
+        "SmokeLens"
+      ],
+      "tris": 4700,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_sexSpecSmoked",
+      "displayName": "Sex Spec Smoked",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_sexSpecSmoked.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "SmokeLens",
+        "Lens",
+        "TailLight",
+        "Black"
+      ],
+      "tris": 4700,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_ambers",
+      "displayName": "Ambers",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_ambers.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "TailLight",
+        "Light",
+        "Lens",
+        "ClearLens"
+      ],
+      "tris": 1911,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_clears",
+      "displayName": "Clears",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_clears.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "ClearLens",
+        "Lens",
+        "TailLight"
+      ],
+      "tris": 3680,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_smoked",
+      "displayName": "Smoked",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_smoked.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "SmokeLens",
+        "Lens",
+        "TailLight",
+        "ClearLens"
+      ],
+      "tris": 3680,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_ocean",
+      "displayName": "Ocean",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_ocean.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "TailLight",
+        "ClearLens",
+        "Lens"
+      ],
+      "tris": 1911,
+      "generated": true
+    },
+    {
       "id": "wendtStrom_taillights_rccr",
       "displayName": "RCCR",
       "carId": "wendtStrom",
@@ -522,8 +665,118 @@
       "materialSlots": [
         "TailLight",
         "Lens",
-        "Reflector",
+        "RedLens",
         "ClearLens"
+      ],
+      "tris": 3680,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_rssr",
+      "displayName": "RSSR",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_rssr.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "TailLight",
+        "Lens",
+        "RedLens",
+        "SmokeLens"
+      ],
+      "tris": 3680,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_magicYellows",
+      "displayName": "Magic Yellows",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_magicYellows.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "YellowLens",
+        "ClearLens",
+        "Lens",
+        "TailLight"
+      ],
+      "tris": 3680,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_magicGreens",
+      "displayName": "Magic Greens",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_magicGreens.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "GreenLens",
+        "ClearLens",
+        "Lens",
+        "TailLight"
+      ],
+      "tris": 3680,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_magicBlues",
+      "displayName": "Magic Blues",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_magicBlues.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "BlueLens",
+        "ClearLens",
+        "Lens",
+        "TailLight"
+      ],
+      "tris": 3680,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_cityGolf",
+      "displayName": "City Golf",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_cityGolf.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "Lens",
+        "ClearLens",
+        "RedLens",
+        "BrakeLens",
+        "Chrome",
+        "TailLight"
+      ],
+      "tris": 5250,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_taillights_allReds",
+      "displayName": "All Reds",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_allReds.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "TailLight",
+        "ClearLens",
+        "Lens",
+        "RedLens"
       ],
       "tris": 3680,
       "generated": true
