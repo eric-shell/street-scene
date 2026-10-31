@@ -2468,12 +2468,17 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
         return yc + toward_end * math.cos(a) * r, zc + math.sin(a) * r + dz
 
     def skin_x(a, r):
+        # A ray through the gap between the arch's edge and the tire reaches the wheel well (the Grove's
+        # liner wall at x 0.50 pulled the rear flares' end shelf vertices 30 cm into the body): only the
+        # panel counts, outboard of `x_min`.
         h = hit(*at(a, r))
+        h = h if h and h[0] > x_min else None
         if both:
             nonlocal side
             side = -side
             g = hit(*at(a, r))
             side = -side
+            g = g if g and g[0] > x_min else None
             xs = [q[0] for q in (h, g) if q]
             return max(xs) if xs else None
         return h[0] if h else None
