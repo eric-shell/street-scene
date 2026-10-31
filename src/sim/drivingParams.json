@@ -583,6 +583,117 @@
           "turboShare": 0.45
         }
       }
+    },
+    "nakayaGrove": {
+      "k24": {
+        "_name": "K24 (the K24A2, the 2004-08 TSX's 2.4): 2,354 cc aluminium inline four, 87 x 99 mm, cast iron liners, chain driven DOHC i-VTEC (VTC on the intake cam, lobe switching on both). Stock 205 hp (153 kW) at 7,000 and 222 N·m at 4,500. The swap is the usual RWD K build: a big port intake manifold, a header, cams and valve springs, a K-Pro tune and the balance shafts deleted, for about 265 PS at 7,400 and 265 N·m at 5,200 (estimates) to a 7,800 limit (estimate). Torque fills in when VTEC engages near 5,000. The aluminium block against the KA24DE's iron one: about 25 kg lighter (estimate).",
+        "mass": 1228,
+        "engine": {
+          "redline": 7800,
+          "torqueCurve": [
+            [800, 120],
+            [1500, 170],
+            [2500, 205],
+            [3500, 228],
+            [4600, 235],
+            [5200, 265],
+            [6200, 262],
+            [7400, 252],
+            [7800, 232]
+          ]
+        },
+        "gearbox": {
+          "_": "The 240SX's five speed stays behind a K to Nissan adapter plate; a 5.13 final drive (from 4.85) puts fifth's limiter (260 km/h) at 1.1 times the drag top speed (233), as on the stock cars: the cams want the revs.",
+          "finalDrive": 5.13
+        },
+        "launch": {
+          "_": "A high revving NA four with its torque up top launches high, about 5,000, where VTEC is already on the big lobes.",
+          "defaultRpm": 5000
+        }
+      },
+      "sr20det": {
+        "_name": "SR20DET (the S13 Silvia K's 2.0 turbo): 1,998 cc aluminium inline four, 86 x 86 mm, dry iron sleeves, DOHC on finger followers (rocker arms), no cam timing on the S13 engine. Stock 205 PS at 6,000 and 275 N·m at 4,000. The swap adds the usual drift build: a GT28 sized ball bearing turbo at about 1.2 bar, a front mount intercooler, 740 cc injectors, rocker arm stoppers and a standalone tune, for about 340 PS at 6,800 and 400 N·m at 4,800 (estimates) to a 7,500 limit (the stoppers make it safe; an estimate). About the KA24DE's weight once the turbo, intercooler and piping go on (estimate).",
+        "mass": 1245,
+        "engine": {
+          "redline": 7500,
+          "torqueCurve": [
+            [800, 130],
+            [2000, 190],
+            [3000, 290],
+            [3800, 370],
+            [4800, 400],
+            [5800, 385],
+            [6800, 355],
+            [7500, 310]
+          ]
+        },
+        "gearbox": {
+          "_": "The SR20DET's own five speed (the FS5W71C, the KA's ratios); a 4.39 final drive puts fifth's limiter (292 km/h) at 1.1 times the drag top speed (260).",
+          "finalDrive": 4.39
+        },
+        "launch": {
+          "_": "The GT28 is on boost by about 4,000: the launch and rolling antilag sit there.",
+          "defaultRpm": 4500,
+          "antilagRpm": 4500,
+          "spoolTime": 0.55,
+          "turboShare": 0.35
+        }
+      },
+      "rb25det": {
+        "_name": "RB25DET Neo (the R34 GT-T's 2.5): 2,498 cc iron block inline six, 86 x 71.7 mm, aluminium DOHC head on solid buckets, NVCS on the intake cam. Stock 280 PS at 6,400 and 343 N·m at 3,200. The swap is the usual single turbo conversion: a GT3076 sized turbo on a top mount manifold at about 1.3 bar, a front mount intercooler, 800 cc injectors, an oil restrictor and a Nismo oil pump drive, for about 450 PS at 6,800 and 530 N·m at 4,800 (estimates) to a 7,500 limit (estimate). The long iron block hangs over the front axle: about 60 kg over the KA24DE (estimate).",
+        "mass": 1313,
+        "engine": {
+          "redline": 7500,
+          "torqueCurve": [
+            [800, 170],
+            [2000, 240],
+            [3000, 360],
+            [3800, 480],
+            [4800, 530],
+            [5800, 515],
+            [6800, 470],
+            [7500, 420]
+          ]
+        },
+        "gearbox": {
+          "_": "The RB25DET's own five speed, 3.214 / 1.925 / 1.302 / 1.000 / 0.752 (estimate: the R33 GTS25t's, the same ratios the Horizon's Getrag runs); a 4.06 final drive puts fifth's limiter (319 km/h) at 1.1 times the drag top speed (287).",
+          "ratios": [3.214, 1.925, 1.302, 1.0, 0.752],
+          "finalDrive": 4.06
+        },
+        "launch": {
+          "_": "A big single turbo on a six: on boost from about 4,000, so the launch and rolling antilag sit at 4,500.",
+          "defaultRpm": 4500,
+          "antilagRpm": 4500,
+          "spoolTime": 0.75,
+          "turboShare": 0.45
+        }
+      },
+      "ls3": {
+        "_name": "LS3 (the 2008-15 Corvette and Camaro SS's 6.2): 6,162 cc aluminium V8, 103.25 x 92.0 mm, six bolt mains, pushrod two valve, naturally aspirated. Stock 430 hp (321 kW) at 5,900 and 575 N·m at 4,600 to a 6,600 limit. The swap keeps the stock cam: long tube headers, a cold air intake and a tune, about 460 PS at 6,000 and 600 N·m at 4,600 (estimates), with upgraded springs for a 6,800 limit (estimate). Aluminium, but with the T56 and its cooling it lands at about the RB25's weight (estimate).",
+        "mass": 1308,
+        "engine": {
+          "redline": 6800,
+          "torqueCurve": [
+            [800, 340],
+            [1500, 440],
+            [2500, 530],
+            [3500, 575],
+            [4600, 600],
+            [5500, 580],
+            [6000, 555],
+            [6800, 490]
+          ]
+        },
+        "gearbox": {
+          "_": "A Tremec T56 Magnum six speed, 2.66 / 1.78 / 1.30 / 1.00 / 0.80 (sourced, Tremec) with sixth at 0.694 instead of the 0.63 overdrive, as on the Zenith's LS3; a 3.9 final drive puts sixth's limiter (326 km/h) at 1.1 times the drag top speed (292).",
+          "ratios": [2.66, 1.78, 1.3, 1.0, 0.8, 0.694],
+          "finalDrive": 3.9
+        },
+        "launch": {
+          "_": "This much NA torque in a light car on street tires launches low, about 3,000: more only lights up the rears.",
+          "defaultRpm": 3000
+        }
+      }
     }
   },
   "setup": {

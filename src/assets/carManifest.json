@@ -870,7 +870,88 @@
           "muffler": "quiet",
           "intake": "plenum"
         }
-      }
+      },
+      "engineSwaps": [
+        {
+          "id": "k24",
+          "name": "K24 i-VTEC",
+          "note": "Honda's long stroke 2.4 on cams, a header and a tune, balance shafts out, naturally aspirated, on the Grove's own five speed.",
+          "engine": {
+            "layout": "I4",
+            "aspiration": "na",
+            "position": "front",
+            "displacement": 2.354,
+            "voice": {
+              "headers": "equal",
+              "pipes": 1,
+              "muffler": "sport",
+              "intake": "plenum",
+              "camRpm": 5000,
+              "camStep": 1
+            }
+          }
+        },
+        {
+          "id": "sr20det",
+          "name": "SR20DET",
+          "note": "The Silvia's own 2.0 turbo on a GT28 at 1.2 bar, with rocker arm stoppers so it can rev.",
+          "engine": {
+            "layout": "I4",
+            "aspiration": "turbo",
+            "position": "front",
+            "displacement": 1.998,
+            "voice": {
+              "headers": "equal",
+              "pipes": 1,
+              "muffler": "sport",
+              "diverter": "vent",
+              "flutter": 0.4,
+              "whoosh": 1,
+              "wastegate": 0.4
+            }
+          }
+        },
+        {
+          "id": "rb25det",
+          "name": "RB25DET Neo",
+          "note": "The R34 GT-T's iron block six on a big single turbo, top mount, at 1.3 bar.",
+          "engine": {
+            "layout": "I6",
+            "aspiration": "turbo",
+            "position": "front",
+            "displacement": 2.498,
+            "voice": {
+              "headers": "equal",
+              "pipes": 1,
+              "muffler": "straight",
+              "diverter": "vent",
+              "flutter": 0.3,
+              "whoosh": 1.3,
+              "wastegate": 0.7,
+              "screamer": 1
+            }
+          }
+        },
+        {
+          "id": "ls3",
+          "name": "6.2 LS3",
+          "note": "The Corvette's 6.2 pushrod V8 on its stock cam with long tube headers and a tune, through a T56.",
+          "engine": {
+            "layout": "V8",
+            "aspiration": "na",
+            "position": "front",
+            "displacement": 6.162,
+            "voice": {
+              "crank": "cross",
+              "headers": "equal",
+              "pipes": 2,
+              "crossover": "h",
+              "muffler": "sport",
+              "idleLope": 0.2
+            }
+          }
+        }
+      ]
     }
   ]
 }

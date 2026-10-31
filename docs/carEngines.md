@@ -225,6 +225,21 @@ The Supra's two V8 swaps (`engineSwaps` on the manifest car, physics in `driving
 
 Measured (stock setup, from rest, full throttle; 0-60 mph / 0-100 / 0-200 / top): stock 2JZ 4.92 / 5.20 / 22.9 s / 241 km/h; LS3 4.85 / 5.00 / 13.9 s / 296; 1UZ turbo 4.43 / 4.60 / 15.0 s / 284. With traction control: LS3 3.47 / 3.63 / 12.5 s, 1UZ 3.63 / 3.80 / 14.2 s. As with the Wendt's DAZA, the LS3's torque from idle spins the rears without traction control, where the 1UZ's lag keeps it under the grip; past 100 km/h, or with traction control, the LS3 is the quicker car.
 
+## Nakaya Grove engine swaps (the Power tab)
+
+The S13's four swaps (`engineSwaps` on the manifest car, physics in `drivingParams.json` `swaps.nakayaGrove`), from the user's brief, kept inside the Wendt Strom's swap range (top speed 242 to 294 km/h, 0-200 in 13 to 24 s). Nothing was fetched for this section: displacement, bore x stroke and the stock outputs are the engines' well known figures (as recalled); every build output, rev limit and mass is **est.**
+
+| Swap | Engine | Stock | Build (est.) | Mass (est.) | Gearbox |
+|---|---|---|---|---|---|
+| K24 i-VTEC (`k24`) | I4 2,354 cc, 87 x 99 mm, aluminium, iron liners, DOHC i-VTEC (VTC intake, lobe switching both cams) | K24A2: 205 hp at 7,000, 222 N·m at 4,500 | big port manifold, header, cams, springs, tune, balance shafts out: about 265 PS at 7,400, 265 N·m at 5,200, VTEC near 5,000, 7,800 limit | −25 kg on the KA24DE: 1,228 | the 240SX five speed behind an adapter, final 5.13: limiter 260 km/h over a 233 drag top speed |
+| SR20DET (`sr20det`) | I4 1,998 cc, 86 x 86 mm, aluminium, dry iron sleeves, DOHC on finger followers | S13: 205 PS at 6,000, 275 N·m at 4,000 | GT28 class turbo at about 1.2 bar, front mount, 740 cc, rocker stoppers, standalone: about 340 PS at 6,800, 400 N·m at 4,800, 7,500 limit (`spoolTime 0.55`, `turboShare 0.35`) | about the KA's: 1,245 | its own FS5W71C (the KA's ratios), final 4.39: limiter 292 over 260 |
+| RB25DET Neo (`rb25det`) | I6 2,498 cc, 86 x 71.7 mm, iron block, aluminium head, solid buckets, NVCS intake | R34 GT-T: 280 PS at 6,400, 343 N·m at 3,200 | GT3076 class single on a top mount at about 1.3 bar, front mount, 800 cc, oil restrictor, Nismo pump drive: about 450 PS at 6,800, 530 N·m at 4,800, 7,500 limit (`spoolTime 0.75`, `turboShare 0.45`) | +60 kg, all over the front axle: 1,313 | its own five speed 3.214 / 1.925 / 1.302 / 1.000 / 0.752 (**est.**, the R33 GTS25t's), final 4.06: limiter 319 over 287 |
+| 6.2 LS3 (`ls3`) | V8 6,162 cc, 103.25 x 92.0 mm, aluminium deep skirt, six bolt mains, pushrod two valve | 430 hp at 5,900, 575 N·m at 4,600, 6,600 limit | stock cam, long tubes, cold air, tune, springs: about 460 PS at 6,000, 600 N·m at 4,600, 6,800 limit | about the RB25's (with the T56): 1,308 | T56 Magnum with sixth at 0.694 (as the Zenith's), final 3.9: limiter 326 over 292 |
+
+Voices: K24 `I4`, `na`, `muffler: sport`, `camRpm: 5000`, `camStep: 1` (the VTEC crossover); SR20DET `I4`, `turbo`, `diverter: vent`, `flutter: 0.4`, `whoosh: 1`, `wastegate: 0.4`; RB25DET `I6`, `turbo`, `muffler: straight`, `diverter: vent`, `whoosh: 1.3`, `wastegate: 0.7`, `screamer: 1` (the top mount's external gate); LS3 as the Zenith's but `idleLope: 0.2` (the stock cam). All **est.**
+
+Measured (stock setup, from rest, full throttle, no traction control; 0-60 mph / 0-100 / 0-200 / top): stock KA24DE 7.37 / 7.87 s / never / 194 km/h; K24 5.13 / 5.48 / 25.8 s / 233; SR20DET 3.85 / 4.05 / 16.0 s / 260; RB25DET 3.42 / 3.57 / 12.5 s / 287; LS3 4.77 / 4.92 / 13.2 s / 292. Against the Wendt's swaps (3.6 VR6 23.8 s / 242, 07K 14.4 s / 282, DAZA 13.0 s / 294) the K24 sits by the VR6, the SR20DET between the VR6 and the 07K, the RB25DET and the LS3 by the DAZA. As on the Zenith, the LS3's torque from idle spins the rears off the line where the turbo engines' lag keeps them under the grip.
+
 ## Tachibana Runabout: 1994-99 Toyota MR2 SW20 Turbo (3S-GTE)
 
 Source status key: **sourced** = read on a fetched page; **est.** = not found.
