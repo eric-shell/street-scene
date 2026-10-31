@@ -818,6 +818,25 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_headlights_blackRetros",
+      "displayName": "Black Retros",
+      "carId": "wendtStrom",
+      "slot": "headlights",
+      "file": "parts/wendtStrom_headlights_blackRetros.glb",
+      "hides": [
+        "Headlights"
+      ],
+      "materialSlots": [
+        "Black",
+        "Lens",
+        "Light",
+        "Chrome",
+        "HeadLight"
+      ],
+      "tris": 5965,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Seiryu",
