@@ -682,6 +682,150 @@ def restore_normals(o):
     o['authored_normals'] = me.has_custom_normals
 
 
+def escape_dirs(n=160, min_z=-0.35, below=True):
+    """The directions a face must be seen along to stay: an even spread over the sphere (a Fibonacci
+    spiral) down to `min_z` (nobody looks at a car from under the road), plus, with `below`, the
+    underglow's: straight up from the road and rings 15, 30 and 45 degrees off it. With one ring at 25
+    degrees, block_out dropped tub and well faces that stop the 30 degree rays of the underglow check."""
+    out = []
+    for i in range(n):
+        z = 1 - 2 * (i + 0.5) / n
+        if z >= min_z:
+            r = math.sqrt(1 - z * z)
+            a = i * math.pi * (3 - math.sqrt(5))
+            out.append(Vector((r * math.cos(a), r * math.sin(a), z)))
+    if below:
+        out.append(Vector((0, 0, -1)))
+        for tilt in (15, 30, 45):
+            s, c = math.sin(math.radians(tilt)), math.cos(math.radians(tilt))
+            out += [Vector((s * math.cos(a), s * math.sin(a), -c)) for a in (k * math.pi / 4 for k in range(8))]
+    return out
+
+
+def hidden_faces(o, others=(), pred=None, through=('Glass', 'Lens'), dirs=None):
+    """Indices of the faces of `o` (those pred(center, normal, material) picks) that no ray escapes
+    from, from either side, in `dirs` (escape_dirs()): what the car's own panels box in. The occluders
+    are `o` and `others` (its stock pieces, a hood); the `through` materials are seen through."""
+    verts, faces = [], []
+    for ob in (o,) + tuple(others):
+        clear = {i for i, m in enumerate(ob.data.materials) if m and m.name.split('.')[0] in through}
+        mw, base = ob.matrix_world, len(verts)
+        verts += [mw @ v.co for v in ob.data.vertices]
+        faces += [[base + i for i in p.vertices] for p in ob.data.polygons if p.material_index not in clear]
+    tree = BVHTree.FromPolygons(verts, faces)
+    dirs = dirs or escape_dirs()
+    me, out = o.data, set()
+    names = [m.name.split('.')[0] if m else '' for m in me.materials]
+    for p in me.polygons:
+        c, n = p.center, p.normal
+        if pred and not pred(c, n, names[p.material_index]):
+            continue
+        pts = [c] + [c.lerp(me.vertices[i].co, 0.8) for i in p.vertices]
+        if not any(tree.ray_cast(q + n * (side * 2e-3), d)[0] is None
+                   for side in (1, -1) for q in pts for d in dirs if d.dot(n) * side > 0.05):
+            out.add(p.index)
+    return out
+
+
+def block_out(o, clear=(), quads=(), others=(), region=None, material='Black', builders=()):
+    """Empty a body's hidden volumes (the space under a flat floor, an engine bay under its hood) the
+    way the Wendt Strom's are: every face whose centre lies inside a `clear` box `(x0, x1, y0, y1, z0,
+    z1)` goes, whatever its material (or of the materials a 7th item lists); then `quads` close the volume, in `material`, flat shaded:
+    `('z', z, x0, x1, y0, y1, facing)` level, `('x', x, y0, y1, z0, z1, facing)` upright at ±x
+    (mirrored, `facing` +1 out, -1 in), `('y', y, x0, x1, z0, z1, facing)` across; `facing` 0 makes two
+    quads back to back (a lid seen from above through a hood's vents and from below through the wheel
+    wells). Last, the faces inside a `region` box (any of a list, or anywhere when None) that no ray
+    escapes from (hidden_faces, with `others` as occluders: the stock pieces, the hood) go too.
+    `builders` run after the quads, before that cull (well_box). Authored normals are kept (stash_normals). Returns (cleared, added, hidden) face counts."""
+    me = o.data
+    stashed = stash_normals(o)
+    inside = lambda c, boxes: any(x0 < c.x < x1 and y0 < c.y < y1 and z0 < c.z < z1 for x0, x1, y0, y1, z0, z1, *_ in boxes)
+    # A clear box may name the materials it takes as a 7th item (the Paint of a sill stays).
+    cleared = delete_faces(o, lambda c, n, m: any(inside(c, [b]) and (len(b) < 7 or m in b[6]) for b in clear)) if clear else 0
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+    mi = mat_index(o, material)
+    added = 0
+    for axis, at, a0, a1, b0, b1, facing in quads:
+        sides = (1, -1) if axis == 'x' else (1,)
+        for s in sides:
+            if axis == 'z':
+                corners, out = [(a0, b0, at), (a1, b0, at), (a1, b1, at), (a0, b1, at)], Vector((0, 0, 1))
+            elif axis == 'x':
+                corners, out = [(s * at, a0, b0), (s * at, a1, b0), (s * at, a1, b1), (s * at, a0, b1)], Vector((s, 0, 0))
+            else:
+                corners, out = [(a0, at, b0), (a1, at, b0), (a1, at, b1), (a0, at, b1)], Vector((0, 1, 0))
+            for want in ((1, -1) if facing == 0 else (facing,)):
+                f = bm.faces.new([bm.verts.new(v) for v in corners])
+                f.material_index, f[own], f.smooth = mi, 1, False
+                f.normal_update()
+                if f.normal.dot(out) * want < 0:
+                    f.normal_flip()
+                added += 1
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    # `builders`: functions of `o` that add closing geometry of their own (well_box), returning a face count.
+    for build in builders:
+        added += build(o)
+    boxes = region if region is None or isinstance(region[0], (tuple, list)) else [region]
+    first_new = len(me.polygons) - added
+    hid = hidden_faces(o, others, lambda c, n, m: boxes is None or inside(c, boxes))
+    hid = {i for i in hid if i < first_new}
+    _delete_idx(o, hid)
+    if stashed:
+        restore_normals(o)
+    return cleared, added, len(hid)
+
+
+def well_box(o, axle_y, axle_z, r, x0, x1, z_end=0.2, segments=16, material='Black'):
+    """A plain wheel well in place of a donor's (inner fender, strut tower, arms), mirrored to both
+    sides: a liner, the band x0..x1 swept about the axle (y, z) at radius `r`, from the front down to
+    the back where it reaches `z_end`, facing the wheel; and an inner wall at x0 under the arc down to
+    the floor's level `z_end - 0.07`, facing the well, which closes the bay and the cabin off from it.
+    r is the tire's radius plus the house liner lift and a little (the Wendt Strom's liners sit at r
+    0.44 to 0.45 for its 0.31 m wheel centre). Clear the old well first (block_out's `clear`). Returns the faces added."""
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+    mi = mat_index(o, material)
+    top = math.acos(max(-1.0, min(1.0, (z_end - axle_z) / r)))
+    arc = [(-top + 2 * top * i / segments) for i in range(segments + 1)]
+    pts = [(axle_y + r * math.sin(a), axle_z + r * math.cos(a)) for a in arc]
+    floor = z_end - 0.07
+    n = 0
+    for s in (1, -1):
+        new = []
+        for (ya, za), (yb, zb) in zip(pts, pts[1:]):
+            new.append(([(s * x0, ya, za), (s * x1, ya, za), (s * x1, yb, zb), (s * x0, yb, zb)], Vector((0, (ya + yb) / 2 - axle_y, (za + zb) / 2 - axle_z)) * -1))
+            new.append(([(s * x0, ya, floor), (s * x0, yb, floor), (s * x0, yb, zb), (s * x0, ya, za)], Vector((s, 0, 0))))
+        for corners, out in new:
+            f = bm.faces.new([bm.verts.new(v) for v in corners])
+            f.material_index, f[own], f.smooth = mi, 1, False
+            f.normal_update()
+            if f.normal.dot(out) < 0:
+                f.normal_flip()
+            n += 1
+    bmesh.ops.remove_doubles(bm, verts=bm.verts[-n * 4:], dist=1e-5)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return n
+
+
+def _delete_idx(o, idx):
+    if idx:
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[bm.faces[i] for i in idx], context='FACES')
+        bm.to_mesh(o.data)
+        bm.free()
+        o.data.update()
+
+
 def round_lamp(o, center, normal, r_lens, r_bezel, proud=0.02, lens='HeadLight', bezel='Chrome', wall='Black', segments=24):
     """A round lamp set into a panel or an intake (fog lamps, a bumper's driving lamps): a `wall` cup from
     5 mm behind `center` out to `proud` m along `normal`, a flat `bezel` ring on its face and a `lens` disc

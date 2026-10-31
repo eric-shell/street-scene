@@ -491,6 +491,34 @@ DONORS = {
                   (-0.50, 0.50, 0.86, 1.70, 0.138), (-0.68, 0.68, 1.62, 2.06, 0.29)],
         'floorWalls': [('x', 0.40, -1.62, -0.86, 0.138, 0.55), ('y', -1.62, -0.40, 0.40, 0.138, 0.55),
                        ('x', 0.50, 0.86, 1.70, 0.138, 0.50), ('y', 1.66, -0.50, 0.50, 0.138, 0.29)],
+        # Then the volumes over the floor emptied as the Wendt Strom's are (carKit block_out): the
+        # engine bay between the wells is a black box under a lid 1 cm below the hood's front edge
+        # (seen through the louvred vent and the shut lines), the black over it out to the fenders
+        # goes (the hoses, strut tops and inner fender scraps), the wells are plain liners (well_box:
+        # r 0.385 about each axle, 4 cm over the tire's crown, an inner wall under each; the source's
+        # strut towers, arms and tubs go, with the cabin trim that poked into them), the pan under
+        # the cabin gives way to a flat cabin floor at the carpet's cut (z 0.28) with a riser under
+        # the rear seat, and the spare wheel well and the rear subframe go under a trunk floor at
+        # 0.45. Body 20,184 → 12,658 triangles (Black 11,300 → 4,952); the underglow check still
+        # finds no Interior or Glass.
+        'blockOut': {
+            'clear': [(-0.42, 0.42, -1.95, -0.89, 0.139, 0.60),
+                      (-0.76, 0.76, -1.80, -0.95, 0.60, 0.86, ('Black',)),
+                      (0.415, 0.80, -1.66, -0.85, 0.139, 0.82, ('Black',)), (-0.80, -0.415, -1.66, -0.85, 0.139, 0.82, ('Black',)),
+                      (0.415, 0.80, -1.66, -0.83, 0.139, 0.72, ('Interior',)), (-0.80, -0.415, -1.66, -0.83, 0.139, 0.72, ('Interior',)),
+                      (-0.74, 0.74, -0.80, 0.80, 0.139, 0.28, ('Black',)),
+                      (0.495, 0.80, 0.83, 1.66, 0.139, 0.82, ('Black',)), (-0.80, -0.495, 0.83, 1.66, 0.139, 0.82, ('Black',)),
+                      (0.495, 0.80, 0.83, 1.66, 0.139, 0.76, ('Interior',)), (-0.80, -0.495, 0.83, 1.66, 0.139, 0.76, ('Interior',)),
+                      (-0.495, 0.495, 0.86, 1.66, 0.139, 0.45, ('Black',)),
+                      (-0.68, 0.68, 1.66, 2.06, 0.291, 0.45, ('Black',))],
+            'quads': [('z', 0.60, -0.42, 0.42, -1.95, -0.89, 0), ('x', 0.42, -1.95, -1.60, 0.138, 0.60, 1),
+                      ('y', -1.95, -0.42, 0.42, 0.138, 0.60, -1), ('y', -0.89, -0.42, 0.42, 0.138, 0.60, -1),
+                      ('z', 0.28, -0.76, 0.76, -0.89, 0.86, 1), ('y', 0.85, -0.56, 0.56, 0.27, 0.46, -1),
+                      ('z', 0.45, -0.50, 0.50, 0.84, 1.66, 0), ('z', 0.45, -0.68, 0.68, 1.66, 2.06, 0)],
+            # (axle y, axle z, liner radius, inner x, outer x)
+            'wells': [(-1.237, 0.343, 0.385, 0.42, 0.80), (1.237, 0.343, 0.385, 0.50, 0.80)],
+            'region': [(-0.9, 0.9, -2.3, -0.7, 0.0, 1.0), (-0.9, 0.9, 0.7, 2.3, 0.0, 0.9), (-0.9, 0.9, -0.9, 0.9, 0.0, 0.35)],
+        },
         # The stock pieces (split_donor, run by ship_donor), each the donor's own panels: the game
         # mod car models every panel as its own shell, so the pieces part on the car's shut lines by
         # taking whole islands (docs/carDonors.md section 17, parts skill section 6). First match wins.
@@ -3108,7 +3136,6 @@ def floor_plates(o, plates, walls=(), others=(), material='Black', top=0.6, thro
     the underglow. Plates must overlap in plan where they meet, so no ray straight up passes
     between them, and stay inboard of the tires (the fronts' at full lock). Returns (below,
     hidden) faces deleted."""
-    from mathutils.bvhtree import BVHTree
     mi = mat_index(o, material)
     inside = lambda c: any(x0 <= c.x <= x1 and y0 <= c.y <= y1 and c.z < z + 0.005 for x0, x1, y0, y1, z in plates)
     me = o.data
@@ -3137,25 +3164,8 @@ def floor_plates(o, plates, walls=(), others=(), material='Black', top=0.6, thro
         bm.free()
         me.update()
     plate = len(me.polygons) - len(plates) - len(quads)
-    # One tree of every occluder, the plates included.
-    verts, faces = [], []
-    for ob in (o,) + tuple(others):
-        clear = {i for i, m in enumerate(ob.data.materials) if m and m.name.split('.')[0] in through}
-        mw, base = ob.matrix_world, len(verts)
-        verts += [mw @ v.co for v in ob.data.vertices]
-        faces += [[base + i for i in p.vertices] for p in ob.data.polygons if p.material_index not in clear]
-    tree = BVHTree.FromPolygons(verts, faces)
-    dirs = _view_dirs() + [Vector((0, 0, -1))] + [Vector((math.sin(math.radians(25)) * math.cos(a), math.sin(math.radians(25)) * math.sin(a),
-                                                          -math.cos(math.radians(25)))) for a in (0, math.pi / 2, math.pi, 1.5 * math.pi)]
-    hidden = set()
-    for p in me.polygons:
-        if p.material_index != mi or p.index >= plate or p.center.z > top:
-            continue
-        c, n = p.center, p.normal
-        pts = [c] + [c.lerp(me.vertices[i].co, 0.8) for i in p.vertices]
-        if not any(tree.ray_cast(q + n * (side * 2e-3), d)[0] is None
-                   for side in (1, -1) for q in pts for d in dirs if d.dot(n) * side > 0.05):
-            hidden.add(p.index)
+    # The plates and walls box the chassis in: what no ray escapes from now goes (carKit hidden_faces).
+    hidden = {i for i in hidden_faces(o, others, lambda c, n, m: m == material and c.z <= top, through) if i < plate}
     _delete_indices(o, lambda p: p.index in hidden)
     if stashed:
         restore_normals(o)
@@ -3670,6 +3680,12 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     if DONORS[cid].get('floor'):
         below, hidden = floor_plates(low, DONORS[cid]['floor'], DONORS[cid].get('floorWalls', ()))
         print(f'{cid}: flat floor, {below} faces below it and {hidden} boxed in culled')
+    # Recipe `blockOut`: the bay, the wells and the volumes over the floor emptied (carKit block_out).
+    if DONORS[cid].get('blockOut'):
+        bo = DONORS[cid]['blockOut']
+        cleared, added, hidden = block_out(low, bo.get('clear', ()), bo.get('quads', ()), region=bo.get('region'),
+                                           builders=[lambda o, w=w: well_box(o, *w) for w in bo.get('wells', ())])
+        print(f'{cid}: blocked out, {cleared} faces cleared, {added} added, {hidden} boxed in culled')
     for points, height, material in DONORS[cid].get('strips', ()):
         lamp_strip(low, points, height, material)
     for center, radius, material, *yaw in DONORS[cid].get('discs', ()):
