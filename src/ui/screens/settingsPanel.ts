@@ -449,6 +449,7 @@ function credits(): HTMLElement[] {
       creditGroup('Music', albums, 'Transcoded to 128 kbps and loudness normalized; otherwise unmodified.'),
       creditGroup('Sound', [
         ...credit('Crowd', '"applause", "crowd cheering"', 'by ', h('b', {}, 'freesound_community'), ' (Pixabay) · ', pixabay),
+        ...credit('Camera', '"camera shutter"', 'by ', h('b', {}, 'freesound_community'), ' (Pixabay) · ', pixabay),
         ...credit('Engines', link('https://github.com/ange-yaghi/engine-sim', 'Engine Simulator'), 'pulse train model by ', h('b', {}, 'Ange Yaghi'), ' · MIT'),
       ], 'The engine voices are synthesized in the browser: every cylinder fires in its order and its pulse travels its own header before the pipe colors it.'),
       creditGroup('Built with', [
