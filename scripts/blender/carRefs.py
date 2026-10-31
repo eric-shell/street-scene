@@ -286,8 +286,8 @@ def checks(m, t, spec, house, cid=None):
     feat('cowl (Black, under the windshield)', m['cowl'], 'found' if m['cowl'] else 'missing')
     feat('interior (a donor cabin)', m['interior'], 'found' if m['interior'] else 'missing', "the donor's own or one transplanted by interior(), never a block")
     if cid and "cabin_outside" in globals():  # carFeatures.py is loaded
-        out = cabin_outside(cid, m)
-        feat('cabin inside the skin', not out, f'{len(out)} vertices out, worst {f3(out[0][0])}' if out else 'all inside', 'no Interior vertex may stand proud of a door, the glass or the roof')
+        proud = cabin_outside(cid, m)
+        feat('cabin inside the skin', not proud, f'{len(proud)} vertices out, worst {f3(proud[0][0])}' if proud else 'all inside', 'no Interior vertex may stand proud of a door, the glass or the roof')
     g0, g1 = house['features']['arch']['gap']
     for label, g in (('arch gap front', m['archGapFront']), ('arch gap rear', m['archGapRear'])):
         feat(label, g is not None and g0 <= g <= g1, f3(g), f'house {g0}..{g1}; negative means the tire pokes through')

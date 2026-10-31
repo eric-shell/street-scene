@@ -784,6 +784,67 @@
           0.53
         ]
       }
+    },
+    {
+      "id": "nakayaGrove",
+      "displayName": "Nakaya Grove",
+      "source": "eshell",
+      "provisional": false,
+      "file": "cars/nakayaGrove.glb",
+      "baseBodyNode": "Body",
+      "wheelNodes": [],
+      "wheelRadius": 0.344,
+      "wheelWidth": 0.24,
+      "wheels": {
+        "FL": [
+          0.6909,
+          0.3435,
+          1.2375
+        ],
+        "FR": [
+          -0.6909,
+          0.3435,
+          1.2375
+        ],
+        "RL": [
+          0.6909,
+          0.3435,
+          -1.2375
+        ],
+        "RR": [
+          -0.6909,
+          0.3435,
+          -1.2375
+        ]
+      },
+      "wheelbase": 2.475,
+      "trackFront": 1.382,
+      "trackRear": 1.382,
+      "dimensions": {
+        "length": 4.49,
+        "width": 1.92,
+        "height": 1.12
+      },
+      "materialMap": {},
+      "defaultWheel": "wheel_hari",
+      "targetOffset": {
+        "front": 10,
+        "rear": -10
+      },
+      "defaultPaint": "#1d3f6e",
+      "selectable": true,
+      "engine": {
+        "layout": "I4",
+        "aspiration": "na",
+        "position": "front",
+        "displacement": 2.389,
+        "voice": {
+          "headers": "equal",
+          "pipes": 1,
+          "muffler": "quiet",
+          "intake": "plenum"
+        }
+      }
     }
   ]
 }

@@ -99,13 +99,14 @@ A recipe adds only what that donor needs:
 | `lamps` | predicates `(center, normal, material)` for faces reduced with the lamps at their tighter error: a lamp housing outside its cover (the RX-7's raised pop-ups) |
 | `press` | `False` leaves the panels under removed badges as they are: for lettering that sits on a smooth panel rather than in a recess, where pressing dents it (the RX-7's tail); a predicate on a box's center presses only those (the Kombi's washer nozzles on its curved bumper are left) |
 | `lampBudget`, `lampError`, `carBudget` | this car's lamps' triangles and error and its whole budget in place of `LAMP_BUDGET`, `LAMP_ERROR` and `CAR_BUDGET` (the Kombi's lamps kept finer, its total raised so the shell does not pay for them) |
+| `midBudget`, `shellBudget` | the first collapse's target (60,000) and the shell's cap (`BUDGET`): a donor whose hidden chassis is a large share of the import keeps its panels fine with both raised (the Nakaya Grove's game mod chassis) |
 | `debadge` | `False` skips the badge island passes: for a donor whose badges are materials of their own (drop them in `materials`) and whose grilles are meshes of thousands of small flat cells, which the passes take for badges and press flat (the R33's: 2,423 islands) |
 | `bridges` | boxes `(lo, hi)` across a gap in the grille's bars: a `cull` or a badge mount cut them where it sat. The faces centered in the box go, then each bar end on the box's left face is lofted to its match on the right (same material, nearest z), so the bar runs across in one piece (the Golf's two bars, in front of the black panel behind them) |
 | `rawNames` | the donor's materials are `Material.001`, `Material.002`: the `.001` suffix is the name, so classification must not strip it (the Runabout's) |
 | `texture`, `textureCuts`, `textureClass` | lamps painted in a texture over their geometry: regexes of the material names whose base colour classes each face (`lamp_colour`, or the recipe's `textureClass`), ahead of and behind the axles; `textureCuts` `(axis, value)` cut those faces along the texture's bands first (x mirrored) |
 | `liftLiners` | `True`: raise wheel well liners on or through the tire clear of it after the reduction (`lift_liners`; the Albrecht Kombi's rear) |
 | `pieces` | `True`: splice the car's kept hand-made pieces (`save_pieces`, `<cid>.pieces.glb`) into the reduced shell, for work no rule can express (the Golf's grille and lower intake) |
-| `discs` | `(center, radius, material)`: a flat round lens added after the reduction, for a round lamp the collapse leaves polygonal (cull the donor's own); a round part is rebuilt, never collapsed (the RX-7's bumper lamps) |
+| `discs` | `(center, radius, material[, yaw])`: a flat round lens added after the reduction, turned `yaw` degrees about z where the lens faces a little sideways, for a round lamp the collapse leaves polygonal (cull the donor's own); a round part is rebuilt, never collapsed (the RX-7's bumper lamps) |
 | `details` | predicates `(center, normal, material)` for small parts that must match side to side (door handles, mirrors): they join the lamps' pass, reduced at its finer error and mirrored |
 | `lowCull` | predicates `(center, normal, material)` for faces of the reduced shell to delete after the pieces are spliced in: slivers the collapse makes beside a cut (the Golf's lip under its grille) |
 | `mirrorLamps` | `False` to keep a donor's lamps as they are; by default the +x lamps are reduced and mirrored across, so the two sides match to the vertex |
@@ -296,6 +297,16 @@ The R33 donor is coarse (30,650 triangles, nothing to lose to the reduction) and
 
 Follow-up the same day: the hood and bumper read faceted. Two causes: the export reshaded the body from its reduced geometry (now it keeps the source's normals, above), and the lower intake piece, cut from the first reduced car, carried that car's facets onto the bumper (it went; with the lamps and the shading kept, the reduction leaves the intake clean). The grille piece was trimmed to the bars and their back panel, cutting every shell face it hides (`save_pieces(..., whole=False)`), and the hood's leading edge over it is reduced with the lamps (recipe `lamps`), since the shell's collapse folded it into teeth.
 
+## 17. Nakaya Grove (2026-10-30)
+
+An eighth garage car, after a 180SX (RPS13, kouki Type X): BlackSnow02's "Nissan Silvia 180sx [Free]" (CC BY 4.0, 554,952 faces listed), the user's pick. Its author says "the base of this model is taken from the files", and the import shows a game mod's car: six switchable badge sets, a CA18DET engine bay, an Aston Martin DB11's brakes (`amdb11_*`), two generations of lamps with "lights off" textures, a roll cage with the suspension and exhaust in one material (`coupe`). Shipped on the Sketchfab licence at the user's call, as the Dalton Fiend was. Published 4,540 mm on a 2,475 mm wheelbase (length -1.0 %). A first build on InstaSky's 240SX (102,000 faces, a clean source) was replaced the same day at the user's request.
+
+The suffixes are part of the material names (`RPS13_metaltrim.002` is the GT wing, `.001` the trim), so the recipe sets `rawNames`. Dropped: the wheels, brakes, badges, engine bay, the GT wing and its end plates (body colour islands); the cage material is parked on Trim so only the exhaust tip is kept. `debadge: False`: the badges are their own materials, and the passes took 466 islands (the tail lamps' reflector cups among them) and pressed 62 recesses.
+
+The kouki tail is in layers: two round red lenses a side (outermost) and a clear housing round them in one textured material, the reflector body behind (`.002`, parked on Trim, since the texture pass matches names without their suffix). The lenses are faceted optics, faces a median 30 degrees off the lens's plane: no collapse reduces them (the lamp pass kept 17,000 of 24,800 triangles and left the shell 300), so they are culled for `discs`, which now take a yaw (the outer lens faces 15 degrees out where the tail wraps the corner). The housing is a clear `Lens`, the reflector body `Chrome`, the centre garnish black with the reverse lamps `ClearLens`. The pop-ups are closed; the slim lamp under each lid glows, the Type X bumper's signals are amber.
+
+A third of the import is the mod's chassis in the trim's black (floor pan, frame rails, inner fenders): collapsed to the usual 60,000 first, the paint kept 8,500 triangles and the panels read faceted. The recipe raises the first pass (`midBudget` 120,000) and the shell (`shellBudget` 20,500, `carBudget` 30,000), culls the black faces that face the ground, and reduces the hood's louvred vent with the lamps. Dropping the chassis outright freed 1,300 more paint triangles but opened the wheel wells into the cabin, so it stays. The rear tubs sat on the tires (`liftLiners`); the cabin's carpet below the sills (seen through the slit between door and skirt) and the door cards' tops by the A pillars (2 to 3 cm through the glass) are culled, so the cabin is all inside the skin. 30,043 triangles (cabin 2,500), drift p95 2.6 mm, lost max 139 mm; arch gaps 0.046 / 0.002; track 1.382 (the drift wheels sit inboard). The donor's door handles are part of the door, so the audit counts none.
+
 ## Donor credits
 
 | Car | Model | Author | Licence |
@@ -307,5 +318,6 @@ Follow-up the same day: the hood and bumper read faceted. Two causes: the export
 | Nakaya Horizon GT | Nissan Skyline R33 GT-R (1995 to 1998 R33 GT-R) | greddy295 | CC BY 4.0 |
 | Tachibana Zenith | Toyota Supra MK IV (1994) | TinoD2 | CC BY 4.0 |
 | Tachibana Runabout | 1996 Toyota MR2 W20 | s0h1o9b | CC BY 4.0 |
+| Nakaya Grove | Nissan Silvia 180sx [Free] (180SX Type X, RPS13) | BlackSnow02 | CC BY 4.0 |
 
 The first set (2026-10-21: an RS6 C8, a WRX STI hatch, an RSX Type-S and a Supra MK4) was replaced on 2026-10-22: three of its four licences were NonCommercial. The Proto Compact went with them.

@@ -358,6 +358,83 @@ DONORS = {
                       r'^Material\.(004|005|007|017)$': 'Lamp', r'^Material\.006$': None, r'^Material\.010$': 'Chrome',
                       r'^Material\.(012|015|018)$': 'Black'},
     },
+    'nakayaGrove': {
+        'name': 'Nissan Silvia 180SX (RPS13 Type X)',
+        'uid': 'eb3b4310304948ec8eaa4447080d2380',
+        'author': 'BlackSnow02',
+        'license': 'CC Attribution',
+        'mm': {'length': 4540, 'wheelbase': 2475},
+        # One import holds every variant of a game mod's car (its author: "the base of this model is
+        # taken from the files"): six switchable badge sets, a roll cage with the suspension and
+        # exhaust (`coupe`), a CA18DET engine bay, an Aston Martin DB11's brakes (`amdb11_*`) and
+        # two generations of lamps. The tires are `Scene_-_Root` (the wheels the TypeX and rim
+        # materials); the GT wing (`RPS13_metaltrim.002` stands and end plates, the carbon deck)
+        # goes, since stock is plain.
+        # The suffixes are part of the names (`RPS13_metaltrim.002` is the wing, `.001` the trim).
+        'rawNames': True,
+        'tires': r'^Scene_-_Root\.002$',
+        'materials': {r'^(TypeX_wheel|S13_rim2|amdb11_\w+\.002|CA18DET|coupe_engine(\.001)?|oilcooler|resivor|braded_line_\d|engine_red|chrome\.00[23])$': None,
+                      r'^(Material\.04[169]|Material\.055|Material_2_002|pessima_engine|RPS13_metaltrim\.002|RPS13_carbon_fiber\.002|Scene_-_Root\.002)$': None,
+                      r'^(badges_\w+|coupe_lettering|sidebadge1|rps13_defi_turbo_lod_off|defi_turbo_lod)$': None,
+                      r'^RPS13\.00[14]$': 'Paint', r'^rps13_glass\.001$': 'Glass', r'^mirror\.002$': 'Black',
+                      r'^(RPS13_rubbertrim\.00[12]|RPS13_metaltrim\.001|RPS13_glossblacktrim|S13_chuki|material)$': 'Black', r'^pessima$': None,
+                      r'^(RPS13_interior_greyish|rps13_Interior[12]\.001|SeatMat|Bride|rps13_carpet|apexi|apexiglass|rps13_interior_lights_rework(_2)?|new_int_rhd|coupe_interior|Material_0_017|Material_12|RPS13_carbon_fiber|\.001)$': 'Interior',
+                      r'^RPS13_headlights$': 'Lamp', r'^kouki_lights_off_sex$': 'Lamp', r'^kouki_lights_off_sex\.002$': 'Trim',
+                      r'^zenki_reverse$': 'Lamp', r'^Material_1_004$': 'Black', r'^zenki_lights_off$': 'Reflector', r'^Material_1$': None,
+                      r'^RPS13_brakelight$': 'BrakeLight', r'^signals_typex(_L)?$': 'Light',
+                      # The roll cage, suspension and exhaust in one material: parked on Trim, only the tip kept.
+                      r'^coupe$': 'Trim'},
+        # The kouki tail lamps, in layers: two round red lenses a side (outermost, they glow) and an
+        # outer housing round them in one material, the housing a clear cover; behind both the
+        # reflector body (`.002`, parked on Trim: the texture pass matches names without their
+        # suffix, so it cannot be told apart by texture). The lenses are told from the housing by
+        # their discs. The centre garnish is black with a small reverse lamp each side (the bright
+        # cells of `zenki_reverse`).
+        'texture': [r'^zenki_reverse$'],
+        'recolor': [(lambda c, n, m: m == 'TailLight' and c.y > 1.9 and 0.6 < c.z < 0.76 and abs(c.x) > 0.3
+                     and math.hypot(abs(c.x) - 0.453, c.z - 0.691) > 0.06 and math.hypot(abs(c.x) - 0.654, c.z - 0.687) > 0.055, 'Lens'),
+                    (lambda c, n, m: m == 'Trim' and c.y > 1.9 and c.z > 0.55, 'Chrome'),
+                    # The exhaust: one tip under the rear bumper's left corner.
+                    (lambda c, n, m: m == 'Trim' and c.y > 1.88 and 0.38 < c.x < 0.65 and c.z < 0.3, 'Chrome'),
+                    (lambda c, n, m: m == 'Chrome' and c.y > 2.1 and abs(c.x) < 0.3 and 0.67 < c.z < 0.73, 'ClearLens'),
+                    (lambda c, n, m: m == 'TailLight' and c.y > 2.1 and abs(c.x) < 0.3, 'Black')],
+        # The badges are materials of their own (six sets, dropped above); the badge passes took
+        # 466 islands (the tail lamps' reflector cups among them) and pressed 62 recesses.
+        'debadge': False,
+        # The round red tail lenses are faceted optics (faces a median 30 degrees off the lens's
+        # plane, 15,700 triangles): no collapse reduces them (the lamp pass kept 17,000 of 24,800 and
+        # left the shell 300), so they are culled for flat discs, each turned like its lens (the
+        # outer one wraps the corner), just behind the lens's front rim.
+        'cull': [lambda c, n, m: m == 'TailLight' and c.y > 1.9
+                 and (math.hypot(abs(c.x) - 0.453, c.z - 0.691) < 0.064 or math.hypot(abs(c.x) - 0.654, c.z - 0.687) < 0.064),
+                 # The black underside of the kit's aprons, skirts and undertray: only seen from
+                 # below, it kept 2,300 triangles the panels needed.
+                 lambda c, n, m: m == 'Black' and n.z < -0.6 and c.z < 0.45,
+                 # The rest of the roll cage, suspension and exhaust pipe.
+                 lambda c, n, m: m == 'Trim',
+                 # The cabin's carpet below the sills, seen from the side through the slit between the
+                 # door and the skirt (the chassis's floor pan is under it), and the door cards' tops
+                 # by the A pillars, which stood 2 to 3 cm through the side glass.
+                 lambda c, n, m: m == 'Interior' and c.z < 0.3,
+                 lambda c, n, m: m == 'Interior' and abs(c.x) > 0.56 and -0.45 < c.y < -0.15 and c.z > 0.95],
+        'discs': [((0.453, 2.119, 0.691), 0.058, 'TailLight', -8), ((-0.453, 2.119, 0.691), 0.058, 'TailLight', 8),
+                  ((0.654, 2.069, 0.687), 0.053, 'TailLight', -15), ((-0.654, 2.069, 0.687), 0.053, 'TailLight', 15)],
+        'lampBudget': 7000,
+        # The hood's louvred vent (body colour slats) went to a black zigzag in the shell's
+        # collapse: reduced with the lamps, at their finer error.
+        'lamps': [lambda c, n, m: m == 'Paint' and abs(c.x) < 0.34 and -1.6 < c.y < -0.9 and c.z > 0.7],
+        # The import is 240,000 triangles, a third of them a game mod's chassis (floor pan, frame
+        # rails, engine bay) in the trim's black: collapsed to the usual 60,000 first, the paint
+        # kept 8,500 and the panels read faceted. A finer first pass and a larger shell.
+        'midBudget': 120000,
+        'shellBudget': 20500,
+        'carBudget': 30000,
+        # The rear tubs' liners sit on the drift tires (an arch gap of -0.118): lifted clear.
+        'liftLiners': True,
+        # The GT wing's end plates are in the body's own material: they would float beside the hatch.
+        'islands': [lambda k, a, b, mats: set(mats) == {'Paint'} and k < 1000 and abs((a.x + b.x) / 2) > 0.85
+                    and (a.y + b.y) / 2 > 1.9 and (a.z + b.z) / 2 > 0.95],
+    },
 }
 
 # Reproducibility test donors (CC Attribution): four body styles from four authors with four
@@ -3108,6 +3185,7 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     lamp_error = DONORS[cid].get('lampError', LAMP_ERROR)
     car_budget = DONORS[cid].get('carBudget', CAR_BUDGET)
     budget = DONORS[cid].get('shellBudget', budget)
+    mid = DONORS[cid].get('midBudget', mid)
     skin = _copy(full, f'donor:{cid}.Skin')
     # The lamps ride through the first collapse untouched (held), so their own pass works from
     # the source's detail: collapsed to 60,000 with the rest, the Kombi's round fog lamps were
@@ -3181,8 +3259,8 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
         back_panels(low, DONORS[cid]['backPanels'])
     for points, height, material in DONORS[cid].get('strips', ()):
         lamp_strip(low, points, height, material)
-    for center, radius, material in DONORS[cid].get('discs', ()):
-        lamp_disc(low, center, radius, material)
+    for center, radius, material, *yaw in DONORS[cid].get('discs', ()):
+        lamp_disc(low, center, radius, material, yaw=yaw[0] if yaw else 0.0)
     # Hand-made pieces (recipe `pieces`) go in last, into the reduced shell: spliced in before the
     # collapse, the shell round them folded into slivers.
     if DONORS[cid].get('pieces'):
@@ -3341,11 +3419,12 @@ def splice_pieces(cid, low, snap=0.01, reach=0.1):
     return added
 
 
-def lamp_disc(o, center, radius, material, segments=24):
+def lamp_disc(o, center, radius, material, segments=24, yaw=0.0):
     """A flat round lamp lens, `segments` triangles round `center` (x, y, z) in the car's xz
-    plane, turned out of the nearer end: a recipe `discs` entry `(center, radius, material)`. A
-    round lens is rebuilt, never collapsed (the wheels' rule): the RX-7's bumper lamps came out
-    8- and 10-sided and unalike, side to side."""
+    plane, turned out of the nearer end: a recipe `discs` entry `(center, radius, material)`, with
+    an optional fourth value, `yaw` (degrees about z: a lens that faces a little sideways where
+    the tail wraps the corner, the 180SX's outer lenses). A round lens is rebuilt, never collapsed
+    (the wheels' rule): the RX-7's bumper lamps came out 8- and 10-sided and unalike, side to side."""
     me = o.data
     bm = bmesh.new()
     bm.from_mesh(me)
@@ -3353,7 +3432,9 @@ def lamp_disc(o, center, radius, material, segments=24):
     mi = mat_index(o, material)
     cx, cy, cz = center
     hub = bm.verts.new((cx, cy, cz))
-    rim = [bm.verts.new((cx + radius * math.cos(2 * math.pi * i / segments), cy, cz + radius * math.sin(2 * math.pi * i / segments)))
+    ky, kx = math.sin(math.radians(yaw)), math.cos(math.radians(yaw))
+    rim = [bm.verts.new((cx + radius * math.cos(2 * math.pi * i / segments) * kx, cy + radius * math.cos(2 * math.pi * i / segments) * ky,
+                         cz + radius * math.sin(2 * math.pi * i / segments)))
            for i in range(segments)]
     out = 1 if cy > 0 else -1
     for i in range(segments):

@@ -415,6 +415,35 @@
         "_antilag": "Rolling antilag at 5,000: past the CT26's full boost, a little above the torque plateau's start.",
         "antilagRpm": 5000
       }
+    },
+    "nakayaGrove": {
+      "_name": "Nakaya Grove (1994 Nissan 240SX S13 donor): front mounted naturally aspirated 2.4 L inline four (KA24DE), rear wheel drive. 155 hp at 5,600 rpm and 217 N·m at 4,400, a 6,500 rpm limiter, a five speed manual, 1,253 kg. Little power and a light, balanced front engine rear drive chassis: it is slow in a straight line and easy to hold sideways.",
+      "mass": 1253,
+      "drivetrain": { "layout": "rwd" },
+      "engine": {
+        "_": "Torque curve is an estimate (no stock dyno chart found) through the sourced points 217 N·m at 4,400 and 155 hp at 5,600 (docs/carEngines.md); the 6,500 redline is an estimate.",
+        "redline": 6500,
+        "torqueCurve": [
+          [800, 100],
+          [1500, 150],
+          [2500, 180],
+          [3500, 200],
+          [4400, 217],
+          [5600, 197],
+          [6500, 160]
+        ],
+        "torqueMul": 0.88
+      },
+      "gearbox": {
+        "_": "The 240SX's five speed, 3.321 / 1.902 / 1.308 / 1.000 / 0.759 from the MotorMatchup listing for the 1995 SE (docs/carEngines.md). The final drive is 4.85 against the sourced 4.083: shorter, so the limiter (210 km/h) sits about 1.1 times the drag top speed (194), as on the other cars, and the Short and Long gear settings move a corner exit by the same amount.",
+        "ratios": [3.321, 1.902, 1.308, 1.0, 0.759],
+        "finalDrive": 4.85
+      },
+      "tires": { "gripFront": 1.78, "gripRear": 1.62 },
+      "launch": {
+        "_": "A modest NA four: launching near the torque peak (4,400) is about right; more revs only light up the rears.",
+        "defaultRpm": 4000
+      }
     }
   },
   "swaps": {

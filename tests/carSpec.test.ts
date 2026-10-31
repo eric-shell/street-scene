@@ -35,7 +35,7 @@ describe('car spec labels', () => {
 
   it('the selectable cars carry a drivetrain code and an engine layout', () => {
     const badges = Object.fromEntries(SELECTABLE_CAR_IDS.map((id) => [id, specBadges(cars.find((c) => c.id === id)!.engine, getBaseTuning(id).drivetrain.layout).map((b) => b.text)]));
-    expect(badges).toEqual({ wendtStrom: ['FA', 'VR6'], kazamaRotor: ['FR', 'R2', 'Turbo'], albrechtKombi: ['FA', 'I5', 'Turbo'], daltonFiend: ['FR', 'V8', 'S/C'], tachibanaZenith: ['FR', 'I6', 'Turbo'], tachibanaRunabout: ['MR', 'I4', 'Turbo'] });
+    expect(badges).toEqual({ wendtStrom: ['FA', 'VR6'], kazamaRotor: ['FR', 'R2', 'Turbo'], albrechtKombi: ['FA', 'I5', 'Turbo'], daltonFiend: ['FR', 'V8', 'S/C'], tachibanaZenith: ['FR', 'I6', 'Turbo'], tachibanaRunabout: ['MR', 'I4', 'Turbo'], nakayaGrove: ['FR', 'I4'] });
   });
 
   it('drivetrain codes are the standard two letters: engine position then driven wheels', () => {

@@ -671,6 +671,88 @@
         "seats": "twoSeat",
         "rhd": false
       }
+    },
+    "nakayaGrove": {
+      "displayName": "Nakaya Grove",
+      "brief": "Three door rear wheel drive fastback: the 180SX (RPS13, kouki Type X) donor reduced whole at true size on its own tires, with its closed pop-up headlamps, amber bumper signals, twin round tail lamps under a clear housing and a black centre garnish, its own cabin and single exhaust tip; the donor's GT wing, roll cage and engine bay removed. Front inline four, rear wheel drive.",
+      "donors": [
+        {
+          "name": "Nissan 180SX (RPS13, kouki Type X)",
+          "weight": 1.0,
+          "model": {
+            "source": "sketchfab",
+            "uid": "eb3b4310304948ec8eaa4447080d2380",
+            "author": "BlackSnow02",
+            "license": "CC Attribution",
+            "url": "https://sketchfab.com/3d-models/eb3b4310304948ec8eaa4447080d2380"
+          },
+          "mm": {
+            "length": 4540,
+            "width": 1690,
+            "height": 1290,
+            "wheelbase": 2475,
+            "trackFront": 1382,
+            "trackRear": 1382,
+            "overhangFront": 998,
+            "overhangRear": 1020,
+            "beltLine": 809,
+            "tireRadius": 343,
+            "windshieldDeg": 28.2,
+            "rearGlassDeg": 15.8
+          },
+          "estimates": [],
+          "measured": [
+            "trackFront",
+            "trackRear",
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "tireRadius",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://en.wikipedia.org/wiki/Nissan_180SX"
+          ],
+          "take": [
+            "the whole body: reduced to the budget at true size on its own tires, with its Type X aero bumpers, skirts and vented hood",
+            "its own lamps: closed pop-ups with the slim lamp under each lid, amber bumper signals, twin round tail lamps, reverse lamps in the centre garnish, the high stop lamp",
+            "its own cabin (right hand drive) and single exhaust tip"
+          ]
+        }
+      ],
+      "body": {
+        "doors": 2,
+        "pillars": [
+          "A",
+          "B",
+          "C"
+        ],
+        "roofline": "long low hood, glass hatch fastback",
+        "exhaust": "single tip, left of center"
+      },
+      "lights": {
+        "front": {
+          "cover": "slab",
+          "elements": "none",
+          "indicator": "outerBlock",
+          "source": "donor",
+          "notes": "the 180SX's pop-ups closed, the slim lamp under each lid lit, amber signals in the Type X bumper, kept from the donor model"
+        },
+        "rear": {
+          "cover": "panel",
+          "elements": "none",
+          "indicator": "none",
+          "wrap": false,
+          "centerBar": true,
+          "source": "donor",
+          "notes": "the kouki tail: two round red lenses a side under a clear housing (rebuilt as discs), a black centre garnish with the reverse lamps, kept from the donor model"
+        }
+      },
+      "cabin": {
+        "seats": "twoSeat",
+        "rhd": true
+      }
     }
   }
 }
