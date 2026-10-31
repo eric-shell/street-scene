@@ -800,6 +800,24 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_headlights_oemHid",
+      "displayName": "OEM HIDs",
+      "carId": "wendtStrom",
+      "slot": "headlights",
+      "file": "parts/wendtStrom_headlights_oemHid.glb",
+      "hides": [
+        "Headlights"
+      ],
+      "materialSlots": [
+        "Chrome",
+        "HeadLight",
+        "Lens",
+        "Light"
+      ],
+      "tris": 5766,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Seiryu",

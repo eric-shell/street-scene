@@ -735,13 +735,16 @@ FRESNEL = ((1.0, 0.0), (0.80, 0.0012), (0.80, 0.0030), (0.60, 0.0018), (0.60, 0.
            (0.40, 0.0042), (0.20, 0.0030), (0.20, 0.0060))
 
 
-def lamp_insert(o, center, r, kind='fresnel', mat='Chrome', ring='Chrome', segments=32):
+def lamp_insert(o, center, r, kind='fresnel', mat='Chrome', ring='Chrome', segments=32, bulge=0.3, inner=0.8, wall=0.0):
     """A round face set into a headlamp's bowl, looking along -y, its back at `center` (x, y, z): `fresnel`
     a reflector of stepped rings (`FRESNEL`: radius share, m toward the eye) with a bulb tip in the middle, all
     `mat` (the Wendt Strom's lower centre lamp, whose donor face had collapsed into black and chrome
     triangles; the E-Code's clear fluted indicator); `projector` a domed lens of `mat` (`SmokeLens` reads
-    as dark glass) inside a flat `ring` from 0.8 r out to r (the E-Code's fog projector). A free standing disc
-    a millimetre ahead of whatever face it covers, so nothing behind it is cut. Returns the faces made."""
+    as dark glass) inside a flat `ring` from `inner` r out to r, bulging `bulge` r toward the eye (the E-Code's
+    fog projector; the OEM HIDs' amber lenses at 0.08, a lens over a backing). A free standing disc a millimetre
+    ahead of whatever face it covers, so nothing behind it is cut; `wall` m of `ring` barrel behind its edge
+    when it stands further out (the OEM HIDs' stacked pair), so it does not float seen through the cover's side.
+    Returns the faces made."""
     cx, cy, cz = center
     bm = bmesh.new()
     bm.from_mesh(o.data)
@@ -754,9 +757,11 @@ def lamp_insert(o, center, r, kind='fresnel', mat='Chrome', ring='Chrome', segme
         tip = (bm.verts.new((cx, cy - 0.0085, cz)), mm)
     else:
         # The ring, then the dome on a sine profile: 4 rows to a bulge of 0.3 r.
-        rings = [(circle(1.0, 0.0005), mr), (circle(0.8, 0.0005), mr)]
-        rings += [(circle(0.8 * math.cos(a), 0.0005 + 0.3 * r * math.sin(a)), mm) for a in (0.45, 0.85, 1.2)]
-        tip = (bm.verts.new((cx, cy - 0.0005 - 0.3 * r, cz)), mm)
+        rings = [(circle(1.0, 0.0005), mr), (circle(inner, 0.0005), mr)]
+        rings += [(circle(inner * math.cos(a), 0.0005 + bulge * r * math.sin(a)), mm) for a in (0.45, 0.85, 1.2)]
+        tip = (bm.verts.new((cx, cy - 0.0005 - bulge * r, cz)), mm)
+    if wall:
+        rings.insert(0, (circle(1.0, -wall), mr))
     made = []
     for (a, _), (b, m) in zip(rings, rings[1:]):
         for k in range(segments):
