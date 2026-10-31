@@ -837,6 +837,24 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_headlights_chromeRetros",
+      "displayName": "Chrome Retros",
+      "carId": "wendtStrom",
+      "slot": "headlights",
+      "file": "parts/wendtStrom_headlights_chromeRetros.glb",
+      "hides": [
+        "Headlights"
+      ],
+      "materialSlots": [
+        "Chrome",
+        "Lens",
+        "Light",
+        "HeadLight"
+      ],
+      "tris": 5965,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Seiryu",
