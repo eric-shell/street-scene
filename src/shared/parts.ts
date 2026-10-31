@@ -7,8 +7,8 @@
 export const PART_SLOTS = ['body', 'frontBumper', 'rearBumper', 'fenders', 'sideSkirts', 'spoiler', 'hood', 'roof', 'wheels', 'splitter', 'canards', 'diffuser', 'exhaust', 'mirrors', 'headlights', 'taillights'] as const;
 export type PartSlot = (typeof PART_SLOTS)[number];
 
-/** Slots shown as body part menus in the garage (body and wheels have their own menus). */
-export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'splitter', 'canards', 'fenders', 'sideSkirts', 'rearBumper', 'diffuser', 'exhaust', 'hood', 'mirrors', 'headlights', 'taillights', 'spoiler', 'roof'];
+/** Slots shown as body part menus in the garage (body and wheels have their own menus), front to back so the Body tab builds the car down its length. */
+export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'splitter', 'canards', 'headlights', 'hood', 'fenders', 'mirrors', 'sideSkirts', 'roof', 'spoiler', 'taillights', 'rearBumper', 'diffuser', 'exhaust'];
 
 /** Slots where "none" is a valid choice (nothing rendered, base meshes still visible unless hidden). */
 export const OPTIONAL_SLOTS: PartSlot[] = ['spoiler', 'splitter', 'canards', 'diffuser', 'exhaust', 'mirrors'];

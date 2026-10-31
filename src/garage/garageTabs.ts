@@ -308,8 +308,8 @@ export function renderTabContent(host: TabHost): void {
         axlePanel('Ride height', 'rideHeight', note('Visual only. Front and rear apart rake the car.')),
         axlePanel('Camber', 'camber'),
         axlePanel('Spacing', 'offset'),
-        axlePanel('Wheel size', 'wheelSize', note('Bigger wheels, thinner sidewalls.')),
-        axlePanel('Wheel width', 'wheelWidth', note('Wider wheels grow inward; the face and spokes keep their shape.')),
+        axlePanel('Diameter', 'wheelSize', note('Bigger wheels, thinner sidewalls.')),
+        axlePanel('Width', 'wheelWidth', note('Wider wheels grow inward; the face and spokes keep their shape.')),
         sectionWith(
           'Tires',
           [linkToggle(host, 'tire')],
@@ -434,7 +434,7 @@ export function renderTabContent(host: TabHost): void {
         surface('wheels', trimSection(host, 'Center cap', w.cap, [trimMatch(w.cap, 'face', 'Match wheel', 'Wheel paint', face), trimMatch(w.cap, 'body', 'Match body', 'Body paint', body)])),
         surface(
           'hardware',
-          trimSection(host, 'Lug nuts', w.lugNuts, [
+          trimSection(host, 'Lugs', w.lugNuts, [
             trimMatch(w.lugNuts, 'cap', 'Match cap', 'Center cap', capWears),
             trimMatch(w.lugNuts, 'face', 'Match wheel', 'Wheel paint', face),
             trimMatch(w.lugNuts, 'body', 'Match body', 'Body paint', body),
@@ -445,7 +445,7 @@ export function renderTabContent(host: TabHost): void {
           ? [
               surface(
                 'hardware',
-                revealable(trimSection(host, 'Bolts', w.hardware, [
+                revealable(trimSection(host, 'Hardware', w.hardware, [
                   trimMatch(w.hardware, 'cap', 'Match cap', 'Center cap', capWears),
                   trimMatch(w.hardware, 'face', 'Match wheel', 'Wheel paint', face),
                   trimMatch(w.hardware, 'body', 'Match body', 'Body paint', body),
@@ -562,7 +562,7 @@ export function renderTabContent(host: TabHost): void {
           note('Strobe and chase use both colors; a black secondary strobes on and off.'),
         )),
         glow(section(
-          'Glow colors',
+          'Underglow colors',
           // A swatch re-renders so the Lights switch shows the glow it turned on; the well cannot (it would close mid drag).
           rowName('Primary'),
           colorPicker(g.color, (c, preset) => {
@@ -577,7 +577,7 @@ export function renderTabContent(host: TabHost): void {
           }),
         )),
         glow(section(
-          'Glow',
+          'Underglow parameters',
           slider('Brightness', g.brightness, 0.2, 2, 0.05, percent, (x) => {
             g.brightness = x;
             host.changed();
