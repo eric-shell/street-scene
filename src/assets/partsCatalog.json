@@ -380,27 +380,27 @@
       "generated": true
     },
     {
-      "id": "wendtStrom_spoiler_sportMildRoof",
-      "displayName": "Sport Mild Roof",
+      "id": "wendtStrom_spoiler_duckbillBase",
+      "displayName": "Duckbill Base",
       "carId": "wendtStrom",
       "slot": "spoiler",
-      "file": "parts/wendtStrom_spoiler_sportMildRoof.glb",
+      "file": "parts/wendtStrom_spoiler_duckbillBase.glb",
       "hides": [],
       "materialSlots": [
-        "Paint"
+        "Black"
       ],
       "tris": 428,
       "generated": true
     },
     {
-      "id": "wendtStrom_spoiler_sportWildRoof",
-      "displayName": "Sport Wild Roof",
+      "id": "wendtStrom_spoiler_duckbillMild",
+      "displayName": "Duckbill Mild",
       "carId": "wendtStrom",
       "slot": "spoiler",
-      "file": "parts/wendtStrom_spoiler_sportWildRoof.glb",
+      "file": "parts/wendtStrom_spoiler_duckbillMild.glb",
       "hides": [],
       "materialSlots": [
-        "Paint"
+        "Black"
       ],
       "tris": 428,
       "generated": true
