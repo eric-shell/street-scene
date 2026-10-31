@@ -89,8 +89,9 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   // narrowed, vertex for vertex.
   mirrors: 3000,
   // Both headlamps with their clear covers, split off the body whole (the Wendt Strom's: 5,122, its lower centre lamp a
-  // stepped reflector from `lamp_insert`); a part re-materials the housings and swaps the round inserts (E-Code: 5,698).
-  headlights: 6500,
+  // stepped reflector from `lamp_insert`); a part re-materials the housings and swaps the round inserts (E-Code: 5,698;
+  // the Sex Spec, the OEM HIDs plus an angel eye ring in each bowl, the inner bowl shrunk to sit inside its ring: 6,726).
+  headlights: 7000,
   // Both tail lamps with their clear covers, split off the body whole (the Wendt Strom's: 1,911); a part re-materials
   // its rows and builds its clear rows as recessed chambers with bowls, a divider and bulbs (`lamp_chamber`; RCCR: 3,680);
   // the Sex Spec LED lamps, 52 LED cups in chambered rows (`led_field`): 4,700; the City Golf, three chambers round a

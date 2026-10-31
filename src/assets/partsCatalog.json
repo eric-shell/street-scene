@@ -893,6 +893,24 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_headlights_sexSpec",
+      "displayName": "Sex Spec",
+      "carId": "wendtStrom",
+      "slot": "headlights",
+      "file": "parts/wendtStrom_headlights_sexSpec.glb",
+      "hides": [
+        "Headlights"
+      ],
+      "materialSlots": [
+        "Chrome",
+        "HeadLight",
+        "Lens",
+        "Light"
+      ],
+      "tris": 6726,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Seiryu",

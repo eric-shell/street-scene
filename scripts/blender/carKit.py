@@ -788,6 +788,44 @@ def lamp_insert(o, center, r, kind='fresnel', mat='Chrome', ring='Chrome', segme
     return len(made)
 
 
+def halo_ring(o, center, r, width=0.005, depth=0.004, mat='HeadLight', segments=40, y_at=None):
+    """An angel eye: a lit ring looking along -y, its front face at `center` (x, y, z), `width` m across at radius
+    `r`, with walls `depth` m back on both edges (open behind, where the bowl hides it), so it reads as a tube
+    from an angle as well as head on (the Wendt Strom's Sex Spec lamps: one at the same diameter in each bowl).
+    `y_at(x, z)` sets the front face's y round the ring instead (one per segment angle), so it can follow a bowl's
+    rim that stands further forward on one side. Six triangles a segment. Returns the faces made."""
+    cx, cy, cz = center
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    mi = mat_index(o, mat)
+    front = [y_at(cx + math.cos(2 * math.pi * k / segments) * r, cz + math.sin(2 * math.pi * k / segments) * r) if y_at else cy
+             for k in range(segments)]
+    ring = lambda rr, dy: [bm.verts.new((cx + math.cos(2 * math.pi * k / segments) * rr, front[k] + dy,
+                                         cz + math.sin(2 * math.pi * k / segments) * rr)) for k in range(segments)]
+    ob, of = ring(r + width / 2, depth), ring(r + width / 2, 0)
+    inf, ib = ring(r - width / 2, 0), ring(r - width / 2, depth)
+    made = 0
+    for k in range(segments):
+        j = (k + 1) % segments
+        mid = Vector((math.cos(2 * math.pi * (k + 0.5) / segments), 0, math.sin(2 * math.pi * (k + 0.5) / segments)))
+        for vs, facing in (((ob[k], ob[j], of[j], of[k]), mid), ((of[k], of[j], inf[j], inf[k]), Vector((0, -1, 0))),
+                           ((inf[k], inf[j], ib[j], ib[k]), -mid)):
+            f = bm.faces.new(vs)
+            f.material_index = mi
+            f.normal_update()
+            if f.normal.dot(facing) < 0:
+                f.normal_flip()
+            if sn is not None:
+                for loop in f.loops:
+                    loop[sn] = facing
+            made += 1
+    bm.to_mesh(o.data)
+    bm.free()
+    o.data.update()
+    return made
+
+
 def lower_edge(o, center, angles, z0, z1, step=0.005):
     """A bumper's bottom edge round the nose, for lips and splitters that follow it from arch to arch:
     for each angle (degrees about `center` in plan, 0 toward -y, + toward +x) the outermost point the

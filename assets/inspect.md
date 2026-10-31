@@ -15,7 +15,7 @@ Authored cars: albrechtKombi, daltonFiend, kazamaRotor, nakayaHorizon, tachibana
 | nakayaHorizon | 222.1 KB |
 | tachibanaRunabout | 141.7 KB |
 | tachibanaZenith | 1887.7 KB |
-| wendtStrom | 3952.2 KB |
+| wendtStrom | 4070.0 KB |
 
 ## Material vocabulary
 
@@ -118,7 +118,7 @@ Source: `assets/source/eshell/tachibanaZenith/tachibanaZenith.blend` (authored i
 Source: `assets/source/eshell/wendtStrom/wendtStrom.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
 - Base car `public/cars/wendtStrom.glb`: 917.2 KB, 40196 tris, nodes `Body`, `Bumper_Front`, `Bumper_Rear`, `Roof`, `Exhaust`, `Muffler`, `Floor_Rear`, `Floor_Mid`, `Floor_Boot`, `Well_Rear`, `Fenders`, `shavedHatch_on`, `shavedHatch_off`, `fogLights_on`, `shavedMarkers_off`, `shavedMarkers_on`, `shavedRubstrip_off`, `Spoiler`, `halfCupHandles_off`, `halfCupHandles_on`, `windSplitters_on`, `Hood`, `Mirrors`, `Taillights`, `Headlights`.
-- Parts: frontBumper euro, frontBumper speedholes, frontBumper cupraR, frontBumper trackBase, frontBumper trackMild, frontBumper trackWild, sideSkirts trackMild, sideSkirts trackWild, rearBumper euro, rearBumper sectioned, rearBumper sectionedEuro, rearBumper centerExhaust, rearBumper trackBase, rearBumper trackMild, rearBumper trackWild, roof sunroofTilted, roof sunroofDelete, fenders overMild, fenders voomeran, spoiler none, spoiler sportMildRoof, spoiler sportWildRoof, spoiler sexSpec, spoiler trackMild, spoiler trackWild, hood trackBase, hood boserMild, mirrors euro, mirrors shippu, taillights beems, taillights sexSpecReds, taillights sexSpecClears, taillights sexSpecSmoked, taillights ambers, taillights clears, taillights smoked, taillights ocean, taillights rccr, taillights rssr, taillights magicYellows, taillights magicGreens, taillights magicBlues, taillights cityGolf, taillights allReds, headlights twentieth, headlights eCode, headlights oemHid, headlights blackRetros, headlights twentiethRetros, headlights chromeRetros.
+- Parts: frontBumper euro, frontBumper speedholes, frontBumper cupraR, frontBumper trackBase, frontBumper trackMild, frontBumper trackWild, sideSkirts trackMild, sideSkirts trackWild, rearBumper euro, rearBumper sectioned, rearBumper sectionedEuro, rearBumper centerExhaust, rearBumper trackBase, rearBumper trackMild, rearBumper trackWild, roof sunroofTilted, roof sunroofDelete, fenders overMild, fenders voomeran, spoiler none, spoiler sportMildRoof, spoiler sportWildRoof, spoiler sexSpec, spoiler trackMild, spoiler trackWild, hood trackBase, hood boserMild, mirrors euro, mirrors shippu, taillights beems, taillights sexSpecReds, taillights sexSpecClears, taillights sexSpecSmoked, taillights ambers, taillights clears, taillights smoked, taillights ocean, taillights rccr, taillights rssr, taillights magicYellows, taillights magicGreens, taillights magicBlues, taillights cityGolf, taillights allReds, headlights twentieth, headlights eCode, headlights oemHid, headlights blackRetros, headlights twentiethRetros, headlights chromeRetros, headlights sexSpec.
 - WARNING: wheel radius 0.309 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.309 m, width 0.24 m, wheelbase 2.518 m, track 1.492 m.
 - Car dimensions 4.17 x 2.03 x 1.28 m.
