@@ -819,6 +819,43 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_headlights_sexSpecChrome",
+      "displayName": "Sex Spec Chrome",
+      "carId": "wendtStrom",
+      "slot": "headlights",
+      "file": "parts/wendtStrom_headlights_sexSpecChrome.glb",
+      "hides": [
+        "Headlights"
+      ],
+      "materialSlots": [
+        "Chrome",
+        "HeadLight",
+        "Lens",
+        "Light"
+      ],
+      "tris": 6726,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_headlights_sexSpecBlack",
+      "displayName": "Sex Spec Black",
+      "carId": "wendtStrom",
+      "slot": "headlights",
+      "file": "parts/wendtStrom_headlights_sexSpecBlack.glb",
+      "hides": [
+        "Headlights"
+      ],
+      "materialSlots": [
+        "Black",
+        "HeadLight",
+        "Lens",
+        "Light",
+        "Chrome"
+      ],
+      "tris": 6726,
+      "generated": true
+    },
+    {
       "id": "wendtStrom_headlights_oemHid",
       "displayName": "OEM HIDs",
       "carId": "wendtStrom",
@@ -890,43 +927,6 @@
         "HeadLight"
       ],
       "tris": 5965,
-      "generated": true
-    },
-    {
-      "id": "wendtStrom_headlights_sexSpecChrome",
-      "displayName": "Sex Spec Chrome",
-      "carId": "wendtStrom",
-      "slot": "headlights",
-      "file": "parts/wendtStrom_headlights_sexSpecChrome.glb",
-      "hides": [
-        "Headlights"
-      ],
-      "materialSlots": [
-        "Chrome",
-        "HeadLight",
-        "Lens",
-        "Light"
-      ],
-      "tris": 6726,
-      "generated": true
-    },
-    {
-      "id": "wendtStrom_headlights_sexSpecBlack",
-      "displayName": "Sex Spec Black",
-      "carId": "wendtStrom",
-      "slot": "headlights",
-      "file": "parts/wendtStrom_headlights_sexSpecBlack.glb",
-      "hides": [
-        "Headlights"
-      ],
-      "materialSlots": [
-        "Black",
-        "HeadLight",
-        "Lens",
-        "Light",
-        "Chrome"
-      ],
-      "tris": 6726,
       "generated": true
     },
     {
