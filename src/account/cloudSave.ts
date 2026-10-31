@@ -86,16 +86,17 @@ const MAX_SLOTS = 6;
  * instead of writing over them. Returns how many builds joined; the caller uploads the result.
  */
 export function joinLocalBuilds(blob: SaveBlob): number {
-  const local = parse(loadText(GARAGE_KEY)) as { slots?: unknown } | undefined;
-  const mine = Array.isArray(local?.slots) ? local.slots : [];
+  const local = parse(loadText(GARAGE_KEY)) as { slots?: unknown; parked?: unknown } | undefined;
+  // Builds set aside on a model switched off here (garage/storage.ts) join as slots; the load sets them aside again.
+  const mine = [...(Array.isArray(local?.slots) ? local.slots : []), ...(Array.isArray(local?.parked) ? local.parked : [])];
   if (!mine.length) return 0;
-  const cloud = blob.keys?.[GARAGE_KEY] as { slots?: unknown } | undefined;
+  const cloud = blob.keys?.[GARAGE_KEY] as { slots?: unknown; parked?: unknown } | undefined;
   // The account has no garage yet: this device's goes up whole.
   if (!cloud || !Array.isArray(cloud.slots)) {
     blob.keys = { ...blob.keys, [GARAGE_KEY]: local };
     return mine.length;
   }
-  const have = new Set(cloud.slots.map((b) => JSON.stringify(b)));
+  const have = new Set([...cloud.slots, ...(Array.isArray(cloud.parked) ? cloud.parked : [])].map((b) => JSON.stringify(b)));
   const joining = mine.filter((b) => !have.has(JSON.stringify(b))).slice(0, Math.max(0, MAX_SLOTS - cloud.slots.length));
   cloud.slots = [...cloud.slots, ...joining];
   return joining.length;

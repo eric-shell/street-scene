@@ -19,9 +19,8 @@ import { BODY_PART_SLOTS, isRemovalPart, OPTIONAL_SLOTS, PartEntry, PartSlot, SL
 import { loadPurchases, owns, ownsFeature, stripParts, unownedParts, type PurchasesSave } from '../shared/purchases';
 import { featureBuyable, partBuyable, type Buyable } from '../shared/economy';
 import { loadStats, type StatsSave } from '../shared/stats';
-import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, BANNER_HEIGHTS, BODY_FEATURES, BodyFeature, CarBuild, FEATURE_LABELS, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
+import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, BANNER_HEIGHTS, BODY_FEATURES, BodyFeature, CarBuild, FEATURE_LABELS, GLOW_PATTERNS, OFFERED_CAR_IDS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
 import { SETUP_SLIDERS, getBaseTuning, type CarTuning } from '../sim/tuning';
-import { GARAGE_CAR_IDS } from '../shared/garageCars';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges } from '../shared/carSpec';
@@ -240,10 +239,10 @@ export function renderTabContent(host: TabHost): void {
 
   switch (host.tab) {
     case 'model': {
-      // Only real, imported cars; a disabled tile at the end promises more.
-      const imported = MANIFEST.cars.filter((c) => GARAGE_CAR_IDS.includes(c.id) && host.availability[c.id] !== false);
+      // Only real, imported cars switched on (FEATURES); a disabled tile at the end promises more.
+      const imported = MANIFEST.cars.filter((c) => OFFERED_CAR_IDS.includes(c.id) && host.availability[c.id] !== false);
       // Alphabetical by maker and model: each fictional maker sorts where its real one would.
-      const cars = [...(imported.length ? imported : MANIFEST.cars.filter((c) => GARAGE_CAR_IDS.includes(c.id)))].sort((a, z) => a.displayName.localeCompare(z.displayName));
+      const cars = [...(imported.length ? imported : MANIFEST.cars.filter((c) => OFFERED_CAR_IDS.includes(c.id)))].sort((a, z) => a.displayName.localeCompare(z.displayName));
       const list = choiceList(
         cars.map((c) => ({ value: c.id, label: c.displayName, sub: AUTHORS[c.source], tags: specBadges(c.engine, getBaseTuning(c.id).drivetrain.layout) })),
         b.carId,

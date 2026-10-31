@@ -7,7 +7,16 @@
 import { PART_SLOTS, PartSlot } from './parts';
 import { hexColor, num, obj, oneOf } from './validate';
 import { DEFAULT_CAR_ID, SELECTABLE_CAR_IDS } from '../sim/tuning';
+import { FEATURES } from './features';
 import { stockPerformance, validatePerformance, type PerformanceBuild } from '../sim/build';
+
+/**
+ * The cars offered to play: selectable in the manifest and switched on (FEATURES, one switch per model), and
+ * never none (the default car stands in). Only the offer: a build, ghost or replay on another car still loads.
+ */
+const switchedOn = SELECTABLE_CAR_IDS.filter((id) => (FEATURES as Partial<Record<string, boolean>>)[id] ?? import.meta.env.DEV);
+export const OFFERED_CAR_IDS: readonly string[] = switchedOn.length ? switchedOn : [DEFAULT_CAR_ID];
+export const carOffered = (carId: string): boolean => OFFERED_CAR_IDS.includes(carId);
 
 /** A new build's name, and the longest a name may be. */
 export const DEFAULT_BUILD_NAME = 'My Ride';

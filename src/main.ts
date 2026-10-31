@@ -52,9 +52,8 @@ import { installUiSounds } from './audio/uiSound';
 import { DRAG_OPPONENTS, POINT_TO_POINT, RaceConfig, RaceEntrant, RaceMode, positionOf, standings, ticksToSeconds } from './sim/race';
 import { loadTrafficAssets } from './render/traffic/traffic';
 import { stockPerformance } from './sim/build';
-import { CarBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './shared/carBuild';
+import { CarBuild, OFFERED_CAR_IDS, VisualBuild, carOffered, defaultVisual, PAINT_FINISHES } from './shared/carBuild';
 import { DEFAULT_CAR_ID, getBaseTuning } from './sim/tuning';
-import { GARAGE_CAR_IDS } from './shared/garageCars';
 import { specBadges } from './shared/carSpec';
 import { damp } from './shared/anim';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
@@ -648,7 +647,7 @@ const rivalSeed = (): number => Math.floor(Math.random() * 0x7fffffff);
 /** The rivals: their names, cars and looks rolled from the seed. They drive stock setups, the tuning the AI is balanced on. */
 function opponentEntrants(seed: number, count: number): { entrants: RaceEntrant[]; visuals: VisualBuild[] } {
   const rng = new Rng(seed ^ 0x51ce);
-  const cars = GARAGE_CAR_IDS.filter((id) => availability[id]);
+  const cars = OFFERED_CAR_IDS.filter((id) => availability[id]);
   if (!cars.length) cars.push(DEFAULT_CAR_ID);
   const names = rng.shuffle(AI_NAMES.slice());
   const entrants: RaceEntrant[] = [];
@@ -1181,7 +1180,8 @@ async function boot(): Promise<void> {
   let notice: (() => void) | null = null;
   if (code) {
     const b = await decodeShareCode(code);
-    if (b) {
+    if (b && !carOffered(b.carId)) notice = () => toast('That build is on a car not in the garage yet', Info);
+    else if (b) {
       // Parts the shared build wears that its car does not own here come off, and the player is told which.
       const stripped = enforceOwnership(b);
       garage.slots.push(b);

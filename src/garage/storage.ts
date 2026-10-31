@@ -8,8 +8,11 @@
  * builds wear) and then takes any part a build's car does not own off it, quietly, since a cloud save lands in
  * storage before the load and a stale or tampered one must not equip what was never bought. An imported build
  * is stripped the same way, and importBuild says what went so the caller can tell the player.
+ *
+ * A saved build on a model switched off on this device (FEATURES) is set aside as it was saved, in the same
+ * stored garage (so it syncs with an account), and comes back to a slot once its model is on and there is room.
  */
-import { AXLES, CHROME_COLOR, CarBuild, DEFAULT_BUILD_NAME, GLOW_PATTERNS, defaultBuild, validateBuild, type AccentFinish, type AxleStance, type PaintFinish, type WheelTrim } from '../shared/carBuild';
+import { AXLES, CHROME_COLOR, CarBuild, DEFAULT_BUILD_NAME, GLOW_PATTERNS, OFFERED_CAR_IDS, carOffered, defaultBuild, validateBuild, type AccentFinish, type AxleStance, type PaintFinish, type WheelTrim } from '../shared/carBuild';
 import { loadJson, saveJson } from '../shared/store';
 import { FEATURES } from '../shared/features';
 import { enforceOwnership, hasLedger, owns, startLedger, type WornPart } from '../shared/purchases';
@@ -29,6 +32,8 @@ const MIGRATION = 1;
 export interface GarageState {
   current: number;
   slots: CarBuild[];
+  /** Builds on a model switched off here, untouched until it is back on; not slots and not counted in MAX_SLOTS. */
+  parked: CarBuild[];
 }
 
 export function freshBuild(carId = DEFAULT_CAR_ID, name = DEFAULT_BUILD_NAME): CarBuild {
@@ -62,15 +67,17 @@ const pick = <T>(list: readonly T[]): T => list[Math.floor(Math.random() * list.
 const between = (lo: number, hi: number) => Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
 
 /**
- * A random street build for a new player: one of the fitted cars on its fitment and stretched tires (mostly mild), then a
- * random wheel, paints from the garage's swatches, tint and underglow. Visual only: the setup stays stock.
+ * A random street build for a new player: one of the fitted cars offered (the first offered on its stock stance when none
+ * is) on its fitment and stretched tires (mostly mild), then a random wheel, paints from the garage's swatches, tint and
+ * underglow. Visual only: the setup stays stock.
  */
 export function randomBuild(name = DEFAULT_BUILD_NAME): CarBuild {
-  const carId = pick(Object.keys(STREET_FITS));
+  const fitted = Object.keys(STREET_FITS).filter(carOffered);
+  const carId = fitted.length ? pick(fitted) : OFFERED_CAR_IDS[0];
   const b = freshBuild(carId, name);
   const v = b.visual;
   const fit = STREET_FITS[carId];
-  v.stance = { front: { ...fit.front }, rear: { ...fit.rear } };
+  if (fit) v.stance = { front: { ...fit.front }, rear: { ...fit.rear } };
   // Once the parts ledger has started, the draw is among the wheels this car owns (its stock wheel when none):
   // a new page load is never a free wheel. The very first draw is grandfathered with the garage (loadGarage).
   const wheels = partsFor(carId, 'wheels').filter((p) => !FEATURES.economy || !hasLedger() || owns(carId, p.id));
@@ -100,31 +107,40 @@ export function randomBuild(name = DEFAULT_BUILD_NAME): CarBuild {
 }
 
 export function loadGarage(): GarageState {
+  let parked: CarBuild[] = [];
   try {
-    const parsed = loadJson<{ current?: unknown; slots?: unknown; migration?: unknown } | null>(KEY, null);
-    const slots = Array.isArray(parsed?.slots) ? parsed.slots.slice(0, MAX_SLOTS).map(validateBuild) : [];
+    const parsed = loadJson<{ current?: unknown; slots?: unknown; parked?: unknown; migration?: unknown } | null>(KEY, null);
+    const saved = Array.isArray(parsed?.slots) ? parsed.slots.slice(0, MAX_SLOTS).map(validateBuild) : [];
+    const aside = Array.isArray(parsed?.parked) ? parsed.parked.map(validateBuild) : [];
+    let dirty = false;
+    if (saved.length && !(Number(parsed?.migration) >= MIGRATION)) {
+      for (const b of saved) b.performance.launchRpm = defaultLaunchRpm(b.carId);
+      dirty = true;
+    }
+    // Builds on a model switched off go aside; set-aside ones whose model is back take the free slots, after the rest.
+    const slots = saved.filter((b) => carOffered(b.carId));
+    parked = saved.filter((b) => !carOffered(b.carId));
+    for (const b of aside) (carOffered(b.carId) && slots.length < MAX_SLOTS ? slots : parked).push(b);
+    if (slots.length !== saved.length || parked.length !== aside.length) dirty = true;
     if (slots.length) {
-      const current = Math.max(0, Math.min(slots.length - 1, Math.round(Number(parsed?.current) || 0)));
-      const g = { current, slots };
-      let dirty = false;
-      if (!(Number(parsed?.migration) >= MIGRATION)) {
-        for (const b of slots) b.performance.launchRpm = defaultLaunchRpm(b.carId);
-        dirty = true;
-      }
+      const was = saved[Math.max(0, Math.min(saved.length - 1, Math.round(Number(parsed?.current) || 0)))];
+      const g = { current: Math.max(0, slots.indexOf(was)), slots, parked };
       // Grandfather what the saved builds wear (once per device), then strip what a car does not own.
-      startLedger(slots);
+      startLedger([...slots, ...parked]);
       for (const b of slots) if (enforceOwnership(b).length) dirty = true;
       if (dirty) saveGarage(g);
       return g;
     }
   } catch {
     /* a slot that fails validation: fall through to the default */
+    parked = [];
   }
-  // Not saved: until the player keeps it (picks a build on the menu or changes it in the garage), the next page load
-  // draws another. A first ever draw starts the ledger with its wheel, so the starter car keeps its look.
+  // Not saved (or every build is set aside): until the player keeps it (picks a build on the menu or changes it in the
+  // garage), the next page load draws another. A first ever draw starts the ledger with its wheel, so the starter car
+  // keeps its look.
   const slots = [randomBuild('Garage')];
-  startLedger(slots);
-  return { current: 0, slots };
+  startLedger([...slots, ...parked]);
+  return { current: 0, slots, parked };
 }
 
 export function saveGarage(g: GarageState): boolean {

@@ -1,7 +1,7 @@
 /**
  * Street meet cars: the parked cars of every meet behind the cyan barriers
  * (placed by meetPlan.ts, nose to the course as if they pulled in to watch).
- * Each is a real garage model (one this build offers, shared/garageCars.ts) in one of a few
+ * Each is a real garage model (one offered: manifest `selectable`, switched on in FEATURES) in one of a few
  * customization variants (stock, or a body kit with a spoiler and coloured
  * wheels), baked once into four instanced parts per variant (paint, dark details
  * + wheels, glass, lights), with random paint per instance, underglow on many
@@ -17,8 +17,8 @@ import { resolveMaterialName } from '../car/carMaterials';
 import { kelvin } from '../color';
 import { Disposer } from '../disposer';
 import { canvas } from '../textures/canvasKit';
-import { GARAGE_CAR_IDS } from '../../shared/garageCars';
 import type { PartEntry } from '../../shared/parts';
+import { OFFERED_CAR_IDS } from '../../shared/carBuild';
 import type { MeetPlan } from './meetPlan';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 
@@ -75,8 +75,7 @@ let library: CarAssetLibrary | null = null;
 const kitCache = new Map<string, Promise<CarKit>>();
 
 export function parkedCars(): ManifestCar[] {
-  const sel = MANIFEST.cars.filter((c) => GARAGE_CAR_IDS.includes(c.id));
-  return sel.length ? sel : MANIFEST.cars.slice(0, 1);
+  return MANIFEST.cars.filter((c) => OFFERED_CAR_IDS.includes(c.id));
 }
 
 function loadKit(car: ManifestCar, variant: number): Promise<CarKit> {

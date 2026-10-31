@@ -11,7 +11,7 @@ import manifestJson from '../../assets/carManifest.json';
 import catalogJson from '../../assets/partsCatalog.json';
 import type { PartEntry, PartSlot, PartsCatalog } from '../../shared/parts';
 import type { EngineSpec, EngineSwap } from '../../shared/carSpec';
-import type { BodyFeature } from '../../shared/carBuild';
+import { OFFERED_CAR_IDS, type BodyFeature } from '../../shared/carBuild';
 import { resolveMaterialName } from './carMaterials';
 import { splitMirrorCaps, type MirrorCapBox } from './mirrorCaps';
 import { splitBodyFeatures, type BodyFeatureBox } from './bodyFeatures';
@@ -45,8 +45,6 @@ export interface ManifestCar {
   defaultPaint: string;
   /** Offered in the garage. */
   selectable?: boolean;
-  /** Offered in the builds Vercel serves too; the rest of the selectable cars only in `npm run dev` (shared/garageCars.ts). */
-  released?: boolean;
   /** Engine layout, aspiration and position (src/shared/carSpec.ts); the driven wheels come from drivingParams.json. */
   engine: EngineSpec;
   /** The engines the garage's Power tab can swap in (shared/carSpec.ts EngineSwap; their physics are drivingParams.json `swaps.<id>`); missing, none. */
@@ -150,11 +148,14 @@ export class CarAssetLibrary {
     return gltf.scene;
   }
 
-  /** Which cars have their GLB available (placeholder cars are always available). */
+  /**
+   * Which offered cars (FEATURES) have their GLB available (placeholder cars are always available). The others
+   * are not loaded here; one a ghost or replay drives loads when it is drawn.
+   */
   async availability(): Promise<Record<string, boolean>> {
     const out: Record<string, boolean> = {};
     await Promise.all(
-      MANIFEST.cars.map(async (c) => {
+      MANIFEST.cars.filter((c) => OFFERED_CAR_IDS.includes(c.id)).map(async (c) => {
         out[c.id] = (await this.loadFile(c.file)) !== null;
       }),
     );

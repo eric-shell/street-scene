@@ -52,7 +52,7 @@ import { Help, MUSIC_KEYS } from '../ui/panels/help';
 import type { HelpKey } from '../ui/panels/help';
 import { uiShutter, uiWhoosh } from '../audio/uiSound';
 import { BODY_PART_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { Axle, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, VinylShape, validateBuild } from '../shared/carBuild';
+import { Axle, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, VinylShape, carOffered, validateBuild } from '../shared/carBuild';
 import { getBaseTuning } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
 import { dynoSetup } from './dynoRun';
@@ -1156,6 +1156,7 @@ export class GarageScreen implements TabHost {
           }
           const imported = await decodeShareCode(code);
           if (!imported) return toast('That code could not be read', Upload);
+          if (!carOffered(imported.carId)) return toast('That build is on a car not in the garage yet', Upload);
           this.closeDialog();
           // A new slot while there is room, else it replaces the build in use: either way the build in use is left.
           this.whenSaved(() => {

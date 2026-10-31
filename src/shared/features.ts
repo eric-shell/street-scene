@@ -6,6 +6,12 @@
  * turns those on and `?features=-challenges` turns one off, kept in `nightrun.features` from then on, and
  * `?features=` alone goes back to the defaults. `devTools` is not a switch: it is on in `npm run dev` and off in
  * every build Vercel serves, whatever the URL says.
+ *
+ * Each garage model has a switch of its own, named by its car id (`?features=kazamaRotor` shows the RX-7 on one
+ * device). A model switched off is offered nowhere: not in the garage's Model tab, not as a new player's starter,
+ * a rival, a showroom lift car or a car at the street meets, its model is not loaded at boot and a shared build
+ * on it is refused; builds already saved on it are set aside untouched until it is back (garage/storage.ts).
+ * A ghost or replay on it still draws it. A new model gets a switch here (one without stays in `npm run dev`).
  */
 import { loadText, saveText } from './store';
 
@@ -26,11 +32,22 @@ const DEFAULTS = {
    * free, unlocked and owned, the garage shows no prices, and nothing is spent or recorded.
    */
   economy: true,
-  /**
-   * Every selectable car in the garage, the rivals, the showroom and the roadblocks. Off: only the manifest's
-   * `released` cars (shared/garageCars.ts). On in `npm run dev`, off in the builds Vercel serves.
-   */
-  allCars: import.meta.env.DEV,
+
+  // The garage models, by car id: each on in `npm run dev` until it is ready to ship; the R32 and the S13 shipped.
+  /** Wendt Strom R6 (Golf R32 Mk4): shipped. */
+  wendtStrom: true,
+  /** Nakaya Grove (Silvia S13): shipped. */
+  nakayaGrove: true,
+  /** Kazama Rotor (RX-7 FD3S). */
+  kazamaRotor: import.meta.env.DEV,
+  /** Albrecht Kombi S (Audi S2 Avant). */
+  albrechtKombi: import.meta.env.DEV,
+  /** Dalton Fiend (Challenger SRT Demon widebody). */
+  daltonFiend: import.meta.env.DEV,
+  /** Tachibana Zenith (Supra MK IV). */
+  tachibanaZenith: import.meta.env.DEV,
+  /** Tachibana Runabout (MR2 W20). */
+  tachibanaRunabout: import.meta.env.DEV,
 };
 
 export type Feature = keyof typeof DEFAULTS;

@@ -45,9 +45,8 @@ import { CarView, WHEEL_KEYS } from '../render/car/carView';
 import type { CarPose } from '../render/car/carView';
 import { MANIFEST, partsFor } from '../render/car/carAssets';
 import type { CarAssetLibrary } from '../render/car/carAssets';
-import { AXLES, defaultVisual } from '../shared/carBuild';
+import { AXLES, OFFERED_CAR_IDS, defaultVisual } from '../shared/carBuild';
 import type { PaintFinish, VisualBuild } from '../shared/carBuild';
-import { GARAGE_CAR_IDS } from '../shared/garageCars';
 import { PART_SLOTS } from '../shared/parts';
 import type { Quality } from '../ui/settings';
 import { PALETTE } from '../ui/kit/palette';
@@ -953,7 +952,7 @@ const AXES = ['x', 'y', 'z'] as const;
  * what the lift arms leave room for). Render only, so Math.random is fine here.
  */
 function liftBuilds(n: number, rnd: () => number = Math.random): { carId: string; visual: VisualBuild }[] {
-  const deck = [...GARAGE_CAR_IDS];
+  const deck = [...OFFERED_CAR_IDS];
   for (let i = deck.length - 1; i > 0; i--) {
     const j = Math.floor(rnd() * (i + 1));
     [deck[i], deck[j]] = [deck[j], deck[i]];
