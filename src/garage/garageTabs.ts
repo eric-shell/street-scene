@@ -829,7 +829,7 @@ function renderPerformance(host: TabHost): void {
       note('How often the exhaust pops and flames on a lift, a shift or the limiter. Sight and sound together; no effect on performance.'),
     ),
   );
-  // The setup: four sliders, each a trade (sim/build.ts applyBuild), position 3 the stock car.
+  // The setup: five sliders, each a trade (sim/build.ts applyBuild), position 3 the stock car.
   host.body.append(
     section(
       'Setup',

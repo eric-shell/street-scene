@@ -700,7 +700,7 @@
     }
   },
   "setup": {
-    "_readme": "The garage Tune tab's four sliders (applyBuild() in build.ts lays them over the car tuning). Each table holds one entry per position, left to right (1..5). Position 3 is the stock car: every *Mul table holds exactly 1 there and every other table 0 (tuning.ts throws otherwise), so a stock build is bit for bit the car's own tuning and the AI, stock replays and bests are unchanged.",
+    "_readme": "The garage Tune tab's five sliders (applyBuild() in build.ts lays them over the car tuning). Each table holds one entry per position, left to right (1..5). Position 3 is the stock car: every *Mul table holds exactly 1 there and every other table 0 (tuning.ts throws otherwise), so a stock build is bit for bit the car's own tuning and the AI, stock replays and bests are unchanged.",
     "suspension": {
       "_": "Soft (1) to Stiff (5). Springs (frequencyMul on suspension.frequency) and travel to the bump stop (travelMul): soft leans more and rides over kerbs on long travel, stiff sits flat but bottoms out (sparks) on a kerb taken at speed. steerRateMul: how quickly the front wheels turn in. Grip: roadGripMul on the tires (tarmac and paving), roughGripMul is the grip on dirt, grass and cobbles relative to stock, where soft keeps the tires on the ground and stiff skips over it.",
       "frequencyMul": [0.86, 0.93, 1, 1.12, 1.25],
@@ -708,6 +708,12 @@
       "steerRateMul": [0.9, 0.95, 1, 1.06, 1.12],
       "roadGripMul": [0.97, 0.985, 1, 1.015, 1.03],
       "roughGripMul": [1.1, 1.05, 1, 0.94, 0.88]
+    },
+    "steering": {
+      "_": "Less (1) to More (5): the front wheels' lock, which the input scales (car.ts steerLimit, counterSteerLock); the rate they turn at stays the car's (a quicker rack measured worse: the Grove's held drift fell from 1.85 to 0.33 s). maxDegMul moves the lock at a crawl (the turning circle) and highSpeedDegMul the lock the speed fade ends on, so Less is calm at speed (a full lock tap at 200 km/h peaks at 3 degrees of body slip against 5 on stock, and a lane change settles sooner) and More is nervous there (the Rotor's tap swings it 48 degrees off its line against 20). The lock at full input in mid speed corners already sits past the front tires' peak slip, so More's maxDegMul stays small: more there scrubs the fronts and blunts a full lock handbrake entry. counterLockDegMul is the angle kit (steering.counterLockDeg): More holds longer and deeper drifts for a driver who feathers the counter steer (a keyboard tapping the key: the Grove 1.0 to 2.6 s, the Zenith 36 to 40 degrees), a key held flat points the wheels past the slide and straightens it sooner; Less makes slides shallow and short. The catch of a big slide (counterSteerAllowance) is left alone: it never ran out of lock.",
+      "maxDegMul": [0.8, 0.9, 1, 1.05, 1.1],
+      "highSpeedDegMul": [0.6, 0.8, 1, 1.1, 1.2],
+      "counterLockDegMul": [0.84, 0.92, 1, 1.11, 1.21]
     },
     "gearing": {
       "_": "Short (1) to Long (5), real gearing plus one arcade term (docs/handling.md, Gearing and Simcade). finalDriveMul moves the final drive, and with it the top gear's limiter, which on every stock car sits at its slipstream top speed: Short puts it at 0.92 of the drag top speed (a lower top speed on the limiter, nitrous runs into it sooner), Long at 1.3 (room for nitrous to keep pulling past the stock limiter, while the drag holds the dry top speed within 2.5% of stock). firstGearMul moves the overall first gear and the gears between blend evenly, so first stays put while Short closes the ratios up and Long spreads them out (lazier through the gears). An automatic keeps the revs in the same band at any final drive, so real gearing barely moves acceleration; torqueBonus is the arcade term that does: extra engine torque, full up to gearbox.torqueBonusFadeStart and gone by torqueBonusFadeEnd (car.ts), so short gears sharpen corner exits and long ones soften them without moving the drag top speed.",

@@ -1,7 +1,7 @@
 /**
  * The performance half of a car build (shared/carBuild.ts holds the whole build and its visual half): the
- * garage Tune tab's four setup sliders (suspension, gear ratio, differential, brake balance: five positions
- * each, 3 the stock car), its launch rpm and its antilag rpm, and applyBuild, the only way the sim reads a build. The sliders
+ * garage Tune tab's five setup sliders (suspension, steering angle, gear ratio, differential, brake balance: five
+ * positions each, 3 the stock car), its launch rpm and its antilag rpm, and applyBuild, the only way the sim reads a build. The sliders
  * trade one thing for another rather than add performance, so a setup suits a track, not a tier. Validation
  * clamps imported positions, and a build saved with the retired component upgrades starts on the stock setup.
  * The Power tab's engine swap rides here too: it changes the physics, so the sim has to read it.
@@ -69,6 +69,12 @@ export function applyBuild(base: CarTuning, perf: PerformanceBuild): CarTuning {
   t.surface.offroadGrip *= rough;
   t.surface.cobbleGrip *= rough;
   t.surface.sandGrip *= rough;
+  // Steering angle: the lock at a crawl and at speed (the speed fade's two ends), and the counter steer's angle kit.
+  const st = SETUP.steering;
+  const a = p.steering - 1;
+  t.steering.maxDeg *= st.maxDegMul[a];
+  t.steering.highSpeedDeg *= st.highSpeedDegMul[a];
+  t.steering.counterLockDeg *= st.counterLockDegMul[a];
   // Gear ratio: the final drive moves the top gear and its limiter; first gear moves by firstGearMul and the
   // gears between blend evenly (each step the same share closer or wider), a close-ratio box on Short and a
   // wide one on Long. Real gearing barely moves acceleration, so the arcade torque bonus does (car.ts fades it

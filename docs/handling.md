@@ -160,6 +160,27 @@ Tried and dropped: the limiter at 1.16 with a 1.25 short end (the old hatch and 
 
 Long's drag top speed stays within 2.5% of stock: a taller top gear meets the drag at lower revs, so a slipstream alone takes it no faster than stock (the foundation, kept). AI races on today's city routes never pass 185 km/h, so there Short is about 0.4% quicker and Long 0.7% slower; Long pays off on long straights and nitrous runs.
 
+## Steering angle
+
+The Steering angle slider (Less 1 to More 5, `setup.steering`, 2026-10-31) asks for a calmer car at speed on Less, for drag runs and fast roads, and more angle for drift builds on More. It moves the lock, which the input scales (car.ts `steerLimit`, `counterSteerLock`): `maxDegMul` 0.8 / 0.9 / 1 / 1.05 / 1.1 on the lock at a crawl, `highSpeedDegMul` 0.6 / 0.8 / 1 / 1.1 / 1.2 on the lock the speed fade ends on, and `counterLockDegMul` 0.84 / 0.92 / 1 / 1.11 / 1.21 on the counter steer's fixed angle kit. Three things were measured and left out:
+
+- **A quicker rack** (`rateDegPerSec`): 190 against 150 dropped the Grove's held drift (F in `drift.ts`) from 1.85 to 0.33 s.
+- **More crawl lock**: full lock in a 30 to 110 km/h corner already sits past the front tires' peak slip, so more lock there scrubs. At 1.3 times the lock, 1 s of full lock at 80 km/h turned the R32 33° against 39° on stock, and a full lock handbrake entry at 60 km/h reached 9° of slide against 33°. The crawl lock gain stops at 1.1 and the speed fade's high end carries the rest.
+- **The catch**: a 50° or 65° slide at 70 km/h caught with full counter lock comes back in the same time at every position, because `counterSteerAllowance` already reaches past any slide. A bigger kit changes how deep a drift sits, not whether it is caught.
+
+The kit is where More pays a drift build. A keyboard driver who taps the counter steer key (down while the slide is past 20°) holds a longer and deeper drift on a bigger kit, and one who holds the key flat has the wheels point past the slide and is pulled straight sooner: the real angle kit's trade. Measured headless (flat world, stock otherwise; a tap is 0.25 s of full lock; the drifts are a handbrake entry at 80 km/h, then 4 s flat out):
+
+| Position 1 / 3 / 5 | R32 (AWD) | Grove (RWD) | Rotor (RWD) |
+|---|---|---|---|
+| Half lock 1 s at 60 km/h, ° turned | 27 / 34 / 38 | 26 / 32 / 36 | 28 / 35 / 39 |
+| Full lock tap at 200 km/h: peak slip, ° turned | 3.1, 6 / 5.4, 11 / 6.7, 15 | 2.6, 5 / 4.3, 9 / 5.2, 12 | 3.4, 9 / 6.1, 20 / 12.5, 48 |
+| Lane change at 200 km/h, s to settle | 0.33 / 0.43 / 0.47 | 0.32 / 0.40 / 0.43 | 0.50 / 0.68 / 0.80 |
+| Handbrake entry at 60 km/h, full lock / 0.6, ° | 28, 5 / 33, 8 / 28, 11 | 20, 5 / 32, 7 / 30, 9 | 33, 10 / 38, 22 / 36, 27 |
+| Drift, counter key tapped: s over 15°, mean ° | 0.8, 31 / 2.6, 27 / 3.1, 34 | 0.9, 29 / 1.0, 31 / 2.6, 28 | 2.9, 32 / 3.3, 34 / 3.4, 39 |
+| Drift, counter key held flat: s over 15° | 2.6 / 2.7 / 1.0 | 0.5 / 0.8 / 0.6 | 3.0 / 3.1 / 2.9 |
+
+Peak cornering grip in a slow sweep of the wheel (90 to 200 km/h) hardly moves: 0.01 g on the R32 and the Rotor, and on Less the Grove gives up 0.02 to 0.03 g at 160 to 200 km/h, where 2.4° is near the most its fronts can use. Less costs a held key's bite in a fast turn far more than the tires' grip.
+
 ## Numbers
 
 | Parameter | Value | Why |

@@ -303,9 +303,9 @@ export const CAR_OVERRIDES = params.cars as unknown as Record<string, DeepPartia
 export const SWAP_OVERRIDES = params.swaps as unknown as Record<string, Record<string, DeepPartial<BaseTuning>>>;
 
 // ---------------------------------------------------------------------------
-// The garage Tune tab's setup (build.ts applyBuild): four sliders, five positions each, left to right.
+// The garage Tune tab's setup (build.ts applyBuild): five sliders, five positions each, left to right.
 // ---------------------------------------------------------------------------
-export const SETUP_SLIDERS = ['suspension', 'gearing', 'differential', 'brakeBalance'] as const;
+export const SETUP_SLIDERS = ['suspension', 'steering', 'gearing', 'differential', 'brakeBalance'] as const;
 export type SetupSlider = (typeof SETUP_SLIDERS)[number];
 /** A slider position, 1 (left) .. 5 (right). */
 export type SetupPosition = 1 | 2 | 3 | 4 | 5;
@@ -317,12 +317,14 @@ export const STOCK_POSITION: SetupPosition = 3;
 type SetupRow = readonly [number, number, number, number, number];
 export interface SetupTables {
   suspension: { frequencyMul: SetupRow; travelMul: SetupRow; steerRateMul: SetupRow; roadGripMul: SetupRow; roughGripMul: SetupRow };
+  steering: { maxDegMul: SetupRow; highSpeedDegMul: SetupRow; counterLockDegMul: SetupRow };
   gearing: { finalDriveMul: SetupRow; firstGearMul: SetupRow; torqueBonus: SetupRow };
   differential: { open: SetupRow; lock: SetupRow };
   brakeBalance: { frontBiasAdd: SetupRow };
 }
 const SETUP_KEYS: { [S in SetupSlider]: readonly (keyof SetupTables[S])[] } = {
   suspension: ['frequencyMul', 'travelMul', 'steerRateMul', 'roadGripMul', 'roughGripMul'],
+  steering: ['maxDegMul', 'highSpeedDegMul', 'counterLockDegMul'],
   gearing: ['finalDriveMul', 'firstGearMul', 'torqueBonus'],
   differential: ['open', 'lock'],
   brakeBalance: ['frontBiasAdd'],

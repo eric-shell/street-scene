@@ -1,6 +1,6 @@
 /**
- * The Tune tab's setup sliders (garageTabs.ts renderPerformance): suspension, gear ratio, differential and
- * brake balance, each a row of five numbered notches between its two ends (Soft / Stiff ...), with the
+ * The Tune tab's setup sliders (garageTabs.ts renderPerformance): suspension, steering angle, gear ratio,
+ * differential and brake balance, each a row of five numbered notches between its two ends (Soft / Stiff ...), with the
  * position and a line saying what it does under them. The notches are the kit's segmented control, so a tap
  * or a click picks one; Left / Right on a focused notch steps it (the keyboard's arrows and the pad's, which
  * input/padNav.ts sends as arrow keys) and Up / Down move on to the next row. Only the picked notch is a tab
@@ -10,7 +10,7 @@
 import { SETUP_POSITIONS, STOCK_POSITION, type SetupPosition, type SetupSlider } from '../sim/tuning';
 import { h, segmented } from '../ui/kit/dom';
 import { ArrowUpDown, Disc3, icon, type IconNode } from '../ui/kit/icons';
-import { Cog, Split } from 'lucide';
+import { Cog, LifeBuoy, Split } from 'lucide';
 
 interface SliderCopy {
   name: string;
@@ -33,6 +33,18 @@ export const SETUP_COPY: { [S in SetupSlider]: SliderCopy } = {
       "Stock: the car's own springs and travel.",
       'Stiffer: flatter and quicker to turn in on smooth tarmac.',
       'Stiff: flat and sharp on smooth tarmac, but it skips over dirt and bottoms out on kerbs.',
+    ],
+  },
+  steering: {
+    name: 'Steering angle',
+    icon: LifeBuoy,
+    ends: ['Less', 'More'],
+    hints: [
+      'Less: calm at speed, no twitch on a drag run or a fast straight. Lazy on a light touch, and slides die out.',
+      'A little less: steadier at speed, a touch lazier into turns.',
+      "Stock: the car's own steering lock.",
+      'A little more: sharper on a light touch, a little more angle to drift with.',
+      'More: sharp turn in and deeper drifts if you tap the counter steer (hold it flat and the drift straightens). Twitchy at speed.',
     ],
   },
   gearing: {

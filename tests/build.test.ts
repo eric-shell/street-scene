@@ -87,7 +87,7 @@ describe('build validation', () => {
         decals: Array.from({ length: 20 }, () => ({ shape: 'flame', pos: [99, 0, 0], normal: [0, 0, 0], scale: 50 })),
         parts: { spoiler: 'ok_id', hood: '../../etc', nonsense: 'x' },
       },
-      performance: { suspension: 9, gearing: -4, differential: 2.4, brakeBalance: 'x' },
+      performance: { suspension: 9, steering: 0.2, gearing: -4, differential: 2.4, brakeBalance: 'x' },
     });
     expect(b.carId).toBe('wendtStrom');
     expect(b.name.length).toBeLessThanOrEqual(24);
@@ -108,7 +108,7 @@ describe('build validation', () => {
     // carId was invalid, so per-car parts were dropped
     expect(b.visual.parts.spoiler).toBeUndefined();
     expect(b.visual.parts.hood).toBeUndefined();
-    expect(b.performance).toMatchObject({ suspension: 5, gearing: 1, differential: 2, brakeBalance: 3 });
+    expect(b.performance).toMatchObject({ suspension: 5, steering: 1, gearing: 1, differential: 2, brakeBalance: 3 });
   });
 
   it('share codes round trip to the same build', async () => {
@@ -121,12 +121,13 @@ describe('build validation', () => {
     b.visual.calipers = { color: '#ffcc1f', finish: 'pearl', match: true };
     b.visual.underglow = { enabled: true, color: '#ff00aa', color2: '#00ffaa', pattern: 'chase', brightness: 1.4, speed: 2, size: 1.2 };
     b.visual.stance = { front: { rideHeight: -0.045, camber: -3.5, offset: 0.015, wheelSize: 1.05, wheelWidth: 1.1 }, rear: { rideHeight: -0.02, camber: -7, offset: 0.05, wheelSize: 1.2, wheelWidth: 1.3 } };
-    b.performance = { suspension: 1, gearing: 5, differential: 4, brakeBalance: 2, launchRpm: 4500, antilagRpm: 5250 };
+    b.performance = { suspension: 1, steering: 4, gearing: 5, differential: 4, brakeBalance: 2, launchRpm: 4500, antilagRpm: 5250 };
     const code = await encodeShareCode(b);
-    expect(code.length).toBeLessThan(700);
+    // A ?build= link: well under the ~2,000 characters every browser and chat app passes (700 until the steering slider's key).
+    expect(code.length).toBeLessThan(720);
     const back = await decodeShareCode(code);
     expect(back).toEqual(validateBuild(b));
-    expect(back!.performance).toEqual({ suspension: 1, gearing: 5, differential: 4, brakeBalance: 2, launchRpm: 4500, antilagRpm: 5250 });
+    expect(back!.performance).toEqual({ suspension: 1, steering: 4, gearing: 5, differential: 4, brakeBalance: 2, launchRpm: 4500, antilagRpm: 5250 });
     expect(await decodeShareCode('garbage!!')).toBeNull();
   });
 
@@ -286,8 +287,10 @@ describe('setup sliders', () => {
   });
 
   it('validation rounds and clamps positions; builds from before the sliders start on the stock setup', () => {
-    expect(validatePerformance({ suspension: 1.4, gearing: 4.6, differential: 0, brakeBalance: 99, launchRpm: 0 })).toEqual({ suspension: 1, gearing: 5, differential: 1, brakeBalance: 5, launchRpm: 0 });
+    expect(validatePerformance({ suspension: 1.4, steering: 4.4, gearing: 4.6, differential: 0, brakeBalance: 99, launchRpm: 0 })).toEqual({ suspension: 1, steering: 4, gearing: 5, differential: 1, brakeBalance: 5, launchRpm: 0 });
     expect(validatePerformance({})).toEqual(stockPerformance());
+    // A build saved before the steering slider keeps its other sliders and steers on the stock lock.
+    expect(validatePerformance({ suspension: 2, gearing: 4, differential: 5, brakeBalance: 1, launchRpm: 0 })).toEqual({ suspension: 2, steering: 3, gearing: 4, differential: 5, brakeBalance: 1, launchRpm: 0 });
     // Old saves, share codes and replay configs: every tier key, the old suspension tier (0..3) among them.
     expect(validatePerformance({ ...LEGACY_TIERS, suspension: 1, launchRpm: 4000 })).toEqual({ ...stockPerformance(), launchRpm: 4000 });
     expect(validatePerformance({ engine: 0, turbo: 0, exhaust: 0, transmission: 0, tires: 0, suspension: 0, brakes: 0, weight: 0, nitrous: 0 }, 'kazamaRotor')).toEqual(stockPerformance('kazamaRotor'));
@@ -305,8 +308,8 @@ describe('setup sliders', () => {
   });
 
   it('a non-stock setup races deterministically', () => {
-    const perf: PerformanceBuild = { suspension: 5, gearing: 1, differential: 1, brakeBalance: 1, launchRpm: 0 };
-    const locked: PerformanceBuild = { suspension: 1, gearing: 5, differential: 5, brakeBalance: 5, launchRpm: 0 };
+    const perf: PerformanceBuild = { suspension: 5, steering: 1, gearing: 1, differential: 1, brakeBalance: 1, launchRpm: 0 };
+    const locked: PerformanceBuild = { suspension: 1, steering: 5, gearing: 5, differential: 5, brakeBalance: 5, launchRpm: 0 };
     for (const p of [perf, locked]) {
       const a = carSnapshot(runAutopilot(raceConfig(6002, 'circuit', 1, p), 20));
       expect(carSnapshot(runAutopilot(raceConfig(6002, 'circuit', 1, p), 20))).toBe(a);
@@ -388,6 +391,51 @@ describe('setup sliders', () => {
       };
       expect(stop(1), id).toBeGreaterThan(stop(3) + 0.8);
       expect(stop(5), id).toBeLessThan(stop(3) + 0.3);
+    }
+  });
+
+  it('steering angle: less shrugs off a tap at speed and lets slides die, more bites on a light touch and holds deeper drifts', () => {
+    /** A full lock tap at 180 km/h (0.25 s), then straight for 2 s: the peak body slip (rad). */
+    const tap = (t: CarTuning) => {
+      const c = rollTo(t, 180);
+      let slip = 0;
+      for (let i = 0; i < 135; i++) {
+        stepCar(c, t, input({ steer: i < 15 ? 1 : 0, throttle: 0.6 }), { world });
+        slip = Math.max(slip, Math.abs(c.slipAngle));
+      }
+      return slip;
+    };
+    /** A handbrake entry at 80 km/h, then 4 s flat out with a keyboard driver tapping the counter steer key while the slide is past 20°: seconds over 15° and the mean angle there (rad). */
+    const drift = (t: CarTuning) => {
+      const c = rollTo(t, 80);
+      for (let i = 0; i < 24; i++) stepCar(c, t, input({ steer: 1, handbrake: i < 20, throttle: 0.6 }), { world });
+      let held = 0;
+      let sum = 0;
+      for (let i = 0; i < 240; i++) {
+        stepCar(c, t, input({ steer: Math.abs(c.slipAngle) > (20 * Math.PI) / 180 ? -Math.sign(c.slipAngle) : 0, throttle: 1 }), { world });
+        if (Math.abs(c.slipAngle) > (15 * Math.PI) / 180) {
+          held += 1 / 60;
+          sum += Math.abs(c.slipAngle) / 60;
+        }
+      }
+      return { held, angle: sum / held };
+    };
+    for (const [id, car] of SLIDER_CARS) {
+      const at = SETUP_POSITIONS.map((p) => tuned(car, 'steering', p));
+      // At speed the lock moves one step at a time; Less keeps a tap from unsettling the car.
+      const taps = at.map(tap);
+      for (let i = 1; i < taps.length; i++) expect(taps[i], `${id} ${i + 1}`).toBeGreaterThan(taps[i - 1]);
+      expect(taps[0], id).toBeLessThan(taps[2] * 0.7);
+      // A light touch (half lock at 60 km/h for a second) bites harder one step at a time.
+      const bite = at.map((t) => heading(t, 60, 60, { steer: 0.5 }));
+      for (let i = 1; i < bite.length; i++) expect(bite[i], `${id} ${i + 1}`).toBeGreaterThan(bite[i - 1]);
+      expect(bite[4], id).toBeGreaterThan(bite[2] * 1.05);
+      expect(bite[0], id).toBeLessThan(bite[2] * 0.85);
+      // The angle kit: More holds a feathered drift at least as long and deeper; Less lets it die.
+      const [less, stock, more] = [0, 2, 4].map((i) => drift(at[i]));
+      expect(more.held, id).toBeGreaterThanOrEqual(stock.held);
+      expect(more.angle, id).toBeGreaterThan(stock.angle + (2.5 * Math.PI) / 180);
+      expect(less.held, id).toBeLessThan(stock.held - 1);
     }
   });
 
