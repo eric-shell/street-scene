@@ -6,6 +6,72 @@
       "url": "https://freemusicarchive.org/music/1000-handz/",
       "albums": [
         {
+          "id": "1000-handz/dance-house-instrumentals",
+          "title": "CC BY: FREE TO USE - Dance/House Instrumentals",
+          "shortTitle": "Dance/House Instrumentals",
+          "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-dancehouse-instrumentals/",
+          "released": "2025-04-08",
+          "source": "Free Music Archive",
+          "sourceUrl": "https://freemusicarchive.org/",
+          "license": "CC BY 4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "tracks": [
+            {
+              "id": "1000-handz/dance-house-instrumentals/1",
+              "title": "In Search Of Sunrise",
+              "number": 1,
+              "file": "music/1000-handz/dance-house-instrumentals/01-in-search-of-sunrise.mp3",
+              "duration": 162.5,
+              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-dancehouse-instrumentals/in-search-of-sunrise/"
+            },
+            {
+              "id": "1000-handz/dance-house-instrumentals/7",
+              "title": "Basement Jaxx",
+              "number": 7,
+              "file": "music/1000-handz/dance-house-instrumentals/07-basement-jaxx.mp3",
+              "duration": 99.1,
+              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-dancehouse-instrumentals/basement-jaxx/"
+            },
+            {
+              "id": "1000-handz/dance-house-instrumentals/21",
+              "title": "Vogue",
+              "number": 21,
+              "file": "music/1000-handz/dance-house-instrumentals/21-vogue.mp3",
+              "duration": 147.1,
+              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-dancehouse-instrumentals/vogue-1/"
+            }
+          ]
+        },
+        {
+          "id": "1000-handz/drum-and-bass-instrumentals",
+          "title": "CC BY: FREE TO USE - Drum & Bass Instrumentals",
+          "shortTitle": "Drum & Bass Instrumentals",
+          "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-drum-bass-instrumentals/",
+          "released": "2026-08-20",
+          "source": "Free Music Archive",
+          "sourceUrl": "https://freemusicarchive.org/",
+          "license": "CC BY 4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "tracks": [
+            {
+              "id": "1000-handz/drum-and-bass-instrumentals/9",
+              "title": "Relativity",
+              "number": 9,
+              "file": "music/1000-handz/drum-and-bass-instrumentals/09-relativity.mp3",
+              "duration": 199.5,
+              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-drum-bass-instrumentals/relativity/"
+            },
+            {
+              "id": "1000-handz/drum-and-bass-instrumentals/11",
+              "title": "Master Key",
+              "number": 11,
+              "file": "music/1000-handz/drum-and-bass-instrumentals/11-master-key.mp3",
+              "duration": 209.2,
+              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-drum-bass-instrumentals/master-key/"
+            }
+          ]
+        },
+        {
           "id": "1000-handz/electronic-gaming-instrumentals",
           "title": "CC BY: FREE TO USE - Electronic/Gaming Instrumentals",
           "shortTitle": "Electronic/Gaming Instrumentals",
@@ -111,6 +177,62 @@
               "file": "music/1000-handz/electronic-gaming-instrumentals/42-boomy.mp3",
               "duration": 146.9,
               "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/boomy/"
+            }
+          ]
+        },
+        {
+          "id": "1000-handz/synthwave-instrumentals",
+          "title": "CC BY: FREE TO USE - Synthwave Instrumentals",
+          "shortTitle": "Synthwave Instrumentals",
+          "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-synthwave-instrumentals/",
+          "released": "2026-07-02",
+          "source": "Free Music Archive",
+          "sourceUrl": "https://freemusicarchive.org/",
+          "license": "CC BY 4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "tracks": [
+            {
+              "id": "1000-handz/synthwave-instrumentals/3",
+              "title": "The Alchemist",
+              "number": 3,
+              "file": "music/1000-handz/synthwave-instrumentals/03-the-alchemist.mp3",
+              "duration": 170.3,
+              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-synthwave-instrumentals/the-alchemist/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "darkfluxx",
+      "name": "Darkfluxx",
+      "url": "https://freemusicarchive.org/music/darkfluxx/",
+      "albums": [
+        {
+          "id": "darkfluxx/singles",
+          "title": "Singles",
+          "shortTitle": "Singles",
+          "url": "https://freemusicarchive.org/music/darkfluxx/",
+          "source": "Free Music Archive",
+          "sourceUrl": "https://freemusicarchive.org/",
+          "license": "CC BY 4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "tracks": [
+            {
+              "id": "darkfluxx/singles/1",
+              "title": "Predator",
+              "number": 1,
+              "file": "music/darkfluxx/singles/01-predator.mp3",
+              "duration": 156.3,
+              "url": "https://freemusicarchive.org/music/darkfluxx/single/predatormp3/"
+            },
+            {
+              "id": "darkfluxx/singles/2",
+              "title": "Theme",
+              "number": 2,
+              "file": "music/darkfluxx/singles/02-theme.mp3",
+              "duration": 201.3,
+              "url": "https://freemusicarchive.org/music/darkfluxx/single/darkfluxx-thememp3/"
             }
           ]
         }

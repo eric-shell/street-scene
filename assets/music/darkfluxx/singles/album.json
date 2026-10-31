@@ -1,0 +1,24 @@
+{
+  "artist": "Darkfluxx",
+  "artistUrl": "https://freemusicarchive.org/music/darkfluxx/",
+  "album": "Singles",
+  "albumShort": "Singles",
+  "albumUrl": "https://freemusicarchive.org/music/darkfluxx/",
+  "source": "Free Music Archive",
+  "sourceUrl": "https://freemusicarchive.org/",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "notes": "Two singles released without an album (Predator 2025-02-01, Theme 2023-10-12). Transcoded to 128 kbps MP3 with loudness normalization for the web. No other changes.",
+  "tracks": [
+    {
+      "number": 1,
+      "title": "Predator",
+      "url": "https://freemusicarchive.org/music/darkfluxx/single/predatormp3/"
+    },
+    {
+      "number": 2,
+      "title": "Theme",
+      "url": "https://freemusicarchive.org/music/darkfluxx/single/darkfluxx-thememp3/"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "artist": "1000 Handz",
+  "artistUrl": "https://freemusicarchive.org/music/1000-handz/",
+  "album": "CC BY: FREE TO USE - Dance/House Instrumentals",
+  "albumShort": "Dance/House Instrumentals",
+  "albumUrl": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-dancehouse-instrumentals/",
+  "released": "2025-04-08",
+  "source": "Free Music Archive",
+  "sourceUrl": "https://freemusicarchive.org/",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "notes": "Transcoded to 128 kbps MP3 with loudness normalization for the web. No other changes.",
+  "tracks": [
+    {
+      "number": 1,
+      "title": "In Search Of Sunrise",
+      "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-dancehouse-instrumentals/in-search-of-sunrise/"
+    },
+    {
+      "number": 7,
+      "title": "Basement Jaxx",
+      "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-dancehouse-instrumentals/basement-jaxx/"
+    },
+    {
+      "number": 21,
+      "title": "Vogue",
+      "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-dancehouse-instrumentals/vogue-1/"
+    }
+  ]
+}

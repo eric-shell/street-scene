@@ -1,0 +1,20 @@
+{
+  "artist": "1000 Handz",
+  "artistUrl": "https://freemusicarchive.org/music/1000-handz/",
+  "album": "CC BY: FREE TO USE - Synthwave Instrumentals",
+  "albumShort": "Synthwave Instrumentals",
+  "albumUrl": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-synthwave-instrumentals/",
+  "released": "2026-07-02",
+  "source": "Free Music Archive",
+  "sourceUrl": "https://freemusicarchive.org/",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "notes": "Transcoded to 128 kbps MP3 with loudness normalization for the web. No other changes.",
+  "tracks": [
+    {
+      "number": 3,
+      "title": "The Alchemist",
+      "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-synthwave-instrumentals/the-alchemist/"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "artist": "1000 Handz",
+  "artistUrl": "https://freemusicarchive.org/music/1000-handz/",
+  "album": "CC BY: FREE TO USE - Drum & Bass Instrumentals",
+  "albumShort": "Drum & Bass Instrumentals",
+  "albumUrl": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-drum-bass-instrumentals/",
+  "released": "2026-08-20",
+  "source": "Free Music Archive",
+  "sourceUrl": "https://freemusicarchive.org/",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "notes": "Transcoded to 128 kbps MP3 with loudness normalization for the web. No other changes.",
+  "tracks": [
+    {
+      "number": 9,
+      "title": "Relativity",
+      "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-drum-bass-instrumentals/relativity/"
+    },
+    {
+      "number": 11,
+      "title": "Master Key",
+      "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-drum-bass-instrumentals/master-key/"
+    }
+  ]
+}
