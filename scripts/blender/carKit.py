@@ -2638,7 +2638,7 @@ def ray_map(objs, x0, x1, z0, z1, step=0.005, skip=('Lens', 'Glass', 'ClearLens'
 
 
 def lamp_chamber(o, center, rows, replace='Chrome', mat='ClearLens', wall=0.022, bowl=0.012, wall_s=0.015,
-                 wall_z=0.005, bulb_at=0.45, bulb=(0.008, 0.024), collar=None, segments=10, step=0.25):
+                 wall_z=0.005, bulb_at=0.45, bulb=None, collar=None, segments=10, step=0.25):
     """The clear rows of a tail lamp built as a recessed chamber behind its cover, after the Wendt Strom's RCCR
     (Hella Magic Colours): a donor lamp models every row as a shell about 13 mm behind the cover, so a clear row
     re-materialed on it reads flat. The `replace` faces (the clear rows' shell, both sides) are deleted and a
@@ -2648,9 +2648,10 @@ def lamp_chamber(o, center, rows, replace='Chrome', mat='ClearLens', wall=0.022,
     ellipse over the row), easing back up to the shell over `wall_s` m at the ends and `wall_z` m at each
     row's top and bottom edge. So the chamber meets the kept shell at its rim, its walls slope (the inner end's
     big sloped wall in the photos), and between two rows the surface comes back up to the shell as a divider
-    rib. `rows` is [(z0, z1, bulb_mat)] bottom up; each row gets a bulb on its bowl's floor at `bulb_at` of its
-    length from the inner end (r, length `bulb`), standing toward the cover, its base sunk 3 mm into the floor
-    (`collar` a material puts it on a ring of that material instead; the user had RCCR's chrome rings removed).
+    rib. `rows` is [(z0, z1, bulb_mat)] bottom up; each bowl's deepest point is `bulb_at` of its length from the
+    inner end. `bulb` (r, length) puts a bulb there, standing toward the cover, its base sunk 3 mm into the floor
+    (`collar` a material puts it on a ring of that material instead); off by default, since the user had RCCR's
+    bulbs and their chrome rings removed.
     Built on +x and mirrored. Smooth normals of its own (src_normal). Returns the new face count."""
     from mathutils.bvhtree import BVHTree
     import math
@@ -2659,7 +2660,7 @@ def lamp_chamber(o, center, rows, replace='Chrome', mat='ClearLens', wall=0.022,
     stash = stash_normals(o)
     i_mat = mat_index(o, mat)
     i_collar = mat_index(o, collar) if collar else None
-    for r in rows:
+    for r in rows if bulb else []:
         mat_index(o, r[2])
     names = [m.name.split('.')[0] for m in me.materials]
     bm = bmesh.new()
@@ -2772,10 +2773,10 @@ def lamp_chamber(o, center, rows, replace='Chrome', mat='ClearLens', wall=0.022,
                 f = bm.faces.new(q[::-1] if flip else q)
                 f.material_index = i_mat
                 field.append(f)
-        r, length = bulb
+        r, length = bulb or (0, 0)
         base = [(0, -0.003, i_collar), (r * 1.4, -0.003, i_collar), (r * 1.4, 0.004, i_collar), (r, 0.004, None)] if collar else [(0, -0.003, None), (r, -0.003, None)]
         prof = base + [(r, length * 0.65, None), (r * 0.85, length * 0.82, None), (r * 0.5, length * 0.95, None), (0, length, None)]
-        for (P, d), (_, _, bm_mat) in zip(bulbs, rows):
+        for (P, d), (_, _, bm_mat) in zip(bulbs if bulb else [], rows):
             P, d = mir(P), mir(d)
             a = d.orthogonal().normalized()
             c = d.cross(a)

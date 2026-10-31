@@ -521,12 +521,11 @@
       ],
       "materialSlots": [
         "TailLight",
-        "ClearLens",
         "Lens",
         "Reflector",
-        "Light"
+        "ClearLens"
       ],
-      "tris": 3960,
+      "tris": 3680,
       "generated": true
     },
     {

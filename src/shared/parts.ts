@@ -84,7 +84,7 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   // narrowed, vertex for vertex.
   mirrors: 3000,
   // Both tail lamps with their clear covers, split off the body whole (the Wendt Strom's: 1,911); a part re-materials
-  // its rows and builds its clear rows as recessed chambers with bowls, a divider and bulbs (`lamp_chamber`; RCCR: 3,960).
+  // its rows and builds its clear rows as recessed chambers with bowls, a divider and bulbs (`lamp_chamber`; RCCR: 3,680).
   taillights: 4500,
 };
 
