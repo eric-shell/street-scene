@@ -21,6 +21,10 @@
  *   A feature with a box and no nodes is a switch that changes nothing.
  * - blackGrille: the Paint pieces wholly inside the box (the grille's bars) become a child that takes the Black
  *   material of the lips and diffusers.
+ * - blackBPillar: a vinyl, the Paint faces clipped to the box (the windows' sill and top heights, between the door glass
+ *   and the quarter glass) and lifted off the paint along their normals, drawn in the Black material while the switch
+ *   is on. The pillar's few long triangles run up into the roof's drip rail and down past the sill, so taking whole
+ *   faces would miss the window line; clipping cuts it straight at the box.
  * A piece is welded by position, not by index (a model splits its vertices along seams), so a piece the skin only
  * touches is never taken with it.
  * The Wendt Strom's Euro mirrors were a feature too, the stock housings narrowed at load by per-vertex reshapes;
@@ -37,6 +41,9 @@ export interface BodyFeatureBox {
 
 /** Positions closer than this weld into one piece (m). */
 const WELD = 5e-4;
+
+/** How far a vinyl stands off the paint along its normals (m): clear of z-fighting, too thin to see edge on. */
+const VINYL_LIFT = 0.0015;
 
 type Box = { min: THREE.Vector3; max: THREE.Vector3 };
 
@@ -116,6 +123,74 @@ function splitOff(mesh: THREE.Mesh, ids: number[], take: boolean[], feature: Bod
   mesh.add(part);
 }
 
+type Vert = { p: THREE.Vector3; n: THREE.Vector3 };
+
+/** A convex polygon clipped to the box, one box face at a time (Sutherland-Hodgman), normals lerped along the cuts. */
+function clipToBox(poly: Vert[], b: Box): Vert[] {
+  for (const axis of ['x', 'y', 'z'] as const) {
+    for (const [bound, sign] of [[b.min[axis], 1], [b.max[axis], -1]] as const) {
+      const d = (v: Vert) => (v.p[axis] - bound) * sign;
+      const out: Vert[] = [];
+      poly.forEach((a, i) => {
+        const c = poly[(i + 1) % poly.length];
+        const da = d(a);
+        const dc = d(c);
+        if (da >= 0) out.push(a);
+        if (da >= 0 !== dc >= 0) {
+          const t = da / (da - dc);
+          out.push({ p: a.p.clone().lerp(c.p, t), n: a.n.clone().lerp(c.n, t) });
+        }
+      });
+      poly = out;
+      if (poly.length < 3) return [];
+    }
+  }
+  return poly;
+}
+
+/** The faces of `mesh` clipped to the box and lifted off it, as a child in its space drawn while `feature` is on. */
+function vinylOver(mesh: THREE.Mesh, toCar: THREE.Matrix4, box: Box, feature: BodyFeature): void {
+  const geo = mesh.geometry;
+  const pos = geo.getAttribute('position');
+  const nrm = geo.getAttribute('normal');
+  if (!nrm) return;
+  const toCarN = new THREE.Matrix3().getNormalMatrix(toCar);
+  const ids = faces(geo);
+  const p: number[] = [];
+  const n: number[] = [];
+  for (let t = 0; t + 2 < ids.length; t += 3) {
+    const tri = [0, 1, 2].map((k) => ({
+      p: new THREE.Vector3().fromBufferAttribute(pos, ids[t + k]).applyMatrix4(toCar),
+      n: new THREE.Vector3().fromBufferAttribute(nrm, ids[t + k]).applyMatrix3(toCarN),
+    }));
+    const poly = clipToBox(tri, box);
+    for (const v of poly) {
+      v.n.normalize();
+      v.p.addScaledVector(v.n, VINYL_LIFT);
+    }
+    for (let i = 1; i + 1 < poly.length; i++) {
+      for (const v of [poly[0], poly[i], poly[i + 1]]) {
+        p.push(v.p.x, v.p.y, v.p.z);
+        n.push(v.n.x, v.n.y, v.n.z);
+      }
+    }
+  }
+  if (!p.length) return;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(n, 3));
+  g.applyMatrix4(new THREE.Matrix4().copy(toCar).invert());
+  g.computeBoundingSphere();
+  g.computeBoundingBox();
+  const vinyl = new THREE.Mesh(g, mesh.material);
+  vinyl.name = feature;
+  vinyl.userData.bodyFeature = feature;
+  // Switched like an authored `_on` node, so CarView's part hides leave it alone.
+  vinyl.userData.featureNode = { feature, on: true };
+  vinyl.visible = false;
+  mesh.add(vinyl);
+}
+
 /**
  * Tag the authored feature nodes and cut the other features in `boxes` from a freshly loaded car scene (before any
  * clone, after the mirror caps' split).
@@ -142,6 +217,12 @@ export function splitBodyFeatures(root: THREE.Object3D, boxes: Partial<Record<Bo
       splitOff(mesh, ids, piecesIn(mesh.geometry, ids, verticesIn(mesh.geometry.getAttribute('position'), toCar, box)), 'blackGrille');
     }
   }
+  if (boxes.blackBPillar && !authored.has('blackBPillar')) {
+    const box = toBox(boxes.blackBPillar);
+    for (const { mesh, toCar } of meshesOf(root, toRoot, isPaint)) {
+      if (!mesh.userData.bodyFeature && !mesh.userData.featureNode) vinylOver(mesh, toCar, box, 'blackBPillar');
+    }
+  }
 }
 
 /** One car's features: the meshes each switch touches, found once in its bound model (CarView.load). */
@@ -149,6 +230,8 @@ export class BodyFeatureView {
   /** The authored feature nodes (`<feature>_on` / `_off`) and the state each is drawn in. */
   private readonly nodes: { node: THREE.Object3D; feature: BodyFeature; on: boolean }[] = [];
   private readonly grilles: THREE.Mesh[] = [];
+  /** The vinyls cut at load (vinylOver), always in the Black material. */
+  private readonly vinyls: THREE.Mesh[] = [];
 
   constructor(model: THREE.Object3D) {
     model.traverse((o) => {
@@ -156,6 +239,7 @@ export class BodyFeatureView {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       if (mesh.userData.bodyFeature === 'blackGrille') this.grilles.push(mesh);
+      if (mesh.userData.bodyFeature === 'blackBPillar') this.vinyls.push(mesh);
     });
   }
 
@@ -163,5 +247,6 @@ export class BodyFeatureView {
   apply(on: readonly BodyFeature[], paint: THREE.Material, black: THREE.Material): void {
     for (const n of this.nodes) n.node.visible = on.includes(n.feature) === n.on;
     for (const m of this.grilles) m.material = on.includes('blackGrille') ? black : paint;
+    for (const m of this.vinyls) m.material = black;
   }
 }

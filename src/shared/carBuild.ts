@@ -81,14 +81,15 @@ const GLOW_RENAMES: Record<string, GlowPattern> = { breathe: 'pulse', alternate:
  * A car's unique features, each a switch a car's manifest offers (`bodyFeatures`, render/car/bodyFeatures.ts):
  * a shaved hatch loses its handle, a shaved rubstrip loses the moulded
  * strip along the doors and the quarters, half cup handles fill each door handle's cup flush above the bar's middle,
- * leaving its lower half, and a black grille
- * paints the grille's body colored bars flat black like the lips and diffusers. Fog lights are a pair of round
+ * leaving its lower half, a black grille
+ * paints the grille's body colored bars flat black like the lips and diffusers, and a black B pillar lays a black
+ * vinyl over the pillar's paint between the door glass and the quarter glass, cut to the windows' sills and tops. Fog lights are a pair of round
  * lamps in the front bumper's outer intakes, and fit every front bumper; shaved markers press the fenders' side
  * repeaters flush, on every fender option; wind splitters are black rubber fins standing in the roof's drip rails
  * from the windshield to the spoiler (after the BMW 3.0 CSL's fender fins), on every roof option; pop out windows
  * swing the rear quarter glass out at the back on a latch, hinged at the front edge (a Grand Caravan's vents). Every feature is bought per car, like a part (shared/economy.ts).
  */
-export const BODY_FEATURES = ['shavedHatch', 'shavedRubstrip', 'halfCupHandles', 'blackGrille', 'fogLights', 'shavedMarkers', 'windSplitters', 'popOutWindows'] as const;
+export const BODY_FEATURES = ['shavedHatch', 'shavedRubstrip', 'halfCupHandles', 'blackGrille', 'blackBPillar', 'fogLights', 'shavedMarkers', 'windSplitters', 'popOutWindows'] as const;
 export type BodyFeature = (typeof BODY_FEATURES)[number];
 
 /** The features' names, for the garage's switches and the dialogs that list what a build wears. */
@@ -97,6 +98,7 @@ export const FEATURE_LABELS: Record<BodyFeature, string> = {
   shavedRubstrip: 'Shaved rubstrip',
   halfCupHandles: 'Half cup handles',
   blackGrille: 'Black grille',
+  blackBPillar: 'Black B pillar',
   fogLights: 'Fog lights',
   shavedMarkers: 'Shaved side markers',
   windSplitters: 'Wind splitters',
