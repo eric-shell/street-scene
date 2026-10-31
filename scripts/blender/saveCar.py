@@ -16,6 +16,10 @@ import bpy
 
 cid, out = sys.argv[sys.argv.index('--') + 1:][:2]
 scene = bpy.context.scene
+# A working copy saved while the user was in Edit Mode keeps that mode (the edits are in the mesh: saving
+# flushes them), and exportCar.py's selection operators then fail their poll. The car is saved in Object Mode.
+if bpy.context.object and bpy.context.object.mode != 'OBJECT':
+    bpy.ops.object.mode_set(mode='OBJECT')
 # A car has all four; the shared wheel set (`wheels`) has only Wheels.
 subs = tuple(s for s in ('Car', 'Parts', 'Wheels', 'Rig') if f'{cid}:{s}' in bpy.data.collections)
 if not subs or (cid != 'wheels' and len(subs) < 4):
