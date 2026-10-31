@@ -511,6 +511,25 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_taillights_rccr",
+      "displayName": "RCCR",
+      "carId": "wendtStrom",
+      "slot": "taillights",
+      "file": "parts/wendtStrom_taillights_rccr.glb",
+      "hides": [
+        "Taillights"
+      ],
+      "materialSlots": [
+        "TailLight",
+        "ClearLens",
+        "Lens",
+        "Reflector",
+        "Light"
+      ],
+      "tris": 3960,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Seiryu",

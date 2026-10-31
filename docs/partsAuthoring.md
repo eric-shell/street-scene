@@ -16,6 +16,8 @@ Every visible piece of a car lives in a slot. The slot list is `PART_SLOTS` in `
 | `spoiler` | Wing or ducktail | Garage offers "None" |
 | `hood` | Bonnet | Base car node `Hood` on authored cars |
 | `roof` | Roof panel | Base car node `Roof` on authored cars |
+| `mirrors` | Both door mirrors | Base car node `Mirrors` on authored cars |
+| `taillights` | Both tail lamps with their covers | Base car node `Taillights` on authored cars; a part re-materials the rows (`TailLight` red, `Chrome` behind the `Lens` for a clear row) |
 | `wheels` | One wheel on its tire | Universal: fits every car |
 
 To add a new slot (canards, diffuser, mirrors, roof scoop), add it to `PART_SLOTS`, `SLOT_LABELS` and `TRI_BUDGETS` in `src/shared/parts.ts`. To show it in the garage body menu, also add it to `BODY_PART_SLOTS`.
@@ -74,6 +76,7 @@ Only `HeadLight`, `TailLight` and `BrakeLight` glow: a lamp that is not one of t
 | sideSkirts, hood, roof | 2000 |
 | spoiler | 5000 |
 | mirrors | 3000 |
+| taillights | 4500 |
 | wheels | 12000 |
 | body | 20000 |
 

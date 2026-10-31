@@ -27,8 +27,9 @@ export const ECONOMY = {
   slots: {
     // Wheels are the first thing to buy: the cheapest after two races, the dearest multi-piece after three.
     wheels: { base: 5000, spread: 0.4, unlock: 1 },
-    // The small trim first: mirrors with the wheels, then exhausts, splitters and canards with the skirts.
+    // The small trim first: mirrors and tail lamps with the wheels, then exhausts, splitters and canards with the skirts.
     mirrors: { base: 3000, spread: 0.3, unlock: 1 },
+    taillights: { base: 3000, spread: 0.3, unlock: 1 },
     exhaust: { base: 5000, spread: 0.3, unlock: 3 },
     splitter: { base: 6000, spread: 0.3, unlock: 3 },
     canards: { base: 5500, spread: 0.3, unlock: 3 },

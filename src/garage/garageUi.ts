@@ -67,12 +67,12 @@ import { pointsBalance } from '../shared/points';
 import { loadStats, racesForUnlocks } from '../shared/stats';
 import { formatPoints } from '../ui/kit/format';
 import { strippedText } from './ownershipNotice';
-import { GarageScene } from './garageScene';
+import { GarageScene, type TabFrame } from './garageScene';
 import { track } from '../analytics/telemetry';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, importBuild, loadGaragePrefs, randomBuild, saveGaragePrefs, shareUrl } from './storage';
 import { PointsCounter, moreRaces, revealNew, section, statLines } from './garageWidgets';
 import type { Child } from './garageWidgets';
-import { AUTHORS, renderTabContent, TABS } from './garageTabs';
+import { AUTHORS, LIGHT_SLOTS, renderTabContent, TABS } from './garageTabs';
 import type { PaintSurface, Tab, TabHost } from './garageTabs';
 import { WheelThumbs } from './wheelThumbs';
 import { placeDecal } from './garageVinyls';
@@ -137,6 +137,8 @@ export class GarageScreen implements TabHost {
   private readonly steps: RailSteps;
   /** The Body tab's part slot last touched: every slot is listed, the camera frames this one. */
   bodySlot: PartSlot = BODY_PART_SLOTS[0];
+  /** The Lights tab's lamp slot last touched (the camera frames it), or null for the underglow's wide shot. */
+  lightsSlot: PartSlot | null = null;
   /** The Paint tab's surface last touched: every surface is listed, the camera frames this one. */
   paintSurface: PaintSurface = 'body';
   /** The axle the Wheels tab's wheel and the Paint tab's wheel paint dress while front and rear are unlinked. */
@@ -855,7 +857,10 @@ export class GarageScreen implements TabHost {
 
   /** Frame the open tab's shot (the Body tab's by the slot on show, the Paint tab's by the surface), or the Builds step's view. */
   reframe(): void {
-    this.scene.frame(this.step === 'build' ? (this.tab === 'body' ? `body:${this.bodySlot}` : this.tab === 'paint' ? `paint:${this.paintSurface}` : this.tab) : null);
+    const tab = this.tab;
+    const view: TabFrame =
+      tab === 'body' ? `body:${this.bodySlot}` : tab === 'paint' ? `paint:${this.paintSurface}` : tab === 'neon' && this.lightsSlot ? `body:${this.lightsSlot}` : tab;
+    this.scene.frame(this.step === 'build' ? view : null);
   }
 
   /** Apply the current build to the preview and mark it unsaved. Resolves when the preview is up to date. */
@@ -1164,11 +1169,15 @@ export class GarageScreen implements TabHost {
             const hides = hideBoxes.map((l) => l.querySelector('input') as HTMLInputElement).filter((c) => c.checked).map((c) => c.value);
             void this.scene.setCar(this.build.carId, v).then((view) => view.setDevHides(slot, hides));
             dialog.remove();
-            if (slot !== 'wheels') this.bodySlot = slot;
+            // The lamps are listed on the Lights tab, the wheels on their own, every other slot on Body.
+            const lamp = LIGHT_SLOTS.includes(slot);
+            if (lamp) this.lightsSlot = slot;
+            else if (slot !== 'wheels') this.bodySlot = slot;
+            const tab: Tab = slot === 'wheels' ? 'wheels' : lamp ? 'neon' : 'body';
             if (this.step !== 'build') {
-              this.tab = slot === 'wheels' ? 'wheels' : 'body';
+              this.tab = tab;
               this.go('build');
-            } else this.setTab(slot === 'wheels' ? 'wheels' : 'body');
+            } else this.setTab(tab);
             toast('Dev part equipped (not saved to the catalog)', Check);
           }, '--primary'),
           btn(Trash2, 'Cancel', () => dialog.remove()),

@@ -125,6 +125,8 @@ const FRAMES: Record<TabFrame, { shot: string | CameraPreset; spin: boolean }> =
   'body:diffuser': { shot: 'Rear', spin: false },
   'body:exhaust': { shot: 'Rear', spin: false },
   'body:mirrors': { shot: { name: 'Mirror', pos: [2.6, 1.5, 2.0], target: [0.9, 1.0, 0.4] }, spin: false },
+  // The left tail lamp from behind and outboard: its rows across the back and their wrap round the corner.
+  'body:taillights': { shot: { name: 'Taillight', pos: [2.2, 1.2, -3.8], target: [0.45, 0.8, -1.8] }, spin: false },
   'body:hood': { shot: { name: 'Hood', pos: [2.8, 2.5, 4.8], target: [0, 0.8, 0.9] }, spin: false },
   'body:roof': { shot: { name: 'Roof', pos: [3.6, 3.1, 3.6], target: [0, 0.9, 0] }, spin: false },
   'body:wheels': { shot: 'Wheel', spin: false },

@@ -2586,10 +2586,11 @@ def trim_plate(surface, target, holes, cells, gap=0.001, thick=0.003, material='
     me.update()
 
 
-def ray_map(objs, x0, x1, z0, z1, step=0.005, skip=('Lens', 'Glass', 'ClearLens'), deep=-1.8):
+def ray_map(objs, x0, x1, z0, z1, step=0.005, skip=('Lens', 'Glass', 'ClearLens'), deep=-1.8, side=1):
     """What the eye sees through the front, one letter per material: rays along +y over x0..x1, z1..z0,
     passing through `skip` (clear covers) to the first face behind. `O` marks a ray whose first hit lies
-    behind `deep` (y), a hole into the car. `look` draws every material alike and the lens covers
+    behind `deep` (y), a hole into the car. `side=-1` looks from behind instead (rays along -y; `deep`
+    is then a y the hit must lie behind, e.g. 1.8 for the tail). `look` draws every material alike and the lens covers
     opaque, so this is how a lamp or grille is judged: it found the Wendt Strom's black crescent (a
     grille back panel standing in front of the inner reflector bowls). Prints rows, returns them."""
     from mathutils.bvhtree import BVHTree
@@ -2610,7 +2611,7 @@ def ray_map(objs, x0, x1, z0, z1, step=0.005, skip=('Lens', 'Glass', 'ClearLens'
     t = BVHTree.FromBMesh(bm)
     code = {'HeadLight': 'H', 'TailLight': 'T', 'BrakeLight': 'B', 'Light': 'a', 'Chrome': 'c', 'Black': '#',
             'Paint': 'p', 'Trim': 't', 'Reflector': 'r', 'Grille': 'g', 'Interior': 'i'}
-    d = Vector((0, 1, 0))
+    d = Vector((0, side, 0))
     rows = []
     nz = int(round((z1 - z0) / step))
     nx = int(round((x1 - x0) / step))
@@ -2618,7 +2619,7 @@ def ray_map(objs, x0, x1, z0, z1, step=0.005, skip=('Lens', 'Glass', 'ClearLens'
         z = z1 - zi * step
         row = ''
         for xi in range(nx + 1):
-            o = Vector((x0 + xi * step, -5, z))
+            o = Vector((x0 + xi * step, -5 * side, z))
             ch = ' '
             for _ in range(12):
                 h = t.ray_cast(o, d, 10)
@@ -2626,7 +2627,7 @@ def ray_map(objs, x0, x1, z0, z1, step=0.005, skip=('Lens', 'Glass', 'ClearLens'
                     break
                 m = names[bm.faces[h[2]].material_index]
                 if m not in skip:
-                    ch = code.get(m, '?') if h[0].y < deep else 'O'
+                    ch = code.get(m, '?') if h[0].y * side < deep * side else 'O'
                     break
                 o = h[0] + d * 1e-4
             row += ch
@@ -2634,6 +2635,185 @@ def ray_map(objs, x0, x1, z0, z1, step=0.005, skip=('Lens', 'Glass', 'ClearLens'
         print(f'{z:.3f} {row}')
     bm.free()
     return rows
+
+
+def lamp_chamber(o, center, rows, replace='Chrome', mat='ClearLens', wall=0.022, bowl=0.012, wall_s=0.015,
+                 wall_z=0.005, bulb_at=0.45, bulb=(0.008, 0.024), collar=None, segments=10, step=0.25):
+    """The clear rows of a tail lamp built as a recessed chamber behind its cover, after the Wendt Strom's RCCR
+    (Hella Magic Colours): a donor lamp models every row as a shell about 13 mm behind the cover, so a clear row
+    re-materialed on it reads flat. The `replace` faces (the clear rows' shell, both sides) are deleted and a
+    heightfield takes their place: rays fan in plan from `center` (x, y; inside the car) at each height, the
+    `replace` faces' first and last hit per height give the row's ends (the outer end slants), and each grid
+    point sits on its ray `wall` m deeper than the shell it replaces, plus `bowl` m at each row's middle (an
+    ellipse over the row), easing back up to the shell over `wall_s` m at the ends and `wall_z` m at each
+    row's top and bottom edge. So the chamber meets the kept shell at its rim, its walls slope (the inner end's
+    big sloped wall in the photos), and between two rows the surface comes back up to the shell as a divider
+    rib. `rows` is [(z0, z1, bulb_mat)] bottom up; each row gets a bulb on its bowl's floor at `bulb_at` of its
+    length from the inner end (r, length `bulb`), standing toward the cover, its base sunk 3 mm into the floor
+    (`collar` a material puts it on a ring of that material instead; the user had RCCR's chrome rings removed).
+    Built on +x and mirrored. Smooth normals of its own (src_normal). Returns the new face count."""
+    from mathutils.bvhtree import BVHTree
+    import math
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    stash = stash_normals(o)
+    i_mat = mat_index(o, mat)
+    i_collar = mat_index(o, collar) if collar else None
+    for r in rows:
+        mat_index(o, r[2])
+    names = [m.name.split('.')[0] for m in me.materials]
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.faces.ensure_lookup_table()
+    mi = [f.material_index for f in bm.faces]
+    tree = BVHTree.FromBMesh(bm)
+    cx, cy = center
+
+    def probe(phi, z):
+        """(cover distance from the axis, shell gap behind it, shell material) along the ray at phi, z."""
+        d = Vector((math.sin(phi), math.cos(phi), 0))
+        base = Vector((cx, cy, z))
+        h = tree.ray_cast(base + d, -d, 2.0)
+        if h[0] is None or names[mi[h[2]]] != 'Lens':
+            return None
+        tc = (h[0] - base).length
+        q = h[0] - d * 1e-4
+        for _ in range(8):
+            h2 = tree.ray_cast(q, -d, 1.0)
+            if h2[0] is None:
+                return None
+            m = names[mi[h2[2]]]
+            if m != 'Lens':
+                return tc, tc - (h2[0] - base).length, m
+            q = h2[0] - d * 1e-4
+        return None
+
+    # The rows' ends per height, from the faces being replaced.
+    z_lo, z_hi = rows[0][0], rows[-1][1]
+    ends = []
+    z = z_lo + 0.001
+    while z < z_hi:
+        hits = [k * step for k in range(int(100 / step)) if (r := probe(math.radians(k * step), z)) and r[2] == replace]
+        if hits:
+            ends.append((z, math.radians(hits[0]), math.radians(hits[-1])))
+        z += 0.004
+
+    def end_at(z):
+        if z <= ends[0][0]:
+            return ends[0][1:]
+        for a, b in zip(ends, ends[1:]):
+            if z <= b[0]:
+                f = (z - a[0]) / (b[0] - a[0])
+                return a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f
+        return ends[-1][1:]
+
+    def stations(a, b):
+        h = b - a
+        rel = [0, 0.0015, 0.004, 0.008]
+        inner = max(1, round((h - 0.016) / 0.007))
+        mid = [0.008 + (h - 0.016) * k / inner for k in range(1, inner)]
+        return [a + r for r in rel] + [a + m for m in mid] + [b - r for r in reversed(rel)]
+
+    zs = []
+    for z0, z1, _ in rows:
+        for zz in stations(z0, z1):
+            if not zs or zz > zs[-1] + 1e-6:
+                zs.append(zz)
+    us = [0, 0.01, 0.025, 0.045, 0.07] + [0.07 + 0.86 * k / 18 for k in range(1, 18)] + [0.93, 0.955, 0.975, 0.99, 1]
+    smooth = lambda x: 0 if x <= 0 else 1 if x >= 1 else x * x * (3 - 2 * x)
+
+    grid = []
+    for z in zs:
+        p0, p1 = end_at(z)
+        row = next(r for r in rows if r[0] - 1e-6 <= z <= r[1] + 1e-6)
+        z_edge = min(abs(z - r_[k]) for r_ in rows for k in (0, 1))
+        line = []
+        for u in us:
+            phi = p0 + (p1 - p0) * u
+            r = probe(phi, z)
+            line.append((u, phi, r))
+        # Fill a ray that missed (at the lamp's edge) from its neighbour along the row.
+        for k in range(len(line)):
+            if line[k][2] is None:
+                nb = next((line[j][2] for j in sorted(range(len(line)), key=lambda j: abs(j - k)) if line[j][2]), None)
+                line[k] = (line[k][0], line[k][1], nb)
+        arc = line[len(line) // 2][2][0] * (p1 - p0)
+        zc, b = (row[0] + row[1]) / 2, (row[1] - row[0]) / 2
+        pts = []
+        for u, phi, (tc, gap, _) in line:
+            w = smooth(min(u, 1 - u) * arc / wall_s) * smooth(z_edge / wall_z)
+            rho = ((u - bulb_at) / max(bulb_at, 1 - bulb_at)) ** 2 + ((z - zc) / b) ** 2
+            depth = gap + w * (wall + bowl * max(0.0, 1 - rho))
+            d = Vector((math.sin(phi), math.cos(phi), 0))
+            pts.append(Vector((cx, cy, z)) + d * (tc - depth))
+        grid.append(pts)
+
+    # Bulbs: on each row's bowl floor, standing along the ray toward the cover.
+    bulbs = []
+    for z0, z1, _ in rows:
+        zc = (z0 + z1) / 2
+        p0, p1 = end_at(zc)
+        phi = p0 + (p1 - p0) * bulb_at
+        tc, gap, _ = probe(phi, zc)
+        d = Vector((math.sin(phi), math.cos(phi), 0))
+        bulbs.append((Vector((cx, cy, zc)) + d * (tc - gap - wall - bowl), d))
+
+    gone = [f for f in bm.faces if names[f.material_index] == replace]
+    bmesh.ops.delete(bm, geom=gone, context='FACES')
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    made, field = [], []
+    for sgn in (1, -1):
+        flip = sgn < 0
+        mir = lambda v: Vector((v.x * sgn, v.y, v.z))
+        vs = [[bm.verts.new(mir(p)) for p in line] for line in grid]
+        for i in range(len(vs) - 1):
+            for j in range(len(us) - 1):
+                q = [vs[i][j], vs[i][j + 1], vs[i + 1][j + 1], vs[i + 1][j]]
+                f = bm.faces.new(q[::-1] if flip else q)
+                f.material_index = i_mat
+                field.append(f)
+        r, length = bulb
+        base = [(0, -0.003, i_collar), (r * 1.4, -0.003, i_collar), (r * 1.4, 0.004, i_collar), (r, 0.004, None)] if collar else [(0, -0.003, None), (r, -0.003, None)]
+        prof = base + [(r, length * 0.65, None), (r * 0.85, length * 0.82, None), (r * 0.5, length * 0.95, None), (0, length, None)]
+        for (P, d), (_, _, bm_mat) in zip(bulbs, rows):
+            P, d = mir(P), mir(d)
+            a = d.orthogonal().normalized()
+            c = d.cross(a)
+            ringv = []
+            for rr, hh, _ in prof:
+                if rr == 0:
+                    ringv.append([bm.verts.new(P + d * hh)])
+                else:
+                    ringv.append([bm.verts.new(P + d * hh + (a * math.cos(2 * math.pi * k / segments) + c * math.sin(2 * math.pi * k / segments)) * rr) for k in range(segments)])
+            for k in range(len(prof) - 1):
+                lo, hi = ringv[k], ringv[k + 1]
+                m = prof[k][2] if prof[k][2] is not None else mat_index(o, bm_mat)
+                for s_ in range(segments):
+                    t_ = (s_ + 1) % segments
+                    if len(lo) == 1:
+                        q = [lo[0], hi[t_], hi[s_]]
+                    elif len(hi) == 1:
+                        q = [lo[s_], lo[t_], hi[0]]
+                    else:
+                        q = [lo[s_], lo[t_], hi[t_], hi[s_]]
+                    f = bm.faces.new(q[::-1] if flip else q)
+                    f.material_index = m
+                    made.append(f)
+    bm.normal_update()
+    # The heightfield faces outward (toward the cover): flip the lot if the winding came out inward.
+    out = Vector((math.sin(0.7), math.cos(0.7), 0))
+    if field[len(us) * 3].normal.dot(out) < 0:
+        bmesh.ops.reverse_faces(bm, faces=field)
+        bm.normal_update()
+    made += field
+    if stash and sn:
+        for f in made:
+            for lp in f.loops:
+                lp[sn] = lp.vert.normal
+    bm.to_mesh(me)
+    bm.free()
+    restore_normals(o)
+    return len(made)
 
 
 def save_working_copy(cids, path):

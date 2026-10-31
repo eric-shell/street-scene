@@ -4,11 +4,11 @@
  */
 
 /** Every swappable visible piece lives in one of these slots. Add new slots here. */
-export const PART_SLOTS = ['body', 'frontBumper', 'rearBumper', 'fenders', 'sideSkirts', 'spoiler', 'hood', 'roof', 'wheels', 'splitter', 'canards', 'diffuser', 'exhaust', 'mirrors'] as const;
+export const PART_SLOTS = ['body', 'frontBumper', 'rearBumper', 'fenders', 'sideSkirts', 'spoiler', 'hood', 'roof', 'wheels', 'splitter', 'canards', 'diffuser', 'exhaust', 'mirrors', 'taillights'] as const;
 export type PartSlot = (typeof PART_SLOTS)[number];
 
 /** Slots shown as body part menus in the garage (body and wheels have their own menus). */
-export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'splitter', 'canards', 'fenders', 'sideSkirts', 'rearBumper', 'diffuser', 'exhaust', 'hood', 'mirrors', 'spoiler', 'roof'];
+export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'splitter', 'canards', 'fenders', 'sideSkirts', 'rearBumper', 'diffuser', 'exhaust', 'hood', 'mirrors', 'taillights', 'spoiler', 'roof'];
 
 /** Slots where "none" is a valid choice (nothing rendered, base meshes still visible unless hidden). */
 export const OPTIONAL_SLOTS: PartSlot[] = ['spoiler', 'splitter', 'canards', 'diffuser', 'exhaust', 'mirrors'];
@@ -34,6 +34,7 @@ export const SLOT_LABELS: Record<PartSlot, string> = {
   diffuser: 'Diffuser',
   exhaust: 'Exhaust',
   mirrors: 'Mirrors',
+  taillights: 'Taillights',
 };
 
 /**
@@ -82,6 +83,9 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   // The Wendt Strom's stock mirrors keep the donor's full detail (2,996 with their glass), and its Euro is that
   // narrowed, vertex for vertex.
   mirrors: 3000,
+  // Both tail lamps with their clear covers, split off the body whole (the Wendt Strom's: 1,911); a part re-materials
+  // its rows and builds its clear rows as recessed chambers with bowls, a divider and bulbs (`lamp_chamber`; RCCR: 3,960).
+  taillights: 4500,
 };
 
 /** The lug circle of a wheel GLB, in the GLB's own space (glTF frame, meters, axle along X, face toward +X); render/car/lugNuts.ts seats the house nuts on it. */

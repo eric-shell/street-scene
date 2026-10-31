@@ -16,9 +16,9 @@
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partById, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, isRemovalPart, OPTIONAL_SLOTS, PartEntry, PartSlot, SLOT_LABELS, STOCK_NODES } from '../shared/parts';
-import { loadPurchases, owns, ownsFeature, stripParts, unownedParts } from '../shared/purchases';
+import { loadPurchases, owns, ownsFeature, stripParts, unownedParts, type PurchasesSave } from '../shared/purchases';
 import { featureBuyable, partBuyable, type Buyable } from '../shared/economy';
-import { loadStats } from '../shared/stats';
+import { loadStats, type StatsSave } from '../shared/stats';
 import { ACCENT_FINISHES, AXLES, AccentFinish, Axle, AxleStance, BANNER_HEIGHTS, BODY_FEATURES, BodyFeature, CarBuild, FEATURE_LABELS, GLOW_PATTERNS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VinylShape, WheelTrim, WheelTrimMode } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning, type CarTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
@@ -62,7 +62,9 @@ export const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan',
  * and the bolts). The one last touched frames the camera.
  */
 /** Body slots with no "No parts for this slot yet" line: a car without parts for them does not list them. */
-const HIDE_WHEN_EMPTY: PartSlot[] = ['splitter', 'canards', 'diffuser', 'exhaust', 'mirrors'];
+const HIDE_WHEN_EMPTY: PartSlot[] = ['splitter', 'canards', 'diffuser', 'exhaust', 'mirrors', 'taillights'];
+/** Part slots the Lights tab lists (the lamps) instead of the Body tab. */
+export const LIGHT_SLOTS: readonly PartSlot[] = ['taillights'];
 
 export const PAINT_SURFACES = ['body', 'roof', 'mirrors', 'calipers', 'wheels', 'hardware'] as const;
 export type PaintSurface = (typeof PAINT_SURFACES)[number];
@@ -91,6 +93,8 @@ export interface TabHost {
   readonly tab: Tab;
   /** The Body tab's part slot last touched (the camera frames it). */
   bodySlot: PartSlot;
+  /** The Lights tab's lamp slot last touched (the camera frames it), or null for the underglow's wide shot. */
+  lightsSlot: PartSlot | null;
   /** The Paint tab's surface last touched (the camera frames it). */
   paintSurface: PaintSurface;
   /** The axle the Wheels tab's wheel and the Paint tab's wheel paint dress while front and rear are unlinked. */
@@ -129,6 +133,51 @@ function framing(el: HTMLElement, host: TabHost, touch: () => boolean): HTMLElem
   el.addEventListener('pointerdown', go);
   el.addEventListener('focusin', go);
   return el;
+}
+
+/**
+ * A part slot's section: Stock (or None), its parts with what each costs this car, the dev drops and the switches
+ * that dress the slot; null when the car has no parts for a slot that hides when empty (the aero, trim and lamps).
+ */
+function partSection(host: TabHost, slot: PartSlot, saved: PurchasesSave, stats: StatsSave): HTMLElement | null {
+  const b = host.build;
+  const v = b.visual;
+  const parts = partsFor(b.carId, slot);
+  const optional = OPTIONAL_SLOTS.includes(slot);
+  // The aero and trim slots exist only for cars that ship parts for them: no menu at all otherwise.
+  if (!parts.length && HIDE_WHEN_EMPTY.includes(slot) && ![...host.assets.devParts.values()].some((d) => d.slot === slot)) return null;
+  // An optional slot's empty choice is Stock when the car carries a stock piece there (read off the model, or off the
+  // parts that hide it while the model loads); a part that removes that piece is listed first as None.
+  const stockNode = STOCK_NODES[slot];
+  const stock = !optional || (stockNode !== undefined && (host.scene.car?.hasNode(stockNode) ?? parts.some((p) => p.hides.includes(stockNode))));
+  const item = (p: PartEntry) => ({ value: p.id, label: p.displayName, extra: partTagEl(partTag(b.carId, p, saved, stats)) ?? undefined });
+  const items: { value: string | null; label: string; sub?: string; extra?: Node }[] = [
+    ...parts.filter(isRemovalPart).map(item),
+    { value: null, label: stock ? 'Stock' : 'None' },
+    ...parts.filter((p) => !isRemovalPart(p)).map(item),
+  ];
+  const dev = [...host.assets.devParts.entries()].filter(([, d]) => d.slot === slot).map(([id, d]) => ({ value: id, label: d.name, sub: 'Dev preview' }));
+  items.push(...dev);
+  const group = section(
+    SLOT_LABELS[slot],
+    items.length > 1
+      ? choiceList(items, v.parts[slot] ?? null, (id) => {
+          const was = v.parts[slot];
+          v.parts[slot] = id;
+          void host.changed(true);
+          // A part this car does not own is a preview until it is bought.
+          const part = id ? parts.find((p) => p.id === id) : undefined;
+          if (part && !owns(b.carId, part.id))
+            host.offer(partBuyable(part, b.carId), () => {
+              if (was === undefined) delete v.parts[slot];
+              else v.parts[slot] = was;
+            });
+        })
+      : note('No parts for this slot yet.'),
+    ...slotFeatures(b.carId, slot).map((f) => featureSwitch(host, f)),
+  );
+  group.dataset.slot = slot;
+  return group;
 }
 
 /** Fill the body with the open tab's groups, rebuilt from the build every time (a render empties it first). */
@@ -471,12 +520,27 @@ export function renderTabContent(host: TabHost): void {
       break;
     }
     case 'neon': {
-      // The car's lights: the lamps (still to come) and the underglow, shot low and wide so the glow reads on the floor.
+      // The car's lights: the lamps (the tail lamps' part list when the car has some, framed on the lamp once touched) and
+      // the underglow, shot low and wide so the glow reads on the floor.
       const g = v.underglow;
+      const lamp = (slot: PartSlot) => {
+        const group = partSection(host, slot, loadPurchases(), loadStats()) ?? section(SLOT_LABELS[slot], note('Coming soon.'));
+        return framing(group, host, () => {
+          if (host.lightsSlot === slot) return false;
+          host.lightsSlot = slot;
+          return true;
+        });
+      };
+      const glow = (el: HTMLElement) =>
+        framing(el, host, () => {
+          if (host.lightsSlot === null) return false;
+          host.lightsSlot = null;
+          return true;
+        });
       host.body.append(
         section('Headlights', note('Coming soon.')),
-        section('Taillights', note('Coming soon.')),
-        section(
+        lamp('taillights'),
+        glow(section(
           'Underglow',
           field(
             'Lights',
@@ -495,8 +559,8 @@ export function renderTabContent(host: TabHost): void {
             },
           ),
           note('Strobe and chase use both colors; a black secondary strobes on and off.'),
-        ),
-        section(
+        )),
+        glow(section(
           'Glow colors',
           // A swatch re-renders so the Lights switch shows the glow it turned on; the well cannot (it would close mid drag).
           rowName('Primary'),
@@ -510,8 +574,8 @@ export function renderTabContent(host: TabHost): void {
             g.color2 = c;
             host.changed();
           }),
-        ),
-        section(
+        )),
+        glow(section(
           'Glow',
           slider('Brightness', g.brightness, 0.2, 2, 0.05, percent, (x) => {
             g.brightness = x;
@@ -525,7 +589,7 @@ export function renderTabContent(host: TabHost): void {
             g.size = x;
             host.changed();
           }),
-        ),
+        )),
       );
       break;
     }
@@ -535,41 +599,9 @@ export function renderTabContent(host: TabHost): void {
       const saved = loadPurchases();
       const stats = loadStats();
       for (const slot of BODY_PART_SLOTS) {
-        const parts = partsFor(b.carId, slot);
-        const optional = OPTIONAL_SLOTS.includes(slot);
-        // The aero and trim slots exist only for cars that ship parts for them: no menu at all otherwise.
-        if (!parts.length && HIDE_WHEN_EMPTY.includes(slot) && ![...host.assets.devParts.values()].some((d) => d.slot === slot)) continue;
-        // An optional slot's empty choice is Stock when the car carries a stock piece there (read off the model, or off the
-        // parts that hide it while the model loads); a part that removes that piece is listed first as None.
-        const stockNode = STOCK_NODES[slot];
-        const stock = !optional || (stockNode !== undefined && (host.scene.car?.hasNode(stockNode) ?? parts.some((p) => p.hides.includes(stockNode))));
-        const item = (p: PartEntry) => ({ value: p.id, label: p.displayName, extra: partTagEl(partTag(b.carId, p, saved, stats)) ?? undefined });
-        const items: { value: string | null; label: string; sub?: string; extra?: Node }[] = [
-          ...parts.filter(isRemovalPart).map(item),
-          { value: null, label: stock ? 'Stock' : 'None' },
-          ...parts.filter((p) => !isRemovalPart(p)).map(item),
-        ];
-        const dev = [...host.assets.devParts.entries()].filter(([, d]) => d.slot === slot).map(([id, d]) => ({ value: id, label: d.name, sub: 'Dev preview' }));
-        items.push(...dev);
-        const group = section(
-          SLOT_LABELS[slot],
-          items.length > 1
-            ? choiceList(items, v.parts[slot] ?? null, (id) => {
-                const was = v.parts[slot];
-                v.parts[slot] = id;
-                void host.changed(true);
-                // A part this car does not own is a preview until it is bought.
-                const part = id ? parts.find((p) => p.id === id) : undefined;
-                if (part && !owns(b.carId, part.id))
-                  host.offer(partBuyable(part, b.carId), () => {
-                    if (was === undefined) delete v.parts[slot];
-                    else v.parts[slot] = was;
-                  });
-              })
-            : note('No parts for this slot yet.'),
-          ...slotFeatures(b.carId, slot).map((f) => featureSwitch(host, f)),
-        );
-        group.dataset.slot = slot;
+        if (LIGHT_SLOTS.includes(slot)) continue;
+        const group = partSection(host, slot, saved, stats);
+        if (!group) continue;
         host.body.append(
           framing(group, host, () => {
             if (host.bodySlot === slot) return false;

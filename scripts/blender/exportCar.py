@@ -66,6 +66,7 @@ DEFAULT_HIDES = {
     "canards": [],
     "exhaust": ["Exhaust"],
     "mirrors": ["Mirrors"],
+    "taillights": ["Taillights"],
 }
 
 
