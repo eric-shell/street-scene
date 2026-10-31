@@ -34,6 +34,7 @@ A race pays about three thousand points (a full nitrous stage is 1,000). The tab
 | Wheels, one piece | 5,000 | 0.4 | 5,900 to 6,850 (58 wheels) | 1 race |
 | Wheels, multi-piece | 5,000 x 1.25 | 0.4 | 7,350 to 8,650 (55 wheels) | 1 race |
 | Mirrors | 3,000 | 0.3 | 3,000 to 3,900 | 1 race |
+| Headlights | 3,000 | 0.3 | 3,000 to 3,900 | 1 race |
 | Taillights | 3,000 | 0.3 | 3,000 to 3,900 | 1 race |
 | Exhaust | 5,000 | 0.3 | 5,000 to 6,500 | 3 races |
 | Canards | 5,500 | 0.3 | 5,500 to 7,150 | 3 races |

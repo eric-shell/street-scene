@@ -731,6 +731,58 @@ def round_lamp(o, center, normal, r_lens, r_bezel, proud=0.02, lens='HeadLight',
     me.update()
 
 
+FRESNEL = ((1.0, 0.0), (0.80, 0.0012), (0.80, 0.0030), (0.60, 0.0018), (0.60, 0.0036), (0.40, 0.0024),
+           (0.40, 0.0042), (0.20, 0.0030), (0.20, 0.0060))
+
+
+def lamp_insert(o, center, r, kind='fresnel', mat='Chrome', ring='Chrome', segments=32):
+    """A round face set into a headlamp's bowl, looking along -y, its back at `center` (x, y, z): `fresnel`
+    a reflector of stepped rings (`FRESNEL`: radius share, m toward the eye) with a bulb tip in the middle, all
+    `mat` (the Wendt Strom's lower centre lamp, whose donor face had collapsed into black and chrome
+    triangles; the E-Code's clear fluted indicator); `projector` a domed lens of `mat` (`SmokeLens` reads
+    as dark glass) inside a flat `ring` from 0.8 r out to r (the E-Code's fog projector). A free standing disc
+    a millimetre ahead of whatever face it covers, so nothing behind it is cut. Returns the faces made."""
+    cx, cy, cz = center
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    mm, mr = mat_index(o, mat), mat_index(o, ring)
+    circle = lambda t, dy: [bm.verts.new((cx + math.cos(2 * math.pi * k / segments) * r * t, cy - dy,
+                                          cz + math.sin(2 * math.pi * k / segments) * r * t)) for k in range(segments)]
+    if kind == 'fresnel':
+        rings = [(circle(t, dy), mm) for t, dy in FRESNEL]
+        tip = (bm.verts.new((cx, cy - 0.0085, cz)), mm)
+    else:
+        # The ring, then the dome on a sine profile: 4 rows to a bulge of 0.3 r.
+        rings = [(circle(1.0, 0.0005), mr), (circle(0.8, 0.0005), mr)]
+        rings += [(circle(0.8 * math.cos(a), 0.0005 + 0.3 * r * math.sin(a)), mm) for a in (0.45, 0.85, 1.2)]
+        tip = (bm.verts.new((cx, cy - 0.0005 - 0.3 * r, cz)), mm)
+    made = []
+    for (a, _), (b, m) in zip(rings, rings[1:]):
+        for k in range(segments):
+            j = (k + 1) % segments
+            made.append((bm.faces.new((a[k], a[j], b[j], b[k])), m))
+    last = rings[-1][0]
+    for k in range(segments):
+        made.append((bm.faces.new((last[k], last[(k + 1) % segments], tip[0])), tip[1]))
+    c = Vector(center)
+    for f, m in made:
+        f.material_index = m
+        f.normal_update()
+        # Toward the eye (-y); the steps' walls outward from the axis.
+        out = f.calc_center_median() - c
+        out.y = 0
+        if (f.normal.y > 1e-3) or (abs(f.normal.y) <= 1e-3 and f.normal.dot(out) < 0):
+            f.normal_flip()
+        if sn is not None:
+            for loop in f.loops:
+                loop[sn] = f.normal
+    bm.to_mesh(o.data)
+    bm.free()
+    o.data.update()
+    return len(made)
+
+
 def lower_edge(o, center, angles, z0, z1, step=0.005):
     """A bumper's bottom edge round the nose, for lips and splitters that follow it from arch to arch:
     for each angle (degrees about `center` in plan, 0 toward -y, + toward +x) the outermost point the

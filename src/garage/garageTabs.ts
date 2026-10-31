@@ -63,9 +63,9 @@ export const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan',
  * and the bolts). The one last touched frames the camera.
  */
 /** Body slots with no "No parts for this slot yet" line: a car without parts for them does not list them. */
-const HIDE_WHEN_EMPTY: PartSlot[] = ['splitter', 'canards', 'diffuser', 'exhaust', 'mirrors', 'taillights'];
+const HIDE_WHEN_EMPTY: PartSlot[] = ['splitter', 'canards', 'diffuser', 'exhaust', 'mirrors', 'headlights', 'taillights'];
 /** Part slots the Lights tab lists (the lamps) instead of the Body tab. */
-export const LIGHT_SLOTS: readonly PartSlot[] = ['taillights'];
+export const LIGHT_SLOTS: readonly PartSlot[] = ['headlights', 'taillights'];
 
 export const PAINT_SURFACES = ['body', 'roof', 'mirrors', 'calipers', 'wheels', 'hardware'] as const;
 export type PaintSurface = (typeof PAINT_SURFACES)[number];
@@ -539,7 +539,7 @@ export function renderTabContent(host: TabHost): void {
           return true;
         });
       host.body.append(
-        section('Headlights', note('Coming soon.')),
+        lamp('headlights'),
         lamp('taillights'),
         glow(section(
           'Underglow',

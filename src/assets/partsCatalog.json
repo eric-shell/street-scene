@@ -782,6 +782,24 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_headlights_eCode",
+      "displayName": "E-Code",
+      "carId": "wendtStrom",
+      "slot": "headlights",
+      "file": "parts/wendtStrom_headlights_eCode.glb",
+      "hides": [
+        "Headlights"
+      ],
+      "materialSlots": [
+        "Chrome",
+        "HeadLight",
+        "Lens",
+        "SmokeLens"
+      ],
+      "tris": 5698,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Seiryu",
