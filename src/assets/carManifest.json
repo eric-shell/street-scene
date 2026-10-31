@@ -860,6 +860,7 @@
       "selectable": true,
       "released": true,
       "engine": {
+        "name": "KA24DE",
         "layout": "I4",
         "aspiration": "na",
         "position": "front",

@@ -218,6 +218,8 @@ export interface EngineSpec {
   aspiration: Aspiration;
   /** Where the engine sits in the chassis; first letter of the drivetrain code. */
   position: EnginePosition;
+  /** The engine as tuners call it ('KA24DE'), for the Power tab's stock row; missing shows the layout. */
+  name?: string;
   /**
    * Swept volume (l, DISPLACEMENT_RANGE): bigger cylinders blow down longer and harder, so each pulse is longer and
    * louder (engineSynth.ts SIZE). Missing: the voice as tuned, which is a firing of about half a litre.
@@ -306,7 +308,8 @@ export function engineSpecErrors(spec: unknown): string[] {
   check('layout', ENGINE_LAYOUTS);
   check('aspiration', ASPIRATIONS);
   check('position', ENGINE_POSITIONS);
-  for (const k of Object.keys(s)) if (!(SPEC_FIELDS as readonly string[]).includes(k) && k !== 'voice' && k !== 'displacement') errors.push(`engine.${k} is not a known field (${SPEC_FIELDS.join(', ')}, displacement, voice)`);
+  for (const k of Object.keys(s)) if (!(SPEC_FIELDS as readonly string[]).includes(k) && k !== 'voice' && k !== 'displacement' && k !== 'name') errors.push(`engine.${k} is not a known field (${SPEC_FIELDS.join(', ')}, name, displacement, voice)`);
+  if ('name' in s && !(typeof s.name === 'string' && s.name.trim())) errors.push(`engine.name ${JSON.stringify(s.name)} is not a non-empty string`);
   if ('displacement' in s && !(typeof s.displacement === 'number' && s.displacement >= DISPLACEMENT_RANGE[0] && s.displacement <= DISPLACEMENT_RANGE[1])) errors.push(`engine.displacement ${JSON.stringify(s.displacement)} is not a number of litres from ${DISPLACEMENT_RANGE[0]} to ${DISPLACEMENT_RANGE[1]}`);
   if ('voice' in s) {
     const v = s.voice;

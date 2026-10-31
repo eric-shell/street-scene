@@ -654,7 +654,7 @@ function renderPower(host: TabHost): void {
   const drive = getBaseTuning(b.carId).drivetrain.layout;
   const swaps = car.engineSwaps ?? [];
   host.body.append(section('Stats', statLines(b, { weight: true })));
-  const stock = { value: null, label: `Stock ${car.engine.layout}`, sub: engineFigures(tuningForBuild(b.carId, { ...b.performance, swap: undefined })), tags: specBadges(car.engine, drive) };
+  const stock = { value: null, label: `Stock ${car.engine.name ?? car.engine.layout}`, sub: engineFigures(tuningForBuild(b.carId, { ...b.performance, swap: undefined })), tags: specBadges(car.engine, drive) };
   const list = choiceList<string | null>(
     [stock, ...swaps.map((s) => ({ value: s.id, label: s.name, sub: engineFigures(tuningForBuild(b.carId, { ...b.performance, swap: s.id })), tags: specBadges(s.engine, drive, s.name) }))],
     b.performance.swap ?? null,
