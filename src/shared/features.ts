@@ -26,6 +26,11 @@ const DEFAULTS = {
    * free, unlocked and owned, the garage shows no prices, and nothing is spent or recorded.
    */
   economy: true,
+  /**
+   * Every selectable car in the garage, the rivals, the showroom and the roadblocks. Off: only the manifest's
+   * `released` cars (shared/garageCars.ts). On in `npm run dev`, off in the builds Vercel serves.
+   */
+  allCars: import.meta.env.DEV,
 };
 
 export type Feature = keyof typeof DEFAULTS;

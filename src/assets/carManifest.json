@@ -50,6 +50,7 @@
       },
       "defaultPaint": "#1f6bff",
       "selectable": true,
+      "released": true,
       "engine": {
         "layout": "VR6",
         "aspiration": "na",
@@ -833,6 +834,7 @@
       },
       "defaultPaint": "#1d3f6e",
       "selectable": true,
+      "released": true,
       "engine": {
         "layout": "I4",
         "aspiration": "na",

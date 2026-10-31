@@ -45,6 +45,8 @@ export interface ManifestCar {
   defaultPaint: string;
   /** Offered in the garage. */
   selectable?: boolean;
+  /** Offered in the builds Vercel serves too; the rest of the selectable cars only in `npm run dev` (shared/garageCars.ts). */
+  released?: boolean;
   /** Engine layout, aspiration and position (src/shared/carSpec.ts); the driven wheels come from drivingParams.json. */
   engine: EngineSpec;
   /** The engines the garage's Power tab can swap in (shared/carSpec.ts EngineSwap; their physics are drivingParams.json `swaps.<id>`); missing, none. */
