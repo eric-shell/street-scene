@@ -707,10 +707,10 @@ export function resolveEvent(seed: number, drawn: EventFlavourId, g: RoadGraph, 
   const ok = routes.every((r) => eventRating(drawn, g, areas, r) >= 1);
   const id: EventFlavourId = ok ? drawn : 'downtownDash';
   const event: CityEvent = { id, ...eventTitle(seed, id), drawn };
-  // The special is named only when its module really planned an area (a stub or a seed with no site plans none).
+  // The special is named only when its module carved and planned its region and both routes drive its spine end to end
+  // (params.special, districts/weekendRegion.ts planRegion): a seed with no region, or one the routes miss, promises nothing.
   const weekend = weekendOf(seed);
-  // An area left unplanned (params.planned 0: the Underground's carve found its site spoiled by a later district) promises nothing.
-  if (weekend && areas.some((a) => a.kind === weekend.kind && a.params.planned !== 0)) {
+  if (weekend && areas.some((a) => a.kind === weekend.kind && a.params.planned === 1 && a.params.special === 1)) {
     const f = WEEKEND_FEATURES.find((w) => w.kind === weekend.kind);
     if (f) event.special = { kind: f.kind, name: f.name, tagline: f.tagline };
   }

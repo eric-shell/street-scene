@@ -131,8 +131,10 @@ export function routeRails(g: RoadGraph, route: Route, blocks: CityBlocks): Rail
     const turn = atan2(din.x * dout.z - din.z * dout.x, din.x * dout.x + din.z * dout.z);
     const theta = abs(turn);
     if (theta < ROUTE.railMinTurnDeg * DEG) continue;
-    // On the channel floor the banks and their fence are the walls: no rails at its nodes.
+    // On the channel floor the banks and their fence are the walls: no rails at its nodes. Nor at a weekend region's spine:
+    // the open ground beside it is the region's other lines, and its entry and exit run straight on from their streets.
     if (isChannelNode(g, id)) continue;
+    if (g.edges[edgeBetween(g, prevId, id)]?.kind === 'feature' || g.edges[edgeBetween(g, id, nextId)]?.kind === 'feature') continue;
     // Left of a direction d is (dz, -dx). Turning left means the outside is on the right.
     const leftTurn = dout.x * din.z - dout.z * din.x > 0;
     const side = leftTurn ? -1 : 1;

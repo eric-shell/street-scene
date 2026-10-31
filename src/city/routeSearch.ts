@@ -6,7 +6,7 @@
  * builds a Route from the nodes these return.
  */
 import { ROUTE } from './config';
-import { type RoadEdge, type RoadGraph, chainFrom, edgeBetween, isBendNode, isChannelEdge, otherNode } from './roadGraph';
+import { type RoadEdge, type RoadGraph, chainFrom, edgeBetween, isBendNode, isChannelEdge, isFeatureEdge, otherNode } from './roadGraph';
 import { Rng, deriveSeed } from '../sim/prng';
 import { routeChains } from './districts/alleyPath';
 import { isChannelNode } from './districts/channel';
@@ -196,7 +196,8 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
     const first = firstRun.edges.map((e) => g.edges[e]);
     const last = g.edges[edges[edges.length - 1]];
     // Nor across a level crossing's tracks (districts/bluff.ts).
-    if (firstRun.length < 90 || first.some((e) => isChannelEdge(e) || e.crossing !== undefined || e.trench === true) || isChannelEdge(last) || last.crossing !== undefined || last.trench === true) continue;
+    // Nor on a weekend region's spine (districts/weekendRegion.ts).
+    if (firstRun.length < 90 || first.some((e) => isChannelEdge(e) || e.crossing !== undefined || isFeatureEdge(e)) || isChannelEdge(last) || last.crossing !== undefined || isFeatureEdge(last)) continue;
     const len = pathLength(g, p, false);
     const stats = cornerStats(g, p, false);
     if (stats.maxTurn > ROUTE.maxTurnDeg && best) continue;
@@ -300,13 +301,15 @@ function straightestRun(g: RoadGraph, seed: number, edgeOk: (edge: number) => bo
  * and, of those, the waypoints in order. With `prefer` (the route's nodes and
  * its waypoints), an acceptable route it likes ends the search; ones it does
  * not are kept as the fallback for up to ROUTE.waypointPreferTries more.
+ * `bias` scales an edge's weight for the legs (a weekend region's spine); `pair`, two junctions the course
+ * should pass in turn (that region's entry and exit), is made two consecutive waypoints on two attempts in three.
  */
-export function findWaypointNodes(g: RoadGraph, seed: number, prefer?: (nodes: number[], waypoints: number[]) => boolean): { nodes: number[]; waypoints: number[] } {
+export function findWaypointNodes(g: RoadGraph, seed: number, prefer?: (nodes: number[], waypoints: number[]) => boolean, bias?: (edge: number) => number, pair?: readonly [number, number]): { nodes: number[]; waypoints: number[] } {
   const rng = new Rng(deriveSeed(seed, 'waypoint'));
   const n = g.nodes.length;
-  // Plain distances: the suggestion is the quick way, not the scenic one.
+  // Plain distances: the suggestion is the quick way, not the scenic one (`bias` scales an edge's: a weekend region's spine draws it in).
   const w = new Float64Array(g.edges.length);
-  g.edges.forEach((e, i) => (w[i] = e.shortcut || e.kind === 'mouth' ? Infinity : e.length));
+  g.edges.forEach((e, i) => (w[i] = e.shortcut || e.kind === 'mouth' ? Infinity : bias ? e.length * bias(i) : e.length));
   // Stops are junctions: never a bend node partway along a street (roadGraph.ts).
   const plain = (id: number) => !g.nodes[id].ring && !isChannelNode(g, id) && !isBendNode(g, id);
   const far = (a: number, b: number, lo: number, hi: number) => {
@@ -315,20 +318,47 @@ export function findWaypointNodes(g: RoadGraph, seed: number, prefer?: (nodes: n
   };
   let best: { nodes: number[]; waypoints: number[] } | null = null;
   let bestScore = -Infinity;
-  let patience: number = ROUTE.waypointPreferTries;
-  for (let attempt = 0; attempt < ROUTE.maxAttempts; attempt++) {
-    const stops = [rng.int(0, n - 1)];
-    // Waypoints, then the finish's node, each a leg away from the last and clear of the earlier ones.
-    for (let k = 0; k <= ROUTE.waypointCount && stops.length === k + 1; k++) {
-      for (let tries = 0; tries < 30; tries++) {
-        const c = rng.int(0, n - 1);
-        if (!plain(c) || !far(stops[k], c, ROUTE.waypointLegMin, ROUTE.waypointLegMax)) continue;
-        if (stops.slice(0, -1).some((s) => far(s, c, 0, ROUTE.waypointLegMin * 0.7))) continue;
-        stops.push(c);
-        break;
-      }
+  // A region's pair is worth a longer look than a pass: the race is meant to go through it.
+  let patience: number = pair ? ROUTE.waypointPreferTries * 5 : ROUTE.waypointPreferTries;
+  /** A stop a leg (lo..hi m) from `from` and clear of `taken`, or -1 after 30 draws. */
+  const nextStop = (from: number, taken: readonly number[], lo: number, hi: number): number => {
+    for (let tries = 0; tries < 30; tries++) {
+      const c = rng.int(0, n - 1);
+      if (!plain(c) || !far(from, c, lo, hi)) continue;
+      if (taken.some((s) => s === c || far(s, c, 0, ROUTE.waypointLegMin * 0.7))) continue;
+      return c;
     }
-    if (stops.length !== ROUTE.waypointCount + 2 || !plain(stops[0])) continue;
+    return -1;
+  };
+  for (let attempt = 0; attempt < ROUTE.maxAttempts; attempt++) {
+    let stops: number[];
+    if (pair && attempt % 3) {
+      // A pair the course should pass in turn (a weekend region's entry and exit): two in three attempts build the course
+      // out from them, consecutive waypoints either way round, the other stops drawn a leg out forward and back.
+      const at = rng.int(1, ROUTE.waypointCount - 1);
+      const flip = rng.chance(0.5);
+      const seq: number[] = new Array(ROUTE.waypointCount + 2).fill(-1);
+      seq[at] = flip ? pair[1] : pair[0];
+      seq[at + 1] = flip ? pair[0] : pair[1];
+      let ok = true;
+      for (let k = at + 2; ok && k < seq.length; k++) ok = (seq[k] = nextStop(seq[k - 1], seq.filter((x, j) => x >= 0 && j !== k - 1), ROUTE.waypointLegMin, ROUTE.waypointLegMax)) >= 0;
+      for (let k = at - 1; ok && k >= 0; k--) ok = (seq[k] = nextStop(seq[k + 1], seq.filter((x, j) => x >= 0 && j !== k + 1), ROUTE.waypointLegMin, ROUTE.waypointLegMax)) >= 0;
+      if (!ok) continue;
+      stops = seq;
+    } else {
+      stops = [rng.int(0, n - 1)];
+      // Waypoints, then the finish's node, each a leg away from the last and clear of the earlier ones.
+      for (let k = 0; k <= ROUTE.waypointCount && stops.length === k + 1; k++) {
+        for (let tries = 0; tries < 30; tries++) {
+          const c = rng.int(0, n - 1);
+          if (!plain(c) || !far(stops[k], c, ROUTE.waypointLegMin, ROUTE.waypointLegMax)) continue;
+          if (stops.slice(0, -1).some((s) => far(s, c, 0, ROUTE.waypointLegMin * 0.7))) continue;
+          stops.push(c);
+          break;
+        }
+      }
+      if (stops.length !== ROUTE.waypointCount + 2 || !plain(stops[0])) continue;
+    }
     const used = new Uint8Array(n);
     let path: number[] = [stops[0]];
     for (let k = 1; k < stops.length && path.length; k++) {
@@ -346,7 +376,7 @@ export function findWaypointNodes(g: RoadGraph, seed: number, prefer?: (nodes: n
     const first = runs[0].edges.map((e) => g.edges[e]);
     const lastRun = runs[runs.length - 1];
     const last = lastRun.edges.map((e) => g.edges[e]);
-    const bad = (es: RoadEdge[]) => es.some((e) => isChannelEdge(e) || e.crossing !== undefined);
+    const bad = (es: RoadEdge[]) => es.some((e) => isChannelEdge(e) || e.crossing !== undefined || isFeatureEdge(e));
     if (runs[0].length < 90 || bad(first) || bad(last) || lastRun.length < 60) continue;
     // Never the long way round a route shortcut (districts/alley.ts): a back alley joining two of the
     // suggestion's nodes shorter than the stretch it skips makes the distance by road (World field)
@@ -370,6 +400,8 @@ export function findWaypointNodes(g: RoadGraph, seed: number, prefer?: (nodes: n
     }
     if (liked || (sc >= 0 && (!prefer || --patience < 0))) break;
   }
+  // The pair can crowd out every acceptable course on a tight city: draw again without it.
+  if (!best && pair) return findWaypointNodes(g, seed, prefer, bias);
   if (!best) throw new Error('could not find a waypoint race');
   return best;
 }

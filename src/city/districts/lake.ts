@@ -168,6 +168,11 @@ function cloneGraph(g: RoadGraph): RoadGraph {
  * the graph), or null for a city without one. The channel plans right after the lake carves.
  */
 export function channelWithout(ctx: PlanContext): Record<string, number> | null {
+  return channelPlanOn(ctx).params;
+}
+
+/** channelWithout with the copy of the streets the channel planned on (its bridges, ramps and straightened bank rows), for a planner that must see what the channel would do to its streets (weekendRegion.ts). */
+export function channelPlanOn(ctx: PlanContext): { params: Record<string, number> | null; graph: RoadGraph } {
   const g = cloneGraph(ctx.graph);
   const areas: Area[] = [];
   const trial: PlanContext = {
@@ -189,7 +194,7 @@ export function channelWithout(ctx: PlanContext): Record<string, number> | null 
     graphChanged: () => sortNodeEdges(g),
   };
   channelModule.plan(trial);
-  return areas.find((a) => a.kind === 'channel')?.params ?? null;
+  return { params: areas.find((a) => a.kind === 'channel')?.params ?? null, graph: g };
 }
 
 /** The face of `faces` holding (x, z), or null. */

@@ -17,7 +17,8 @@ import { Terrain, createTerrain } from './terrain';
 import { RoadProfile, createRoadProfile } from './roadProfile';
 import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { settleChannel } from './districts/channel';
-import { settleUnderground, undergroundKeepOut, undergroundPreference } from './districts/underground';
+import { settleUnderground } from './districts/underground';
+import { spineDirection, weekendDriven, weekendKeepOut, weekendPreference, weekendRegion } from './districts/weekendRegion';
 import { CityDistricts, districtModule, planDistricts } from './districts';
 import { settleAlleyLips, shortcutJumpRails } from './districts/alleyDressing';
 import { settleRailYard } from './districts/railYard';
@@ -110,14 +111,25 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
       // next alternative that has one: alternatives that still match the event (and dive into the
       // channel) first, then routes picked without the preference, since on the rare seed that cannot
       // have both a shortcut on every route outranks the flavour; after ROUTE_TRIES each way the first
-      // pick stands.
+      // pick stands. On a weekend seed with a region (districts/weekendRegion.ts) a route must also drive
+      // its spine end to end: when no alternative has both, the spine outranks the shortcut and more
+      // variants are drawn for it; a seed whose routes still miss it does not promise its special.
+      const region = weekendRegion(ctx);
       const pick = (find: (variant: number, prefer: boolean) => number[], closed: boolean, others: { nodes: number[]; closed: boolean }[]) => {
         const first = { nodes: find(0, true), closed };
-        if (hasShortcutSpot(ctx, first, others)) return first;
+        const drives = (r: { nodes: number[]; closed: boolean }) => weekendDriven(ctx, r.nodes, r.closed);
+        if (hasShortcutSpot(ctx, first, others) && drives(first)) return first;
         for (const prefer of [true, false]) {
           for (let v = 1; v < ROUTE_TRIES; v++) {
             const alt = { nodes: find(v, prefer), closed };
-            if (hasShortcutSpot(ctx, alt, others)) return alt;
+            if (hasShortcutSpot(ctx, alt, others) && drives(alt)) return alt;
+          }
+        }
+        if (region) {
+          if (drives(first)) return first;
+          for (let v = ROUTE_TRIES; v < ROUTE_TRIES + CITY.districts.weekend.routeTries; v++) {
+            const alt = { nodes: find(v, true), closed };
+            if (drives(alt)) return alt;
           }
         }
         return first;
@@ -130,7 +142,9 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
       flavour = forceFlavour ?? pickEventFlavour(seed, eventOffer(g, ctx.areas, harbor));
       const preferCircuit = eventRoutePreference(flavour, ctx, true, harbor);
       const preferSprint = eventRoutePreference(flavour, ctx, false, harbor);
-      Object.assign(preferCircuit, undergroundPreference(ctx, preferCircuit, true)); Object.assign(preferSprint, undergroundPreference(ctx, preferSprint, false));
+      // A weekend region's spine: both routes must drive it end to end (the preference rates such a route above any other).
+      Object.assign(preferCircuit, weekendPreference(ctx, preferCircuit, true));
+      Object.assign(preferSprint, weekendPreference(ctx, preferSprint, false));
       // The circuit is checked against the first sprint pick (whose start and finish it must keep clear).
       const firstSprint = { nodes: findSprintNodes(g, seed, 0, preferSprint), closed: false };
       const circuit = pick((v, p) => findCircuitNodes(g, seed, v, p ? preferCircuit : undefined), true, [firstSprint]);
@@ -142,15 +156,15 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
       const held = eventKeepOut(flavour, ctx);
       ctx.keepOut = held;
       if (held.length && hasShortcutSpot(ctx, circuit, [sprint]) && hasShortcutSpot(ctx, sprint, [circuit])) keep.push(...held);
-      keep.push(...undergroundKeepOut(ctx));
+      keep.push(...weekendKeepOut(ctx));
       for (const site of carParkSites(ctx, [circuit, sprint])) {
         ctx.keepOut = keep.concat(site);
         if (hasShortcutSpot(ctx, circuit, [sprint]) && hasShortcutSpot(ctx, sprint, [circuit])) keep.push(...site);
       }
       ctx.keepOut = keep;
       carveRouteShortcuts(ctx, [circuit, sprint]);
-      // Only the Underground's blocks stay held from here on: the re-picks' cuts and the car parks keep off them too.
-      ctx.keepOut = undergroundKeepOut(ctx);
+      // Only a weekend region stays held from here on: the re-picks' cuts and the car parks keep off it too.
+      ctx.keepOut = weekendKeepOut(ctx);
       // A route left without a cut (the other route's cuts took its only spot) is re-picked on the
       // carved graph and carved again, the other route kept clear as before.
       let sprint2 = sprint;
@@ -652,6 +666,14 @@ export function createRoute(city: City, kind: RouteKind): Route {
         return (edges[i] === p.edgeB && (any ? edges[i - 1] !== p.edgeB : edges[i - 1] === p.edgeA)) || (edges[i - 1] === p.edgeB && (any ? edges[i] !== p.edgeB : edges[i] === p.edgeA));
       });
     };
+    // A weekend region's spine (districts/weekendRegion.ts): its entry and exit are made consecutive waypoints, and a course driving it end to end is the one liked.
+    const region = weekendRegion({ areas: city.districts.areas, weekend: city.weekend ?? undefined });
+    if (region) {
+      // Plain distances for the legs (a cheap spine would draw the legs into the region from its far end and block the way through).
+      const drives = (nodes: number[]) => spineDirection(g, nodes, false, region, false) !== 0;
+      const { nodes, waypoints } = findWaypointNodes(g, city.seed, drives, undefined, [region.spine[0], region.spine[region.spine.length - 1]]);
+      return buildRoute(g, kind, nodes, waypoints, passes, city.seed);
+    }
     const { nodes, waypoints } = findWaypointNodes(g, city.seed, passes.length ? through : undefined);
     return buildRoute(g, kind, nodes, waypoints, passes, city.seed);
   }

@@ -1,5 +1,5 @@
 /**
- * The rail yard's freight cars (render only): box cars, tank cars, hoppers, flat cars and cabooses built
+ * The rail yard's freight cars (render only): box cars, tank cars, hoppers, flat cars, cabooses and autoracks built
  * from the area's 'car' hints into one textured mesh (the side atlas, textures/yardTextures.ts), a solid
  * the length of the sim's railcar wall under it. A car's body follows the ground along its length, so a
  * consist standing on the yard's gentle grade does not float or sink at one end. About 100 to 400 triangles a car;
@@ -95,7 +95,7 @@ function truck(c: Ctx, a: number, wheels: boolean): void {
   for (const da of [-0.95, 0.95]) for (const s of [-1, 1]) disc(c, a + da, s * 1.02, 0.46, 0.46, s);
 }
 
-/** Add one car at `centre` along (ux, uz) with across (vx, vz), of `kind` (0 box car .. 4 caboose), `tex` livery, `len` m. */
+/** Add one car at `centre` along (ux, uz) with across (vx, vz), of `kind` (0 box car, 1 tank, 2 hopper, 3 flat car, 4 caboose, 5 autorack), `tex` livery, `len` m. */
 export function addCar(kit: DistrictKit, g: GeoBuilder, glow: GeoBuilder, centre: Vec2, ux: number, uz: number, vx: number, vz: number, len: number, kind: number, tex: number, wheels: boolean): void {
   const F: CarFrame = { cx: centre.x, cz: centre.z, ux, uz, vx, vz };
   const pa = at(F, -len / 2, 0);
@@ -107,8 +107,8 @@ export function addCar(kit: DistrictKit, g: GeoBuilder, glow: GeoBuilder, centre
   const tint = new THREE.Color(1, 1, 1).multiplyScalar(0.85 + ((tex * 37 + kind * 11) % 7) * 0.035);
   const c: Ctx = { g, F, ground, tint };
   const w = 3.05 / 2;
-  const tile = carTile(kind, tex);
-  const hh = [3.7, 3.6, 3.5, 1.4, 3.9][kind];
+  const tile = carTile(kind === 5 ? 0 : kind, tex);
+  const hh = [3.7, 3.6, 3.5, 1.4, 3.9, 4.6][kind];
   const body = SILL;
   const top = hh + 0.05;
   const ends = len / 2;
@@ -116,9 +116,19 @@ export function addCar(kit: DistrictKit, g: GeoBuilder, glow: GeoBuilder, centre
   box(c, -ends, ends, -0.55, 0.55, SILL - 0.32, SILL, FRAME);
   truck(c, -(ends - 2.3), wheels);
   truck(c, ends - 2.3, wheels);
-  for (const s of [-1, 1]) box(c, s * ends, s * (ends + 0.5) , -0.14, 0.14, SILL + 0.12, SILL + 0.3, STEEL);
+  if (wheels) for (const s of [-1, 1]) box(c, s * ends, s * (ends + 0.5), -0.14, 0.14, SILL + 0.12, SILL + 0.3, STEEL);
   const plainCol = (hex: number, m = 1) => col(hex, m);
-  if (kind === 0 || kind === 4) {
+  if (kind === 5) {
+    // Autorack: a tall box, its lower sides the livery, the upper half the dark ventilated panels, a flat roof.
+    const e = ends - 0.05;
+    const mid = body + 1.7;
+    side(c, w, -e, e, body, mid, tile, 1);
+    side(c, -w, -e, e, body, mid, tile, -1);
+    plain(c, [[-e, w, mid], [e, w, mid], [e, w, top], [-e, w, top]], [vx, 0, vz], plainCol(0x34383e));
+    plain(c, [[e, -w, mid], [-e, -w, mid], [-e, -w, top], [e, -w, top]], [-vx, 0, -vz], plainCol(0x34383e));
+    for (const s of [-1, 1]) plain(c, s > 0 ? [[e, -w, body], [e, w, body], [e, w, top], [e, -w, top]] : [[-e, w, body], [-e, -w, body], [-e, -w, top], [-e, w, top]], [s * ux, 0, s * uz], plainCol(0x2e3136));
+    plain(c, [[-e, -w, top], [e, -w, top], [e, w, top], [-e, w, top]], [0, 1, 0], ROOF);
+  } else if (kind === 0 || kind === 4) {
     // Box car and caboose: a textured box with a hip roof.
     const e = kind === 4 ? ends - 0.5 : ends - 0.05;
     side(c, w, -e, e, body, top, tile, 1);
@@ -215,7 +225,12 @@ export function addCar(kit: DistrictKit, g: GeoBuilder, glow: GeoBuilder, centre
   }
 }
 
-/** The car mesh material: the side atlas tinted by vertex colors. */
+/** The car mesh material: the side atlas tinted by vertex colors, a share of it emissive (the floods wash the cars' sides, which the scene's few real lights never reach). */
 export function carMaterial(kit: DistrictKit, atlas: THREE.Texture): THREE.MeshStandardMaterial {
-  return kit.track(new THREE.MeshStandardMaterial({ map: atlas, vertexColors: true, roughness: 0.78, metalness: 0.15, envMapIntensity: 0.4 }));
+  const m = new THREE.MeshStandardMaterial({ map: atlas, vertexColors: true, roughness: 0.78, metalness: 0.15, envMapIntensity: 0.4, emissive: 0xffe2c0, emissiveMap: atlas, emissiveIntensity: 0.22 });
+  // The glow takes the vertex colours too, so the plain parts (frames, roofs, wheels on the atlas's white swatch) stay their dark selves.
+  m.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = emissive * vColor.rgb;');
+  };
+  return kit.track(m);
 }

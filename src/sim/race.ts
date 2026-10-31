@@ -12,6 +12,7 @@ import { GridSlot, Route, RouteKind, RouteWaypoint, routeSample } from '../city/
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
 import { onQuayCut, quayCutProgress } from '../city/districts/harborCut';
 import { CORRIDOR_AREAS } from '../city/districts/types';
+import { regionProgress } from '../city/districts/weekendRegion';
 import { highwayResetPose } from '../city/districts/highway/settle';
 import { CarState, crashNitrous, createCar, gridRev, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
 import { relocateCar, teleportCar } from './reset';
@@ -691,7 +692,12 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
   const c = rc.state;
   // Up in one of the route's car parks, progress follows the car park's own line (districts/carPark.ts).
   // Across a harbor's quay cut: the lane's own line, mapped onto the stretch it skips (harborCut.ts); not in free roam, which has no race to credit.
-  const p = carParkProgress(r.world, c.x, c.z) ?? (r.config.openWorld ? null : quayCutProgress(route, c.x, c.z)) ?? r.world.routeProgress(c.x, c.z, rc.seg);
+  // Inside a weekend region the route drives (weekendRegion.ts): the spine's own line, whatever line the car is on; only weekend seeds look.
+  const p =
+    carParkProgress(r.world, c.x, c.z) ??
+    (r.config.openWorld ? null : quayCutProgress(route, c.x, c.z)) ??
+    (r.world.weekend && !r.config.openWorld ? regionProgress(r.world, c.x, c.z) : null) ??
+    r.world.routeProgress(c.x, c.z, rc.seg);
   let delta = p.s - rc.rawS;
   if (route.closed) {
     const L = route.length;

@@ -261,6 +261,9 @@ export interface CarTuning {
     /** A beach's sand (districts/waterfrontBeach.ts): loose, so a good deal less grip than a road, and a heavy rolling drag (N, full above 1 m/s). */
     sandGrip: number;
     sandDrag: number;
+    /** Oil, mud and wet steel plates (a weekend special's patches): a road's firmness with far less grip, and a road's drag (N, full above 1 m/s). */
+    slickGrip: number;
+    slickDrag: number;
     /** Water in the channel trickle: hydrodynamic drag, N per (m/s)^2 of speed with all four wheels in it (scaled by the wheels that are). */
     waterDrag: number;
   };

@@ -25,7 +25,7 @@
  * An edge may carry a bus bay and mouths, on either side.
  */
 import type { RoadGraph } from './roadGraph';
-import { chainOf, isChannelEdge } from './roadGraph';
+import { chainOf, isChannelEdge, isFeatureEdge } from './roadGraph';
 import type { EdgeMouths } from './blocks';
 import { edgeSides, lightStations } from './props';
 import { Rng, deriveSeed } from '../sim/prng';
@@ -209,7 +209,7 @@ export function planBusBays(seed: number, g: RoadGraph, mouths: EdgeMouths[], re
   const bays: BusBay[] = [];
   g.edges.forEach((e, ei) => {
     // A street is a chain of pieces through bend nodes (roadGraph.ts): the length that qualifies it is the street's.
-    if (!BAY_KINDS.has(e.kind) || e.shortcut || e.bridge || isChannelEdge(e) || chainOf(g, ei).length < C.minEdge) return;
+    if (!BAY_KINDS.has(e.kind) || e.shortcut || e.bridge || isChannelEdge(e) || isFeatureEdge(e) || chainOf(g, ei).length < C.minEdge) return;
     // Draw first so the stream does not depend on which edges qualify further down.
     const want = rng.chance(C.chance);
     const first = rng.int(0, 1);

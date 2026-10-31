@@ -75,12 +75,14 @@ export type AreaKind =
  * (a harbor's dock paving: dusty, oil stained concrete with a grip of its
  * own, districts/waterfront.ts), sand (a beach's loose sand: low grip, heavy
  * drag, its own tuning entry) and boardwalk (the beach's planks, which drive
- * as cobbles, districts/waterfrontBeach.ts).
+ * as cobbles, districts/waterfrontBeach.ts), and slick (oil, mud and wet
+ * steel plates: a firm ground's drag with far less grip, the unpredictable
+ * patches a weekend special paints on its firm floor, districts/weekendRegion.ts).
  */
-export type Surface = 'road' | 'sidewalk' | 'offroad' | 'concrete' | 'grass' | 'water' | 'cobble' | 'quay' | 'sand' | 'boardwalk';
+export type Surface = 'road' | 'sidewalk' | 'offroad' | 'concrete' | 'grass' | 'water' | 'cobble' | 'quay' | 'sand' | 'boardwalk' | 'slick';
 
 /** Which tuning entry (drivingParams.json `surface`) a surface drives with. */
-export type SurfacePhysics = 'road' | 'sidewalk' | 'offroad' | 'cobble' | 'quay' | 'sand';
+export type SurfacePhysics = 'road' | 'sidewalk' | 'offroad' | 'cobble' | 'quay' | 'sand' | 'slick';
 export const SURFACE_PHYSICS: Record<Surface, SurfacePhysics> = {
   road: 'road',
   sidewalk: 'sidewalk',
@@ -93,6 +95,7 @@ export const SURFACE_PHYSICS: Record<Surface, SurfacePhysics> = {
   sand: 'sand',
   // A boardwalk's planks drive like the cobbles' stones: firm, a little short of a road's grip, a small rolling drag.
   boardwalk: 'cobble',
+  slick: 'slick',
 };
 
 /** Surface patch priority of an alley's cobbled road strip: above the plain street classification (road 5). */
@@ -142,7 +145,7 @@ export const COBBLE_PRIORITY = 6;
  * cableCar: a cable car terminal's waiting shelter on the sidewalk beside the stop (cableCar).
  * railcar / yardFence: a stopped freight car's side, the rail yard's fence (railYard, weekend.ts).
  * trenchWall: the underground trench's retaining wall (underground).
- * carStack / scrapFence / crusher: crushed cars stacked, the scrapyard's fence, the crusher's body (scrapyard).
+ * carStack / scrapFence / crusher: crushed cars stacked, baled and heaped (the scrapyard's stacks, its deck's bales and parapets, its scrap mountains), its fence, and its machines, vehicles, posts and towers (scrapyard).
  * lifeguard / surf: a beach's lifeguard towers (solids on the sand) and the break along its waterline, the
  *   one-sided wall that stops a car where the sand meets the sea (waterfront, waterfrontBeach.ts). Its pier
  *   is a solid of look 'pier' (out from the boardwalk over the sand), and its palms 'tree' trunks.
@@ -450,13 +453,45 @@ export interface DistrictModule {
    * it must be a pure function of the graph and the area (the area's params carry what it needs).
    */
   passes?(g: RoadGraph, area: Area): RoutePass[];
+  /**
+   * A weekend special's ways through its region from the entry to the exit (districts/weekendRegion.ts), spine
+   * first, two to six of them: what the renderer lights, the tests check and the rivals may pick from. A pure
+   * function of the area (its params and path), like `passes`. Weekend modules only.
+   */
+  lines?(area: Area): FeatureLine[];
+}
+
+/**
+ * One way through a weekend special from its entry to its exit (districts/weekendRegion.ts, docs/weekend.md). The
+ * spine (the 'feature' edges the routes drive) is always one; the others are the module's open ground, decks and
+ * trenches round it. Rivals drive the spine today (the route's line); a rival picking a line by its personality
+ * reads these (sim/ai.ts header, docs/weekend.md).
+ */
+export interface FeatureLine {
+  /** Stable within the area ('spine', 'dock', 'canyon', ...). */
+  id: string;
+  /** What the line is, for the docs, the dev overlays and the tests ('The trench floor'). */
+  name: string;
+  kind: 'spine' | 'alt';
+  /** Centre line from the entry side to the exit side (world m, in the region's entry to exit order). */
+  path: Vec2[];
+  /** Clear width along it (m). */
+  width: number;
+  /** At grade, up on a deck or ramp, or below grade (a trench, a pit). */
+  level: 'ground' | 'deck' | 'below';
+  /** The surface most of it drives on. */
+  surface: Surface;
+  /** 1 the safe line, 2 the quick one with a catch, 3 the risky one (jumps, slick plates, the press). */
+  difficulty: 1 | 2 | 3;
 }
 
 /**
  * Areas a racing car inside the polygon of counts as on the route corridor (sim/race.ts updateLost): their
  * set pieces are drivable ground that may lie further than LOST.lateral (60 m) from the route's streets, and a
- * car racing through one is not lost. The weekend specials (weekend.ts); a route's car parks and a harbor's
- * quay cut keep their own exemptions (carPark/progress.ts onCarPark, harborCut.ts onQuayCut), unchanged.
+ * car racing through one is not lost. The weekend specials (weekend.ts): their regions span 6 to 12 blocks, the
+ * polygon is the whole region, and inside it race progress follows the spine (weekendRegion.ts regionProgress).
+ * A route's car parks and a harbor's quay cut keep their own exemptions (carPark/progress.ts onCarPark,
+ * harborCut.ts onQuayCut), unchanged.
  */
 export const CORRIDOR_AREAS: ReadonlySet<AreaKind> = new Set<AreaKind>(['railYard', 'underground', 'scrapyard']);
 

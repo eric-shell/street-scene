@@ -33,7 +33,7 @@
  */
 import type { World, Contact } from './world';
 import type { RoadEdge } from './roadGraph';
-import { chainOf, isBendNode, isChannelEdge } from './roadGraph';
+import { chainOf, isBendNode, isChannelEdge, isFeatureEdge } from './roadGraph';
 import { CITY, PARKING } from './config';
 import { baysByEdge, bayHitsCircle } from './busBays';
 import { lotLayout } from './districts/parkingLot';
@@ -181,7 +181,7 @@ function buildPlan(w: World): ParkingPlan {
   const chainSide = new Map<number, 1 | -1 | 0>();
   for (const e of g.edges) {
     const strip = kerbStrip(e);
-    if (!strip || e.shortcut || e.bridge || isChannelEdge(e) || closedEdges.has(e.id) || routeNodes.has(e.a) || routeNodes.has(e.b)) continue;
+    if (!strip || e.shortcut || e.bridge || isChannelEdge(e) || isFeatureEdge(e) || closedEdges.has(e.id) || routeNodes.has(e.a) || routeNodes.has(e.b)) continue;
     const chain = chainOf(g, e.id);
     const key = Math.min(...chain.edges);
     let cs = chainSide.get(key);

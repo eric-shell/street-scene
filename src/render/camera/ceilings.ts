@@ -2,7 +2,8 @@
  * What hangs over the streets, for the cameras: tunnel ceilings and the mass
  * above them (an air rights building, a ridge's rock), viaduct decks, a car
  * park garage's levels over its drivable floor and ramp, the bridge decks
- * over the channel (slab and girders over the floor), and the elevated
+ * over the channel (slab and girders over the floor), the Underground's
+ * roof over its tunnel and gallery and its Bailey bridges, and the elevated
  * highway: its deck between the end loops, widened over the interchanges'
  * lanes (a camera under it stays under, one following a car up there stays
  * above), and its ramps and loops (an embankment: out over the top).
@@ -29,6 +30,7 @@ import { garageSpan } from '../districts/carPark';
 import { bridgesOf, distToBridge, channelL } from '../../city/districts/channel';
 import { deckUndersideAt } from '../districts/channel';
 import { pointInPolygon } from '../../city/districts/geom';
+import { bridgeDeck, rectWorld, toWorld as ugWorld, undergroundSite } from '../../city/districts/undergroundShape';
 
 /** Room kept between the camera and a ceiling or a deck (m): the near plane and a little air. */
 export const CEILING_MARGIN = 0.45;
@@ -123,6 +125,24 @@ function build(world: World): Overhead[] {
       // The garage's levels over its drivable floor and the covered ramp's roof (render/districts/carPark.ts).
       const g = carParkGeo(a);
       out.push({ ...bbox([...g.deck, ...g.ramp], 1), at: (x, z, s) => garageSpan(g, world.heightAt, x, z, s) });
+    } else if (a.kind === 'underground' && a.params.planned && a.params.roof) {
+      // The Underground's roof over the tunnel and the gallery (a bore, for the exposure), and its two bridges: each deck's
+      // underside its slab below the deck's height (World.heightAt with a body high above picks the deck).
+      const site = undergroundSite(a);
+      const slabOver = (polygon: { x: number; z: number }[], slab: number, tunnel: boolean) =>
+        out.push({
+          ...bbox(polygon, 1),
+          ...(tunnel ? { tunnel: true as const } : {}),
+          at(x, z, s) {
+            if (!pointInPolygon(x, z, polygon)) return false;
+            const deck = world.heightAt(x, z, 1e4);
+            s.bottom = deck - slab;
+            s.top = deck + 0.3;
+            return true;
+          },
+        });
+      for (const d of site.decks) slabOver(rectWorld(site, d), CITY.districts.underground.roof.slab, true);
+      for (const br of site.bridges) slabOver(bridgeDeck(br).map((p) => ugWorld(site, p.s, p.w)), 0.75, false);
     } else if (a.kind === 'channel') {
       // Each bridge deck over the channel: the footprint of its slab (the deck's half width, the band
       // plus the parapets' reach across it); the deck is the terrain's height there (World.heightAt

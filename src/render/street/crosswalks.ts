@@ -13,7 +13,7 @@
  * change) has none, since there is nothing to cross to, and a street too short for both ends' bands keeps the
  * end with the squarer mouth. Pure geometry, no three.js.
  */
-import { type RoadGraph, isBendNode, isChannelEdge } from '../../city/roadGraph';
+import { type RoadGraph, isBendNode, isChannelEdge, isFeatureEdge } from '../../city/roadGraph';
 import type { EdgeMouths } from '../../city/blocks';
 
 /** Crosswalk and clear zone sizes (m). */
@@ -68,7 +68,7 @@ function isJunction(g: RoadGraph, node: number): boolean {
 export function edgePaint(g: RoadGraph, mouths: EdgeMouths[], ei: number): EdgePaint | null {
   const e = g.edges[ei];
   const m = mouths[ei];
-  if (!m || isChannelEdge(e)) return null;
+  if (!m || isChannelEdge(e) || isFeatureEdge(e)) return null;
   const a = { x: (m.aP.curb.x + m.aN.curb.x) / 2, z: (m.aP.curb.z + m.aN.curb.z) / 2 };
   const b = { x: (m.bP.curb.x + m.bN.curb.x) / 2, z: (m.bP.curb.z + m.bN.curb.z) / 2 };
   const len = Math.hypot(b.x - a.x, b.z - a.z);

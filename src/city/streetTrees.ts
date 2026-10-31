@@ -29,7 +29,7 @@ import { circlePolygon, pointInPolygon, solidWalls } from './districts/geom';
 import type { Prop } from './props';
 import { edgeSides } from './props';
 import type { RoadGraph } from './roadGraph';
-import { isChannelEdge } from './roadGraph';
+import { isChannelEdge, isFeatureEdge } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import type { Terrain } from './terrain';
 import { Rng, deriveSeed } from '../sim/prng';
@@ -117,7 +117,7 @@ export function planStreetTrees(input: StreetTreeInput): StreetTreePlan {
 
   g.edges.forEach((e, ei) => {
     if (!(T.kinds as readonly string[]).includes(e.kind)) return;
-    if (e.bridge || e.shortcut || isChannelEdge(e) || skipEdges.has(ei)) {
+    if (e.bridge || e.shortcut || isChannelEdge(e) || isFeatureEdge(e) || skipEdges.has(ei)) {
       rejected.edge += 2;
       return;
     }

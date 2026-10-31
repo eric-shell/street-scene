@@ -1,7 +1,8 @@
 /**
- * The scrapyard's two canvas textures (render/districts/scrapyard.ts): the corrugated sheet the fence is made of,
- * and the atlas of crushed car sides the stacks are built from. Drawn once per scene build, tiny (a 256 px tile and a
- * 1024 x 512 sheet), so the whole yard's metal is two draw calls.
+ * The scrapyard's three canvas textures (render/districts/scrapyard.ts): the corrugated sheet the fence is made of, the
+ * atlas of crushed car sides the stacks and bales are built from, and the tiling jumble of wrecks the scrap mountains wear.
+ * Drawn once per scene build, small (a 256 px tile, a 1024 x 512 sheet and a 512 px tile), so the whole yard's metal is three
+ * draw calls.
  *
  * The atlas has ATLAS.cols x ATLAS.rows cells, each a strip of one flattened car's flank (the stacks' tiers are 5 m long and
  * 0.8 m thick, so a cell is six times wider than tall): the paint in one of the city's street colours (the traffic
@@ -154,5 +155,78 @@ export function cellUv(k: number): [number, number, number, number] {
   const row = Math.floor(k / ATLAS.cols);
   const e = 1.5;
   return [(col * (ATLAS.width / ATLAS.cols) + e) / ATLAS.width, 1 - ((row + 1) * (ATLAS.height / ATLAS.rows) - e) / ATLAS.height, ((col + 1) * (ATLAS.width / ATLAS.cols) - e) / ATLAS.width, 1 - (row * (ATLAS.height / ATLAS.rows) + e) / ATLAS.height];
+}
+
+/** Metres of heap one repeat of heapTexture covers. */
+export const HEAP_TILE = 9;
+
+/**
+ * The scrap mountains' skin: a tile of wrecks heaped every which way (flattened bodies in the traffic palette at random
+ * angles, their glass lines and dark seams, loose tyres, rust and shadow between), drawn wrapped so it repeats seamlessly in
+ * both directions. The heaps map it in world metres (HEAP_TILE m a repeat), so every pile reads at the same scale.
+ */
+export function heapTexture(): THREE.CanvasTexture {
+  const S = 512;
+  return drawTexture(S, S, (g) => {
+    g.fillStyle = '#2a221c';
+    g.fillRect(0, 0, S, S);
+    const css = (c: THREE.Color, k: number) => `rgb(${Math.min(255, Math.round(c.r * 255 * k))},${Math.min(255, Math.round(c.g * 255 * k))},${Math.min(255, Math.round(c.b * 255 * k))})`;
+    // Each piece is drawn at the eight wrapped offsets too, so the tile has no seam.
+    const wrapped = (draw: () => void, x: number, y: number) => {
+      for (const ox of [-S, 0, S]) {
+        for (const oy of [-S, 0, S]) {
+          g.save();
+          g.translate(x + ox, y + oy);
+          draw();
+          g.restore();
+        }
+      }
+    };
+    for (let i = 0; i < 150; i++) {
+      const ang = (hash(i * 11 + 3) - 0.5) * Math.PI * 0.9;
+      const w = 70 + hash(i * 11 + 4) * 70;
+      const h = 18 + hash(i * 11 + 5) * 18;
+      const paint = PAINTS[Math.floor(hash(i * 11 + 6) * PAINTS.length)];
+      const k = 0.45 + hash(i * 11 + 7) * 0.5;
+      const rust = hash(i * 11 + 8);
+      wrapped(
+        () => {
+          g.rotate(ang);
+          g.fillStyle = 'rgba(0,0,0,0.55)';
+          g.fillRect(-w / 2 + 3, -h / 2 + 4, w, h);
+          g.fillStyle = css(paint, k);
+          g.fillRect(-w / 2, -h / 2, w, h);
+          g.fillStyle = 'rgba(14,20,28,0.85)';
+          g.fillRect(-w * 0.3, -h * 0.35, w * 0.55, h * 0.3);
+          g.fillStyle = 'rgba(110,50,22,0.4)';
+          g.fillRect(-w / 2, h * 0.15, w * rust, h * 0.35);
+          g.strokeStyle = 'rgba(0,0,0,0.6)';
+          g.lineWidth = 2;
+          g.strokeRect(-w / 2, -h / 2, w, h);
+        },
+        hash(i * 11 + 1) * S,
+        hash(i * 11 + 2) * S,
+      );
+    }
+    for (let i = 0; i < 40; i++) {
+      const r = 7 + hash(i * 7 + 502) * 7;
+      const squash = 0.5 + hash(i) * 0.5;
+      const tilt = hash(i + 9) * 3;
+      wrapped(
+        () => {
+          g.fillStyle = '#0d0d0f';
+          g.beginPath();
+          g.ellipse(0, 0, r, r * squash, tilt, 0, Math.PI * 2);
+          g.fill();
+          g.fillStyle = '#3a3c40';
+          g.beginPath();
+          g.ellipse(0, 0, r * 0.4, r * 0.25, tilt, 0, Math.PI * 2);
+          g.fill();
+        },
+        hash(i * 7 + 500) * S,
+        hash(i * 7 + 501) * S,
+      );
+    }
+  });
 }
 

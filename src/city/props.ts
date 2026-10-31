@@ -28,7 +28,7 @@ import type { EdgeMouths, Sector, Streetlight } from './blocks';
 import { BUS_BAY, BusBay, bayHitsCircle, baysByEdge, bayPoint } from './busBays';
 import { FURNITURE, furnishStreets } from './streetFurniture';
 import type { RoadGraph } from './roadGraph';
-import { chainOf, chains, downtownFactor, isChannelEdge } from './roadGraph';
+import { chainOf, chains, downtownFactor, isChannelEdge, isFeatureEdge } from './roadGraph';
 import type { Region } from './regions';
 import { SpatialGrid } from './spatial';
 import type { Terrain } from './terrain';
@@ -406,7 +406,7 @@ export function generateProps(
     const secs = sectors[ni];
     // Never on a corner beside a channel ramp or channel edge: a side ramp's T is no intersection, and a
     // pole there stands in the mouth a racer turns into.
-    const eligible = secs.map((s, k) => s.angle < 170 * DEG && s.curb.length === 1 && !isChannelEdge(g.edges[n.edges[k]]) && !isChannelEdge(g.edges[n.edges[(k + 1) % m]]));
+    const eligible = secs.map((s, k) => s.angle < 170 * DEG && s.curb.length === 1 && !isChannelEdge(g.edges[n.edges[k]]) && !isChannelEdge(g.edges[n.edges[(k + 1) % m]]) && !isFeatureEdge(g.edges[n.edges[k]]) && !isFeatureEdge(g.edges[n.edges[(k + 1) % m]]));
     const pick: number[] = [];
     if (m >= 4) {
       // Diagonal corners.
@@ -606,7 +606,7 @@ function placePoles(
     const right = rng.next() < 0.5;
     const ok = c.edges.every((ei) => {
       const e = g.edges[ei];
-      return kinds.has(e.kind) && !e.shortcut && !e.bridge && !isChannelEdge(e) && !ctx.skip.has(ei) && e.sidewalk >= U.minSidewalk;
+      return kinds.has(e.kind) && !e.shortcut && !e.bridge && !isChannelEdge(e) && !isFeatureEdge(e) && !ctx.skip.has(ei) && e.sidewalk >= U.minSidewalk;
     });
     const me = g.edges[c.edges[c.edges.length >> 1]];
     const mx = (g.nodes[me.a].x + g.nodes[me.b].x) / 2;

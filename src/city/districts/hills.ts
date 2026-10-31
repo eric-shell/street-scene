@@ -51,7 +51,7 @@ import { type WarpTerm, warpTerms } from '../roadGraph';
 import { Vec2, atan2, cos, pow, sin, sqrt } from '../../sim/math';
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Area, DistrictModule, HeightSample, PlanContext } from './types';
-import { emptyBuild } from './types';
+import { CORRIDOR_AREAS, emptyBuild } from './types';
 import { pointInPolygon, polygonCentroid, smooth01, type Smooth } from './geom';
 import { rampAlong, rampPoint, rampsOf, channelCenter } from './channel';
 import { bluffFootprint } from './bluff';
@@ -398,8 +398,8 @@ export function hillFitter(ctx: Pick<PlanContext, 'graph' | 'areas' | 'event'>):
       return { poly, rim: samplePath([...poly, poly[0]], 10) };
     });
   const carParks = ctx.areas.filter((a) => a.kind === 'carPark');
-  // The Underground's trench (underground.ts) is dug to a set profile: no slope under its blocks.
-  const trenches = ctx.areas.filter((a) => a.kind === 'underground' && a.polygon.length >= 3).map((a) => ({ poly: a.polygon, rim: samplePath([...a.polygon, a.polygon[0]], 10) }));
+  // A weekend region (weekendRegion.ts: the Underground's trench, the rail yard's ridge, the scrapyard's bowls) is shaped to a set profile: no slope under it.
+  const trenches = ctx.areas.filter((a) => CORRIDOR_AREAS.has(a.kind) && a.polygon.length >= 3).map((a) => ({ poly: a.polygon, rim: samplePath([...a.polygon, a.polygon[0]], 10) }));
   // A lake (lake.ts) stands level whatever the ground does: slopes keep off its block, promenade and all.
   const lakes = ctx.areas.filter((a) => a.kind === 'lake').map((a) => samplePath([...a.polygon, a.polygon[0]], 10));
   // A back alley's jump exit (alleyShortcuts.ts) is sized for level ground (its run-up speed and flight

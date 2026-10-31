@@ -527,7 +527,7 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
 
   // District surfaces (concrete, grass, water, cobbles, the quay, a beach's sand) drive like one of the tuned ones.
   const sp = SURFACE_PHYSICS[c.surface];
-  const surfaceGrip = sp === 'road' ? 1 : sp === 'sidewalk' ? t.surface.sidewalkGrip : sp === 'cobble' ? t.surface.cobbleGrip : sp === 'quay' ? t.surface.quayGrip : sp === 'sand' ? t.surface.sandGrip : t.surface.offroadGrip;
+  const surfaceGrip = sp === 'road' ? 1 : sp === 'sidewalk' ? t.surface.sidewalkGrip : sp === 'cobble' ? t.surface.cobbleGrip : sp === 'quay' ? t.surface.quayGrip : sp === 'sand' ? t.surface.sandGrip : sp === 'slick' ? t.surface.slickGrip : t.surface.offroadGrip;
   const dragMul = c.drafting ? t.nitrous.draftDragMul : 1;
 
   // Traction control stability: cut the throttle once the body slides past a few degrees.
@@ -926,7 +926,7 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   Fv -= drag * vLat * speed;
   // Dirt, cobbles, sand and the quay's dock concrete drag on the tires: a constant force once rolling (eased in below 1 m/s).
   const sp = SURFACE_PHYSICS[c.surface];
-  const surfaceDrag = sp === 'offroad' ? t.surface.offroadDrag : sp === 'cobble' ? t.surface.cobbleDrag : sp === 'quay' ? t.surface.quayDrag : sp === 'sand' ? t.surface.sandDrag : 0;
+  const surfaceDrag = sp === 'offroad' ? t.surface.offroadDrag : sp === 'cobble' ? t.surface.cobbleDrag : sp === 'quay' ? t.surface.quayDrag : sp === 'sand' ? t.surface.sandDrag : sp === 'slick' ? t.surface.slickDrag : 0;
   if (surfaceDrag > 0) Fu -= surfaceDrag * sign(vLong) * Math.min(1, abs(vLong));
   // Water drags with the square of speed, so the trickle costs a racer what clipping a destructible
   // does and a crawler nothing much: the dry line is the fast line down the channel.

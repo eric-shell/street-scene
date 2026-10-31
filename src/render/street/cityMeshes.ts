@@ -11,7 +11,7 @@ import { planParking, type ParkingRow } from '../../city/parking';
 import { World } from '../../city/world';
 import { type Hump, spreadJoints } from '../../city/roadProfile';
 import { bridgesOf } from '../../city/districts/channel';
-import { type RoadEdge, isChannelEdge } from '../../city/roadGraph';
+import { type RoadEdge, isChannelEdge, isFeatureEdge } from '../../city/roadGraph';
 import { CROSSWALK, edgePaint } from './crosswalks';
 import { groundHeight } from '../../city/districts/carPark';
 import { Vec2 } from '../../sim/math';
@@ -600,7 +600,8 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     else rowsOf.set(row.edge, [row]);
   }
   g.edges.forEach((e, ei) => {
-    if (isChannelEdge(e)) return;
+    // A weekend region's feature edges carry the module's own paint (render/districts), not lane lines.
+    if (isChannelEdge(e) || isFeatureEdge(e)) return;
     // No lane lines or crosswalk stripes on cobbles.
     if (cobbled(ei)) return;
     const paint = edgePaint(g, mouths, ei);
@@ -713,7 +714,8 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     }
   };
   g.edges.forEach((e, ei) => {
-    if (isChannelEdge(e)) return;
+    // No sidewalk or curb along a weekend region's feature edge: the region's ground runs up to its asphalt.
+    if (isChannelEdge(e) || isFeatureEdge(e)) return;
     const m = mouths[ei];
     const n = edgeSteps(ei);
     const pBays = sideBays(bayOf[ei], 1);

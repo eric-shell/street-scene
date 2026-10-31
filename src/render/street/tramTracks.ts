@@ -14,7 +14,7 @@
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
-import { chainOf, isChannelEdge } from '../../city/roadGraph';
+import { chainOf, isChannelEdge, isFeatureEdge } from '../../city/roadGraph';
 import type { Region } from '../../city/regions';
 import type { Vec2 } from '../../sim/math';
 import { Rng, deriveSeed } from '../../sim/prng';
@@ -70,7 +70,7 @@ export function planTram(world: World): TramPlan {
 
   const tram = new Set<number>();
   g.edges.forEach((e, ei) => {
-    if (e.lanes !== 4 || e.length < TRAM.minLength || isChannelEdge(e) || !world.roadProfile.hasCrown(ei)) return;
+    if (e.lanes !== 4 || e.length < TRAM.minLength || isChannelEdge(e) || isFeatureEdge(e) || !world.roadProfile.hasCrown(ei)) return;
     if (e.kind !== 'boulevard' && e.kind !== 'avenue') return;
     const c = chainOf(g, ei);
     const ends = [g.nodes[c.nodes[0]], g.nodes[c.nodes[c.nodes.length - 1]]];

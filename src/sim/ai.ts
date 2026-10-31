@@ -23,6 +23,9 @@
  * brakes ease off with steering lock so they never trail brake into a spin,
  * and a car pinned nose in against a wall, rail, barrier or car reverses out
  * with the nose swinging toward the line before the stuck reset kicks in.
+ * Through a weekend special (city/districts/weekendRegion.ts) every rival drives the spine, the route's own line;
+ * the region's other lines (DistrictModule.lines, FeatureLine) are where a rival choosing its way by personality
+ * plugs in: driverDetours (ai/driverLine.ts), as a detour from the entry's route position to the exit's.
  * Timed gates (a level crossing's, sim/gates.ts): they brake to a stop
  * short of one that will be down when they get there, queue behind the cars
  * already waiting and hold still, with the stuck and reverse-out logic off.

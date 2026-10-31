@@ -21,7 +21,7 @@ import type { World } from '../world';
 import type { Prop } from '../props';
 import { PLAZA } from '../config';
 import { PLAZA_HINT } from '../districts/plazaDressing';
-import { downtownFactor, isMouthEdge, isChannelEdge } from '../roadGraph';
+import { downtownFactor, isMouthEdge, isChannelEdge, isFeatureEdge } from '../roadGraph';
 import { Rng, deriveSeed } from '../../sim/prng';
 import { BACK, FWD, groundY, makePlacer, thin, wallBehind } from './placer';
 
@@ -295,7 +295,7 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
     const d = rng.range(0.6, 1.3);
     const half = rng.range(0.4, 0.55);
     const gp = rng.next();
-    if (!e || e.shortcut || e.bridge || isChannelEdge(e) || isMouthEdge(e)) continue;
+    if (!e || e.shortcut || e.bridge || isChannelEdge(e) || isMouthEdge(e) || isFeatureEdge(e)) continue;
     if (roll >= (FRONTAGE.base + FRONTAGE.downtown * downtownFactor(world.graph.plan, b.x, b.z)) * liveliness * density) continue;
     // Local +Z runs away from the street: the face looks toward -Z.
     const fz = Math.cos(b.yaw);

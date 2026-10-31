@@ -26,7 +26,7 @@
  */
 import type { World } from '../world';
 import type { Contact } from '../world';
-import { downtownFactor, isMouthEdge, isChannelEdge } from '../roadGraph';
+import { downtownFactor, isMouthEdge, isChannelEdge, isFeatureEdge } from '../roadGraph';
 import { Rng, deriveSeed } from '../../sim/prng';
 import { atan2, clamp, distToSegment, smoothstep, sqrt } from '../../sim/math';
 import { groundY, wallRoom } from './placer';
@@ -264,7 +264,7 @@ export function planPaths(world: World, avoid?: IdleAvoid): WalkPath[] {
   };
 
   for (const e of g.edges) {
-    if (e.shortcut || e.bridge || isChannelEdge(e) || isMouthEdge(e) || e.sidewalk < WALK.minSidewalk || e.length < WALK.minLength) continue;
+    if (e.shortcut || e.bridge || isChannelEdge(e) || isMouthEdge(e) || isFeatureEdge(e) || e.sidewalk < WALK.minSidewalk || e.length < WALK.minLength) continue;
     const A = g.nodes[e.a];
     const B = g.nodes[e.b];
     const dx = (B.x - A.x) / e.length;

@@ -9,7 +9,7 @@
  * routeRails.ts lays the corner rails.
  */
 import { CITY, ROUTE } from './config';
-import { type RoadGraph, edgeBetween, isBendNode, isChannelEdge } from './roadGraph';
+import { type RoadGraph, edgeBetween, isBendNode, isChannelEdge, isFeatureEdge } from './roadGraph';
 import { chainBackwards, routeChains } from './districts/alleyPath';
 import { shortcutSpan } from './districts/alleyShortcuts';
 import type { QuayCut } from './districts/harborShore';
@@ -238,7 +238,7 @@ export function routeRuns(g: RoadGraph, nodes: number[], edges: number[], closed
 export function circuitStart(g: RoadGraph, nodes: number[]): { index: number; t: number; run: RouteRun } {
   const edges = polylineFrom(g, nodes, true);
   const runs = routeRuns(g, nodes, edges, true);
-  const channel = (r: RouteRun) => r.edges.some((e) => isChannelEdge(g.edges[e]) || g.edges[e].crossing !== undefined || g.edges[e].trench === true);
+  const channel = (r: RouteRun) => r.edges.some((e) => isChannelEdge(g.edges[e]) || g.edges[e].crossing !== undefined || isFeatureEdge(g.edges[e]));
   let best = runs[0];
   for (const r of runs) {
     const rb = channel(r);
@@ -468,8 +468,9 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[], 
   const routeNodeSet = new Set(nodes);
   for (const nid of routeNodeSet) {
     for (const eid of g.nodes[nid].edges) {
-      // A loop mouth stays open: the expressway's ramps and loops are never barriered (highway/settle.ts highwayGates).
-      if (!onRoute.has(eid) && !open.has(eid) && g.edges[eid].kind !== 'mouth') route.closedStreets.push({ edge: eid, node: nid });
+      // A loop mouth stays open: the expressway's ramps and loops are never barriered (highway/settle.ts highwayGates); nor is a
+      // weekend region's feature edge (its lines branch off the spine and are part of the race).
+      if (!onRoute.has(eid) && !open.has(eid) && g.edges[eid].kind !== 'mouth' && g.edges[eid].kind !== 'feature') route.closedStreets.push({ edge: eid, node: nid });
     }
   }
   return route;

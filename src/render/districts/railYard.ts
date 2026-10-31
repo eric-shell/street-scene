@@ -1,72 +1,39 @@
 /**
- * Weekend special renderer: the rail yard (city/districts/railYard.ts).
- *
- * Everything is read from the area's hints and the walls of its looks, appended into the shared kit's
- * merged builders (ground, solid, paint, glow, hazard), so the whole yard costs one draw call of its own
- * for the freight cars (the side atlas, railYardCars.ts), one for the light pools (Medium and up), and
- * nothing per frame but the switcher's pose:
- *  - the ground: gravel with a dusty concrete apron behind the gates, laid as a grid draped on the
- *    terrain with breakpoints where the shapes bend (the dock's bevel and ramps, the ridge's slopes, the
- *    bank), concrete on the dock, asphalt on the bank, cobbles across each gate mouth;
- *  - the tracks: ballast beds, ties (Medium and up) and rails, all paint a few cm up;
+ * Weekend special renderer: the Rail Yard (city/districts/railYard.ts). Everything is read from the area's layout
+ * (railYardLayout.ts yardLayout, the same plan the sim's walls and terrain come from) and appended into the shared
+ * kit's merged builders, so the whole yard costs two draw calls of its own: the freight cars (one textured mesh, the
+ * side atlas, railYardCars.ts) and the floodlights' pools (Medium and up). Nothing moves, nothing runs per frame.
+ *  - the ground: the whole region painted, ballast and cinders with dusty bands, laid as a grid in the travel frame
+ *    draped on the terrain; the hump, the kicker, the dock and the banked corners get fine grids of their own (the
+ *    shapes bend faster than the grid); concrete pads, the turnaround's asphalt, and every slick patch drawn as what
+ *    it is (wet steel plates, black oil, grease, the diesel spill), so no patch that costs grip is invisible;
+ *  - the throat road: concrete slabs over the spine's asphalt with joints, the lead track beside it;
+ *  - the tracks: ballast beds, ties (Medium and up) and rails, all paint a few cm up, buffer stops at dead ends;
  *  - the freight: one textured mesh of cars on the consists the sim has as solids (look railcar);
- *  - the walls of look yardFence, by what each solid is: the corrugated steel fence round the back and
- *    ends, steel gate posts with a lantern (and, Medium and up, a pool of its light on the sidewalk), the
- *    sliding gate leaves stood open, dwarf signal posts with their lamps, the dock face's bumper rail,
- *    the concrete crash barrier along the bank's crest;
- *  - light: four floodlight towers behind the back fence whose floods light pools on the yard (they
- *    are what makes it read from the street), a yard tower with a lit cab, amber lamps flush on the
- *    ridge's crest (the hazard blink the city's jump lips use).
- * No sign and no arrow: the cobbles, the lanterns and the gap in the fence are the way in.
+ *  - the plant (railYardPlant.ts): the overbridge, the buildings, the crane, the containers, the signals, the floods;
+ *  - light: floodlight towers every 100 m with pools on the ground, amber studs on the hump's crest and the kicker's lip
+ *    (the hazard blink every jump lip in the city uses), lit doors and cab windows.
+ * No sign and no arrow: light, surface and the shapes are how the lines read.
  */
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
-import type { AreaHint } from '../../city/districts/types';
-import type { Wall } from '../../city/blocks';
 import type { Vec2 } from '../../sim/math';
+import { yardLayout } from '../../city/districts/railYardLayout';
+import type { YardLayout, YardPatch } from '../../city/districts/railYardLayout';
+import { frameT, frameW, framePoint, rectPoint } from '../../city/districts/railYardFrame';
+import { wedgeLength, wedgePoint, type WedgeSpec } from '../../city/districts/railYardShapes';
+import type { BankedArc } from '../../city/districts/banking';
+import { reachOf } from '../../city/districts/banking';
+import { pointInPolygon } from '../../city/districts/geom';
 import { GeoBuilder } from '../geoBuilder';
 import { makeRadialGlow } from '../textures/textures';
 import { makeYardAtlas } from '../textures/yardTextures';
 import type { DistrictKit, DistrictRenderer } from './kit';
-import { col, cylinder, groundVertex, prism } from './kit';
+import { col, cylinder, drapeConvex, groundVertex } from './kit';
 import { addCar, carMaterial } from './railYardCars';
+import { drawBridge, drawSolids } from './railYardPlant';
 
 const C = CITY.districts.railYard;
-
-/** One block's rectangle and zones, unpacked from its 'yard' hint. */
-interface Yard {
-  o: Vec2;
-  ux: number;
-  uz: number;
-  vx: number;
-  vz: number;
-  L: number;
-  D: number;
-  apron: number;
-  n: number;
-  pitch: number;
-  vFirst: number;
-  dockFace: number;
-  dockU0: number;
-  dockU1: number;
-  ramp: number;
-  humpUc: number;
-  humpRun: number;
-  humpV0: number;
-  humpV1: number;
-  loopCu: number;
-  loopR: number;
-  loopVmid: number;
-  trackU1: number;
-  i: number;
-}
-
-function unpack(h: AreaHint): Yard {
-  const v = h.values;
-  return { o: h.points[0], ux: v[0], uz: v[1], vx: v[2], vz: v[3], L: v[4], D: v[5], apron: v[6], n: v[7], pitch: v[8], vFirst: v[9], dockFace: v[10], dockU0: v[11], dockU1: v[12], ramp: v[13], humpUc: v[14], humpRun: v[15], humpV0: v[16], humpV1: v[17], loopCu: v[18], loopR: v[19], loopVmid: v[20], trackU1: v[21], i: v[22] };
-}
-
-const pt = (Y: Yard, u: number, v: number): Vec2 => ({ x: Y.o.x + Y.ux * u + Y.vx * v, z: Y.o.z + Y.uz * u + Y.vz * v });
 
 /** Cheap deterministic hash in [0, 1) for colour noise. */
 function hash(a: number, b: number): number {
@@ -75,288 +42,308 @@ function hash(a: number, b: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-const GRAVEL = col(0x3b372f);
-const GRAVEL_LIGHT = col(0x4a453c);
-const APRON = col(0x4b4a48);
-const DOCK_TOP = col(0x77777a);
-const DOCK_FACE = col(0x57585c);
-const ASPHALT = col(0x2f3135);
-const COBBLE = col(0x5a5d66);
-
+const BALLAST = col(0x4d483f);
+const CINDER = col(0x3b3732);
+const DUST = col(0x5d5649);
 const tmp = new THREE.Color();
 
-/** Sorted, de-duplicated breakpoints over [0, len]: every `step` m and the extras that fall inside. */
-function breaks(len: number, step: number, extras: number[]): number[] {
-  const set = new Set<number>([0, len]);
-  const n = Math.ceil(len / step);
-  for (let k = 1; k < n; k++) set.add((len * k) / n);
-  for (const e of extras) if (e > 0.01 && e < len - 0.01) set.add(Math.round(e * 100) / 100);
-  return [...set].sort((a, b) => a - b);
+/** Pool of light on the ground: a draped grid textured with the radial glow (as the roadworks' light towers). */
+function poolOf(kit: DistrictKit) {
+  return (gb: GeoBuilder, x: number, z: number, r: number, color: THREE.Color): void => {
+    const N = 4;
+    const ids: number[] = [];
+    for (let j = 0; j <= N; j++) {
+      for (let i = 0; i <= N; i++) {
+        const px = x + (i / N - 0.5) * 2 * r;
+        const pz = z + (j / N - 0.5) * 2 * r;
+        ids.push(gb.vertex(px, kit.h(px, pz) + 0.09, pz, 0, 1, 0, i / N, j / N, color));
+      }
+    }
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) gb.quadFacing(ids[j * (N + 1) + i], ids[j * (N + 1) + i + 1], ids[(j + 1) * (N + 1) + i + 1], ids[(j + 1) * (N + 1) + i], 0, 1, 0);
+  };
 }
 
-/** The ground of one block: a grid over the rectangle, draped, coloured by what the spot is. */
-function ground(kit: DistrictKit, Y: Yard): void {
-  const uex: number[] = [];
-  const vex: number[] = [Y.apron, Y.vFirst - 1.5, Y.vFirst + 1.5];
-  if (Y.dockFace >= 0) {
-    uex.push(Y.dockU0, Y.dockU0 + Y.ramp * 0.3, Y.dockU0 + Y.ramp * 0.7, Y.dockU0 + Y.ramp, Y.dockU1 - Y.ramp, Y.dockU1 - Y.ramp * 0.7, Y.dockU1 - Y.ramp * 0.3, Y.dockU1);
-    vex.push(Y.dockFace, Y.dockFace + C.dock.ease * 0.33, Y.dockFace + C.dock.ease * 0.66, Y.dockFace + C.dock.ease, Y.D, Y.D + 0.0);
+/** The boxes (world AABBs) the fine grids draw, which the coarse ground skips. */
+function featureBoxes(lay: YardLayout): { minX: number; minZ: number; maxX: number; maxZ: number }[] {
+  const out: { minX: number; minZ: number; maxX: number; maxZ: number }[] = [];
+  const add = (pts: Vec2[]) => out.push({ minX: Math.min(...pts.map((p) => p.x)), maxX: Math.max(...pts.map((p) => p.x)), minZ: Math.min(...pts.map((p) => p.z)), maxZ: Math.max(...pts.map((p) => p.z)) });
+  for (const w of [lay.hump, ...(lay.kicker ? [lay.kicker] : [])]) {
+    const L = wedgeLength(w);
+    const B = w.half + w.edge;
+    add([wedgePoint(w, 0, -B), wedgePoint(w, L, -B), wedgePoint(w, L, B), wedgePoint(w, 0, B)]);
   }
-  if (Y.humpUc >= 0) {
-    const ext = C.hump.top / 2 + Y.humpRun;
-    for (let k = 0; k <= 8; k++) {
-      uex.push(Y.humpUc - ext + (Y.humpRun * k) / 8, Y.humpUc + ext - (Y.humpRun * k) / 8);
-    }
-    uex.push(Y.humpUc - C.hump.top / 2, Y.humpUc + C.hump.top / 2);
-    vex.push(Y.humpV0, Y.humpV0 + C.hump.edge / 2, Y.humpV0 + C.hump.edge, Y.humpV1 - C.hump.edge, Y.humpV1 - C.hump.edge / 2, Y.humpV1);
+  if (lay.dock) {
+    const r = lay.dock.rect;
+    add([rectPoint(r, 0, 0), rectPoint(r, r.L, 0), rectPoint(r, r.L, r.D + 3), rectPoint(r, 0, r.D + 3)]);
   }
-  if (Y.loopCu >= 0) uex.push(Y.loopCu, Y.loopCu + Y.loopR * 0.5);
-  const us = breaks(Y.L, 3.2, uex);
-  const vs = breaks(Y.D, 3.2, vex);
-  const ids: number[] = [];
+  return out;
+}
+
+/** The whole region's ground: a grid in the travel frame, cells whose middle is inside the polygon, coloured by noise and band. */
+function ground(kit: DistrictKit, lay: YardLayout): void {
+  const f = lay.f;
+  const poly = lay.region.polygon;
+  let wMin = Infinity;
+  let wMax = -Infinity;
+  let tMin = Infinity;
+  let tMax = -Infinity;
+  for (const p of poly) {
+    const t = frameT(f, p.x, p.z);
+    const w = frameW(f, p.x, p.z);
+    tMin = Math.min(tMin, t);
+    tMax = Math.max(tMax, t);
+    wMin = Math.min(wMin, w);
+    wMax = Math.max(wMax, w);
+  }
+  const step = kit.quality === 'high' ? 6 : kit.quality === 'low' ? 10 : 8;
+  const nt = Math.ceil((tMax - tMin) / step);
+  const nw = Math.ceil((wMax - wMin) / step);
+  const boxes = featureBoxes(lay);
   const g = kit.ground;
-  const colorAt = (u: number, v: number): THREE.Color => {
-    const noise = 0.82 + hash(u, v) * 0.36;
-    let base = GRAVEL;
-    if (Y.loopCu >= 0 && u >= Y.loopCu - 0.01) {
-      const d = Math.hypot(u - Y.loopCu, v - Y.loopVmid);
-      if (d <= Y.loopR + 0.5 && d >= Y.loopR - 0.6 - C.bank.rise - 0.5) base = ASPHALT;
+  const ids = new Map<number, number>();
+  const vert = (i: number, j: number): number => {
+    const key = j * (nt + 1) + i;
+    let id = ids.get(key);
+    if (id === undefined) {
+      const t = tMin + i * step;
+      const w = wMin + j * step;
+      const p = framePoint(f, t, w);
+      const n = 0.82 + hash(t, w) * 0.36;
+      const band = hash(Math.floor(t / 23), Math.floor(w / 17));
+      const base = band > 0.72 ? DUST : band < 0.25 ? CINDER : BALLAST;
+      id = groundVertex(kit, g, p.x, p.z, 0.02, tmp.copy(base).multiplyScalar(n), 4);
+      ids.set(key, id);
     }
-    if (Y.dockFace >= 0 && u >= Y.dockU0 && u <= Y.dockU1 && v >= Y.dockFace) base = v < Y.dockFace + C.dock.ease * 1.05 ? DOCK_FACE : DOCK_TOP;
-    else if (v < Y.apron) base = APRON;
-    else if (hash(Math.floor(u / 6), Math.floor(v / 6)) > 0.7) base = GRAVEL_LIGHT;
-    return tmp.copy(base).multiplyScalar(noise);
+    return id;
   };
+  for (let j = 0; j < nw; j++) {
+    for (let i = 0; i < nt; i++) {
+      const m = framePoint(f, tMin + (i + 0.5) * step, wMin + (j + 0.5) * step);
+      if (!pointInPolygon(m.x, m.z, poly)) continue;
+      if (boxes.some((b) => m.x > b.minX - 2 && m.x < b.maxX + 2 && m.z > b.minZ - 2 && m.z < b.maxZ + 2)) continue;
+      g.quadFacing(vert(i, j), vert(i + 1, j), vert(i + 1, j + 1), vert(i, j + 1), 0, 1, 0);
+    }
+  }
+}
+
+/**
+ * The yard's sodium wash: a coarse grid over the whole region in the pools' additive mesh (its uv at the glow's middle, so
+ * the vertex colour is the light), brighter near the floodlight towers: open ground the street lamps never reach reads
+ * lit, the way areaLights washes a park, at no draw call of its own.
+ */
+function wash(kit: DistrictKit, lay: YardLayout, gb: GeoBuilder): void {
+  const f = lay.f;
+  const poly = lay.region.polygon;
+  const step = 14;
+  const ts = poly.map((p) => frameT(f, p.x, p.z));
+  const ws = poly.map((p) => frameW(f, p.x, p.z));
+  const t0 = Math.min(...ts);
+  const w0 = Math.min(...ws);
+  const nt = Math.ceil((Math.max(...ts) - t0) / step);
+  const nw = Math.ceil((Math.max(...ws) - w0) / step);
+  const ids = new Map<number, number>();
+  const vert = (i: number, j: number): number => {
+    const key = j * (nt + 1) + i;
+    let id = ids.get(key);
+    if (id === undefined) {
+      const p = framePoint(f, t0 + i * step, w0 + j * step);
+      let k = 0.012;
+      for (const l of lay.lights) {
+        const d = Math.hypot(p.x - l.p.x - l.fx * 25, p.z - l.p.z - l.fz * 25);
+        if (d < 80) k += 0.035 * (1 - d / 80);
+      }
+      id = gb.vertex(p.x, kit.h(p.x, p.z) + 0.12, p.z, 0, 1, 0, 0.5, 0.5, tmp.setRGB(1, 0.78, 0.5).multiplyScalar(Math.min(0.06, k)));
+      ids.set(key, id);
+    }
+    return id;
+  };
+  for (let j = 0; j < nw; j++) {
+    for (let i = 0; i < nt; i++) {
+      const m = framePoint(f, t0 + (i + 0.5) * step, w0 + (j + 0.5) * step);
+      if (pointInPolygon(m.x, m.z, poly)) gb.quadFacing(vert(i, j), vert(i + 1, j), vert(i + 1, j + 1), vert(i, j + 1), 0, 1, 0);
+    }
+  }
+}
+
+/** A draped grid over a wedge (the hump, the kicker): fine along its grade, breaks at its taper. */
+function wedgeGround(kit: DistrictKit, w: WedgeSpec, color: THREE.Color, crestColor: THREE.Color): void {
+  const L = wedgeLength(w);
+  const B = w.half + w.edge;
+  const as: number[] = [];
+  for (let a = 0; a < w.run; a += Math.max(0.8, w.run / 16)) as.push(a);
+  as.push(w.run, w.run + w.top);
+  for (let k = 1; k <= 8; k++) as.push(w.run + w.top + (w.fall * k) / 8);
+  const bs: number[] = [-B - 2, -B, -w.half - w.edge / 2, -w.half];
+  for (let b = -w.half + 3; b < w.half - 1; b += 3) bs.push(b);
+  bs.push(w.half, w.half + w.edge / 2, B, B + 2);
+  const asx = [-2, ...as.filter((a) => a <= L), L + 2];
+  const ids: number[] = [];
+  for (const b of bs) {
+    for (const a of asx) {
+      const p = wedgePoint(w, a, b);
+      const crest = a >= w.run - 0.5 && a <= w.run + w.top + 0.5 && Math.abs(b) < w.half;
+      ids.push(groundVertex(kit, kit.ground, p.x, p.z, 0.03, tmp.copy(crest ? crestColor : color).multiplyScalar(0.85 + hash(a, b) * 0.3), 4));
+    }
+  }
+  const n = asx.length;
+  for (let j = 0; j + 1 < bs.length; j++) for (let i = 0; i + 1 < n; i++) kit.ground.quadFacing(ids[j * n + i], ids[j * n + i + 1], ids[(j + 1) * n + i + 1], ids[(j + 1) * n + i], 0, 1, 0);
+}
+
+/** The dock: its platform as a fine grid (the face's bevel, the ramps), concrete with a yellow edge line. */
+function dockGround(kit: DistrictKit, lay: YardLayout): void {
+  const d = lay.dock;
+  if (!d) return;
+  const r = d.rect;
+  const us = [-1.5, 0];
+  for (let k = 1; k <= 6; k++) us.push((d.ramp * k) / 6);
+  for (let u = d.ramp + 6; u < r.L - d.ramp - 3; u += 6) us.push(u);
+  for (let k = 6; k >= 0; k--) us.push(r.L - (d.ramp * k) / 6);
+  us.push(r.L + 1.5);
+  const vs = [-1.5, 0, C.dock.ease * 0.33, C.dock.ease * 0.66, C.dock.ease, C.dock.ease + 0.5, r.D * 0.5, r.D, r.D + 1.5, r.D + 3];
+  const ids: number[] = [];
   for (const v of vs) {
     for (const u of us) {
-      const p = pt(Y, u, v);
-      ids.push(groundVertex(kit, g, p.x, p.z, 0.02, colorAt(u, v), 4));
+      const p = rectPoint(r, u, v);
+      const top = v > C.dock.ease && v < r.D && u > 0 && u < r.L;
+      const edge = v > C.dock.ease && v < C.dock.ease + 0.5 && u > d.ramp && u < r.L - d.ramp;
+      const c = edge ? col(0xd8b020) : top ? col(0x77777a) : col(0x57585c);
+      ids.push(groundVertex(kit, kit.ground, p.x, p.z, 0.03, tmp.copy(c).multiplyScalar(0.9 + hash(u, v) * 0.2), 4));
     }
   }
-  const W = us.length;
-  for (let j = 0; j + 1 < vs.length; j++) {
-    for (let i = 0; i + 1 < us.length; i++) g.quadFacing(ids[j * W + i], ids[j * W + i + 1], ids[(j + 1) * W + i + 1], ids[(j + 1) * W + i], 0, 1, 0);
-  }
+  const n = us.length;
+  for (let j = 0; j + 1 < vs.length; j++) for (let i = 0; i + 1 < n; i++) kit.ground.quadFacing(ids[j * n + i], ids[j * n + i + 1], ids[(j + 1) * n + i + 1], ids[(j + 1) * n + i], 0, 1, 0);
 }
 
-/** A strip along u at across-offset v (width w), from u0 to u1, draped at `lift`. */
-function strip(kit: DistrictKit, gb: GeoBuilder, Y: Yard, v: number, w: number, u0: number, u1: number, lift: number, color: THREE.Color, step = 3): void {
-  const n = Math.max(1, Math.ceil((u1 - u0) / step));
-  let prevA = -1;
-  let prevB = -1;
+/** A banked corner: a polar grid of asphalt rising to its crest, concrete beyond. */
+function bankGround(kit: DistrictKit, b: BankedArc): void {
+  const r0 = b.rOut - b.rise - C.turnaround.width;
+  const r1 = reachOf(b) + 0.5;
+  const rs: number[] = [];
+  for (let r = r0; r < b.rOut - b.rise; r += 2.5) rs.push(r);
+  for (let k = 0; k <= 6; k++) rs.push(b.rOut - b.rise + (b.rise * k) / 6);
+  rs.push(b.rOut + b.hold, b.rOut + b.hold + b.fall / 2, r1);
+  const n = Math.max(6, Math.ceil((2 * b.half * b.rOut) / 3));
+  const ids: number[] = [];
+  for (const r of rs) {
+    for (let i = 0; i <= n; i++) {
+      const a = b.mid - b.half + (2 * b.half * i) / n;
+      const x = b.cx + Math.cos(a) * r;
+      const z = b.cz + Math.sin(a) * r;
+      const c = r <= b.rOut + 0.1 ? col(0x303236) : col(0x6a6862);
+      ids.push(groundVertex(kit, kit.paint, x, z, 0.04, tmp.copy(c).multiplyScalar(0.9 + hash(r, i) * 0.15), 4));
+    }
+  }
+  const m = n + 1;
+  for (let j = 0; j + 1 < rs.length; j++) for (let i = 0; i < n; i++) kit.paint.quadFacing(ids[j * m + i], ids[j * m + i + 1], ids[(j + 1) * m + i + 1], ids[(j + 1) * m + i], 0, 1, 0);
+}
+
+/** A strip along a->b (width w) at lift, draped every `step` m. */
+function strip(kit: DistrictKit, gb: GeoBuilder, a: Vec2, b: Vec2, off: number, w: number, lift: number, color: THREE.Color, step: number): void {
+  const len = Math.hypot(b.x - a.x, b.z - a.z);
+  if (len < 0.1) return;
+  const ux = (b.x - a.x) / len;
+  const uz = (b.z - a.z) / len;
+  const n = Math.max(1, Math.ceil(len / step));
+  let pa = -1;
+  let pb = -1;
   for (let k = 0; k <= n; k++) {
-    const u = u0 + ((u1 - u0) * k) / n;
-    const a = pt(Y, u, v - w / 2);
-    const b = pt(Y, u, v + w / 2);
-    const ia = groundVertex(kit, gb, a.x, a.z, lift, color);
-    const ib = groundVertex(kit, gb, b.x, b.z, lift, color);
-    if (prevA >= 0) gb.quadFacing(prevA, prevB, ib, ia, 0, 1, 0);
-    prevA = ia;
-    prevB = ib;
+    const s = (len * k) / n;
+    const cx = a.x + ux * s - uz * off;
+    const cz = a.z + uz * s + ux * off;
+    const ia = groundVertex(kit, gb, cx + uz * (w / 2), cz - ux * (w / 2), lift, color);
+    const ib = groundVertex(kit, gb, cx - uz * (w / 2), cz + ux * (w / 2), lift, color);
+    if (pa >= 0) gb.quadFacing(pa, ia, ib, pb, 0, 1, 0);
+    pa = ia;
+    pb = ib;
   }
 }
 
-/** Ballast bed, ties (Medium and up) and rails of every track of a block. */
-function tracks(kit: DistrictKit, Y: Yard): void {
+/** Every track: ballast bed, ties (Medium and up), two rails; a buffer stop at the ends of storage tracks. */
+function tracks(kit: DistrictKit, lay: YardLayout): void {
   const R = C.rail;
   const bed = col(0x4a443b);
   const tie = col(0x2c241e);
   const steel = col(0x8e9299);
-  const u1 = Y.trackU1;
-  for (let t = 0; t < Y.n; t++) {
-    const v = Y.vFirst + t * Y.pitch;
-    strip(kit, kit.paint, Y, v, R.ballast, 2, u1, 0.012, bed, 4);
-    if (kit.quality !== 'low') {
-      for (let u = 2.2; u < u1 - 0.3; u += R.tiePitch) {
-        const a = pt(Y, u, v - R.tie[0] / 2);
-        const b = pt(Y, u, v + R.tie[0] / 2);
-        const c = pt(Y, u + R.tie[1], v + R.tie[0] / 2);
-        const d = pt(Y, u + R.tie[1], v - R.tie[0] / 2);
-        const q = [a, b, c, d].map((p) => groundVertex(kit, kit.paint, p.x, p.z, 0.026, tie));
+  // Ties on Medium every second pitch (kilometres of track: the budget), every pitch on High, none on Low.
+  const ties = kit.quality !== 'low';
+  const tiePitch = kit.quality === 'high' ? R.tiePitch : R.tiePitch * 2;
+  for (const t of lay.tracks) {
+    const len = Math.hypot(t.b.x - t.a.x, t.b.z - t.a.z);
+    if (len < 1) continue;
+    const ux = (t.b.x - t.a.x) / len;
+    const uz = (t.b.z - t.a.z) / len;
+    strip(kit, kit.paint, t.a, t.b, 0, R.ballast, 0.012, bed, 9);
+    if (ties) {
+      for (let s = 0.4; s < len - 0.3; s += tiePitch) {
+        const cx = t.a.x + ux * s;
+        const cz = t.a.z + uz * s;
+        const hx = -uz * (R.tie[0] / 2);
+        const hz = ux * (R.tie[0] / 2);
+        const q = [
+          { x: cx - hx, z: cz - hz },
+          { x: cx + hx, z: cz + hz },
+          { x: cx + hx + ux * R.tie[1], z: cz + hz + uz * R.tie[1] },
+          { x: cx - hx + ux * R.tie[1], z: cz - hz + uz * R.tie[1] },
+        ].map((p) => groundVertex(kit, kit.paint, p.x, p.z, 0.022, tie));
         kit.paint.quadFacing(q[0], q[1], q[2], q[3], 0, 1, 0);
       }
     }
-    for (const s of [-1, 1]) strip(kit, kit.paint, Y, v + (s * R.gauge) / 2, R.head, 2, u1, 0.045, steel, 2.5);
+    for (const s of [-1, 1]) strip(kit, kit.paint, t.a, t.b, (s * R.gauge) / 2, R.head * 1.6, 0.03, steel, 8);
   }
 }
 
-/** Pool of light on the ground: a draped grid textured with the radial glow (as the roadworks' light towers). */
-function pool(kit: DistrictKit, gb: GeoBuilder, x: number, z: number, r: number, color: THREE.Color): void {
-  const N = 6;
-  const ids: number[] = [];
-  for (let j = 0; j <= N; j++) {
-    for (let i = 0; i <= N; i++) {
-      const px = x + (i / N - 0.5) * 2 * r;
-      const pz = z + (j / N - 0.5) * 2 * r;
-      ids.push(gb.vertex(px, kit.h(px, pz) + 0.09, pz, 0, 1, 0, i / N, j / N, color));
-    }
-  }
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) gb.quadFacing(ids[j * (N + 1) + i], ids[j * (N + 1) + i + 1], ids[(j + 1) * (N + 1) + i + 1], ids[(j + 1) * (N + 1) + i], 0, 1, 0);
-}
-
-/** A solid's outline: its faces' first points. */
-const outline = (w: Wall): Vec2[] => w.solid!.faces.map((f) => ({ x: f.ax, z: f.az }));
-
-/** Split a thin rectangle into pieces no longer than `step` along its long axis, as polygons. */
-function pieces(poly: Vec2[], step: number): Vec2[][] {
-  const l01 = Math.hypot(poly[1].x - poly[0].x, poly[1].z - poly[0].z);
-  const l12 = Math.hypot(poly[2].x - poly[1].x, poly[2].z - poly[1].z);
-  const [a, b, c, d] = l01 >= l12 ? [poly[0], poly[1], poly[2], poly[3]] : [poly[1], poly[2], poly[3], poly[0]];
-  const len = Math.max(l01, l12);
-  const n = Math.max(1, Math.ceil(len / step));
-  const out: Vec2[][] = [];
-  const lerp = (p: Vec2, q: Vec2, t: number): Vec2 => ({ x: p.x + (q.x - p.x) * t, z: p.z + (q.z - p.z) * t });
-  for (let k = 0; k < n; k++) out.push([lerp(a, b, k / n), lerp(a, b, (k + 1) / n), lerp(d, c, (k + 1) / n), lerp(d, c, k / n)]);
-  return out;
-}
-
-const dims = (poly: Vec2[]): { len: number; thick: number } => {
-  const l01 = Math.hypot(poly[1].x - poly[0].x, poly[1].z - poly[0].z);
-  const l12 = Math.hypot(poly[2].x - poly[1].x, poly[2].z - poly[1].z);
-  return { len: Math.max(l01, l12), thick: Math.min(l01, l12) };
-};
-
-/** Every yardFence solid, by what it is (see the header). */
-function fences(kit: DistrictKit, banks: { c: Vec2; R: number }[], lamps: Vec2[]): void {
-  const walls = kit.walls.get('yardFence') ?? [];
-  const seen = new Set<object>();
-  const g = kit.solid;
-  const fenceSide = col(0x39434d);
-  const fenceTop = col(0x1f252b);
-  const post = col(0x23282e);
-  for (const w of walls) {
-    if (!w.solid || seen.has(w.solid)) continue;
-    seen.add(w.solid);
-    const poly = outline(w);
-    if (poly.length !== 4) continue;
-    const { len, thick } = dims(poly);
-    const mx = poly.reduce((s, p) => s + p.x, 0) / 4;
-    const mz = poly.reduce((s, p) => s + p.z, 0) / 4;
-    if (w.top !== undefined) {
-      // The dock face: a low concrete bumper rail along its foot, a yellow top.
-      for (const piece of pieces(poly, 5)) prism(kit, g, piece, 0.55, col(0x6c6e72), col(0xe2b520), 0.25);
-    } else if (len <= 1.2 && thick <= 1.2) {
-      if (len >= 0.8) {
-        // A steel gate post and its lantern.
-        prism(kit, g, poly, 3.4, col(0x4b505a), col(0x30343a), 0.3);
-        const y = kit.h(mx, mz) + 3.4;
-        cylinder(kit.glow, mx, mz, 0.26, y + 0.02, y + 0.42, 8, col(0xffe2b0, 3.4));
-        lamps.push({ x: mx, z: mz });
-      } else {
-        prism(kit, g, poly, 1.1, col(0x2a2d32), col(0x1a1b1e), 0.2);
-      }
-    } else if (len <= 5.4 && thick <= 0.35) {
-      // A sliding gate stood open: a galvanized frame, a top rail.
-      for (const piece of pieces(poly, 5)) prism(kit, g, piece, 2.2, col(0x5d646e), col(0x3b4047), 0.2);
-    } else if (banks.some((b) => Math.abs(Math.hypot(mx - b.c.x, mz - b.c.z) - b.R) < 1.2)) {
-      // The bank's crash barrier: concrete, a pale cap.
-      prism(kit, g, poly, 1.25, col(0xa6a49c), col(0x85837c), 0.4);
-    } else {
-      for (const piece of pieces(poly, 6)) prism(kit, g, piece, 2.4, fenceSide, fenceTop, 0.25);
-      // Posts every few metres.
-      const n = Math.max(1, Math.floor(len / 3));
-      const l01 = Math.hypot(poly[1].x - poly[0].x, poly[1].z - poly[0].z);
-      const longEdge = l01 >= Math.hypot(poly[2].x - poly[1].x, poly[2].z - poly[1].z);
-      const a = longEdge ? poly[0] : poly[1];
-      const b = longEdge ? poly[1] : poly[2];
-      const d = longEdge ? poly[3] : poly[0];
-      const nx = (d.x - a.x) * 0.5;
-      const nz = (d.z - a.z) * 0.5;
-      for (let k = 0; k <= n; k++) {
-        const t = k / n;
-        const x = a.x + (b.x - a.x) * t + nx;
-        const z = a.z + (b.z - a.z) * t + nz;
-        prism(kit, g, [{ x: x - 0.14, z: z - 0.14 }, { x: x + 0.14, z: z - 0.14 }, { x: x + 0.14, z: z + 0.14 }, { x: x - 0.14, z: z + 0.14 }], 2.75, post, post, 0.2);
-      }
-    }
-  }
-}
-
-/** A floodlight tower: a tapering mast, a head bar with six floods aimed along `f`. */
-function floodTower(kit: DistrictKit, pools: GeoBuilder | null, p: Vec2, mast: number, f: Vec2, across: Vec2): void {
-  const y = kit.h(p.x, p.z);
-  const steel = col(0x6a6e76);
-  const dark = col(0x1c1e22);
-  cylinder(kit.solid, p.x, p.z, 0.42, y - 0.3, y + mast, 8, steel, true, 0.2);
-  cylinder(kit.solid, p.x, p.z, 0.7, y - 0.3, y + 0.5, 8, col(0x5a5a58), true);
-  const top = y + mast;
-  const head = (a: number, h: number) => ({ x: p.x + across.x * a + f.x * 0.6, z: p.z + across.z * a + f.z * 0.6, y: top + h });
-  // The bar and the floods.
-  for (const a of [-1.6, 0, 1.6]) {
-    const q = head(a, -0.2);
-    cylinder(kit.solid, q.x, q.z, 0.3, q.y - 0.5, q.y + 0.4, 6, dark);
-  }
-  for (const a of [-2.0, -1.2, -0.4, 0.4, 1.2, 2.0]) {
-    for (const row of [0, 1]) {
-      const q = head(a, row * 0.7 - 0.1);
-      const gx = q.x + f.x * 0.32;
-      const gz = q.z + f.z * 0.32;
-      cylinder(kit.glow, gx, gz, 0.2, q.y - 0.2, q.y + 0.2, 6, col(0xfff3dc, 3.6));
-    }
-  }
-  if (pools) {
-    pool(kit, pools, p.x + f.x * 26, p.z + f.z * 26, C.lights.pool, col(0xfff0d8, 0.34));
-    pool(kit, pools, p.x + f.x * 52, p.z + f.z * 52, C.lights.pool * 0.8, col(0xfff0d8, 0.22));
-  }
-}
-
-/** The yard tower: four legs, a cab with a lit window wall facing the yard, a roof and a stair. */
-function yardTower(kit: DistrictKit, p: Vec2, h: number, f: Vec2, across: Vec2): void {
-  const y = kit.h(p.x, p.z);
-  const steel = col(0x555a63);
-  const cab = col(0x6b6d72);
-  const legs = [-1.5, 1.5];
-  for (const a of legs) for (const b of legs) cylinder(kit.solid, p.x + across.x * a + f.x * b, p.z + across.z * a + f.z * b, 0.17, y - 0.2, y + h - 0.2, 6, steel);
-  // Braces: a ring of rails at two heights.
-  for (const hy of [h * 0.35, h * 0.7]) {
-    for (const a of legs) {
-      cylinder(kit.solid, p.x + across.x * a, p.z + across.z * a, 0.07, y + hy, y + hy + 0.1, 5, steel);
-    }
-  }
-  const quad = (a0: number, a1: number, b0: number, b1: number): Vec2[] => [
-    { x: p.x + across.x * a0 + f.x * b0, z: p.z + across.z * a0 + f.z * b0 },
-    { x: p.x + across.x * a1 + f.x * b0, z: p.z + across.z * a1 + f.z * b0 },
-    { x: p.x + across.x * a1 + f.x * b1, z: p.z + across.z * a1 + f.z * b1 },
-    { x: p.x + across.x * a0 + f.x * b1, z: p.z + across.z * a0 + f.z * b1 },
-  ];
-  // The cab: a box (prism from the ground would reach the legs: it stands on a deck at height h).
-  const cabY = y + h;
-  const deck = quad(-2.4, 2.4, -2.1, 2.1);
-  const poly = deck;
-  const baseY = cabY;
-  // Build the cab's walls by hand at absolute heights.
-  const g = kit.solid;
-  const wall = (a: Vec2, b: Vec2, y0: number, y1: number, color: THREE.Color) => {
-    const nx = -(b.z - a.z);
-    const nz = b.x - a.x;
-    const l = Math.hypot(nx, nz) || 1;
-    const va = g.vertex(a.x, y0, a.z, nx / l, 0, nz / l, 0, 0, color);
-    const vb = g.vertex(b.x, y0, b.z, nx / l, 0, nz / l, 1, 0, color);
-    const vc = g.vertex(b.x, y1, b.z, nx / l, 0, nz / l, 1, 1, color);
-    const vd = g.vertex(a.x, y1, a.z, nx / l, 0, nz / l, 0, 1, color);
-    g.quadFacing(va, vb, vc, vd, nx / l, 0, nz / l);
-    g.quadFacing(vb, va, vd, vc, -nx / l, 0, -nz / l);
+/** Slick and pad patches as what they are. */
+function patches(kit: DistrictKit, lay: YardLayout): void {
+  const looks: Record<YardPatch['look'], THREE.Color> = {
+    plate: col(0x58626e),
+    oil: col(0x0c0c0e),
+    grease: col(0x1a1712),
+    spill: col(0x101418),
+    concrete: col(0x6e6c68),
+    asphalt: col(0x2b2d31),
+    pad: col(0x5f5e5b),
   };
-  const cabPoly = quad(-2.1, 2.1, -1.7, 1.7);
-  for (let i = 0; i < 4; i++) wall(cabPoly[i], cabPoly[(i + 1) % 4], baseY + 0.05, baseY + 2.5, cab);
-  // The deck and the roof.
-  for (const [yy, pp, color] of [[baseY - 0.05, poly, steel], [baseY + 2.5, quad(-2.5, 2.5, -2.1, 2.1), col(0x3a3d43)]] as const) {
-    const ids = pp.map((q) => g.vertex(q.x, yy + 0.05, q.z, 0, 1, 0, 0, 0, color));
-    g.quadFacing(ids[0], ids[1], ids[2], ids[3], 0, 1, 0);
-    const ids2 = pp.map((q) => g.vertex(q.x, yy, q.z, 0, -1, 0, 0, 0, color));
-    g.quadFacing(ids2[3], ids2[2], ids2[1], ids2[0], 0, -1, 0);
+  for (const p of lay.patches) {
+    const lift = p.surface === 'slick' ? 0.05 : 0.035;
+    drapeConvex(kit, kit.paint, p.poly, lift, looks[p.look], 5);
+    if (p.look === 'plate') {
+      // The plates' sheen: a pale diagonal tread every metre.
+      const [a, b, c, d] = p.poly;
+      for (let k = 0.15; k < 1; k += 0.22) {
+        const s0 = { x: a.x + (d.x - a.x) * k, z: a.z + (d.z - a.z) * k };
+        const s1 = { x: b.x + (c.x - b.x) * k, z: b.z + (c.z - b.z) * k };
+        strip(kit, kit.paint, s0, s1, 0, 0.12, 0.06, col(0x9aa6b4), 4);
+      }
+    }
   }
-  // The window wall: warm glow bands facing the yard.
-  for (const a of [-1.5, -0.45, 0.6]) {
-    const win = quad(a, a + 0.85, 1.74, 1.74);
-    const ids = win.map((q, k) => kit.glow.vertex(q.x, baseY + (k < 2 ? 1.1 : 2.1), q.z, f.x, 0, f.z, 0, 0, col(0xffd596, 2.3)));
-    kit.glow.quadFacing(ids[0], ids[1], ids[2], ids[3], f.x, 0, f.z);
+  // The pad's painted container slots: pale lines across it every 13 m.
+  const f = lay.f;
+  const t0 = frameT(f, lay.pad[0].x, lay.pad[0].z);
+  const t1 = frameT(f, lay.pad[1].x, lay.pad[1].z);
+  const w0 = frameW(f, lay.pad[0].x, lay.pad[0].z);
+  const w1 = frameW(f, lay.pad[2].x, lay.pad[2].z);
+  for (let t = Math.min(t0, t1) + 6; t < Math.max(t0, t1) - 2; t += 13) strip(kit, kit.paint, framePoint(f, t, w0), framePoint(f, t, w1), 0, 0.14, 0.05, col(0xc8c2a8, 0.7), 5);
+}
+
+/** The throat road: concrete slabs over the spine's asphalt, joints every 6 m. */
+function throat(kit: DistrictKit, lay: YardLayout): void {
+  const path = lay.region.path;
+  const slabC = col(0x6a6964);
+  for (let i = 0; i + 1 < path.length; i++) {
+    const a = path[i];
+    const b = path[i + 1];
+    const w = i === 0 ? lay.region.widthE : i === path.length - 2 ? lay.region.widthX : lay.region.spineWidth;
+    strip(kit, kit.paint, a, b, 0, w - 0.3, 0.025, slabC, 6);
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    for (let s = 6; s < len; s += 6) {
+      const k = s / len;
+      const cx = a.x + (b.x - a.x) * k;
+      const cz = a.z + (b.z - a.z) * k;
+      const ux = (b.x - a.x) / len;
+      const uz = (b.z - a.z) / len;
+      strip(kit, kit.paint, { x: cx + uz * (w / 2 - 0.3), z: cz - ux * (w / 2 - 0.3) }, { x: cx - uz * (w / 2 - 0.3), z: cz + ux * (w / 2 - 0.3) }, 0, 0.08, 0.03, col(0x3a3936), 8);
+    }
   }
-  // A stair up the side: a slanted strip of steel.
-  const s0 = quad(2.55, 3.15, -1.0, 1.0);
-  const sa = s0.map((q, k) => g.vertex(q.x, k < 2 ? y : cabY, q.z, 0, 1, 0, 0, 0, steel));
-  g.quadFacing(sa[0], sa[1], sa[2], sa[3], 0, 1, 0);
-  g.quadFacing(sa[3], sa[2], sa[1], sa[0], 0, -1, 0);
 }
 
 export const railYardRenderer: DistrictRenderer = {
@@ -364,66 +351,36 @@ export const railYardRenderer: DistrictRenderer = {
   build(kit, areas) {
     const low = kit.quality === 'low';
     const pools = low ? null : new GeoBuilder(true);
+    const pool = poolOf(kit);
     const cars = new GeoBuilder(true);
-    const banks: { c: Vec2; R: number }[] = [];
-    const lamps: Vec2[] = [];
     for (const a of areas) {
-      const hints = kit.builds[a.id]?.hints ?? [];
-      const yards = hints.filter((h) => h.kind === 'yard').map(unpack);
-      for (const Y of yards) {
-        ground(kit, Y);
-        tracks(kit, Y);
-        // Cobbles across each gate mouth: a checker of two greys from the sidewalk onto the apron.
+      const lay = yardLayout(a);
+      if (!lay) continue;
+      ground(kit, lay);
+      if (pools) wash(kit, lay, pools);
+      wedgeGround(kit, lay.hump, col(0x4a4438), col(0x6a6458));
+      if (lay.kicker) wedgeGround(kit, lay.kicker, col(0x4a4438), col(0x7a828c));
+      dockGround(kit, lay);
+      for (const b of lay.banks) bankGround(kit, b);
+      patches(kit, lay);
+      throat(kit, lay);
+      tracks(kit, lay);
+      for (const cs of lay.consists) {
+        for (const car of cs.cars) addCar(kit, cars, kit.glow, car.c, car.ux, car.uz, -car.uz, car.ux, car.len, ['boxcar', 'tank', 'hopper', 'flatcar', 'caboose', 'autorack'].indexOf(car.kind), car.tex, kit.quality === 'high');
       }
-      for (const h of hints) {
-        if (h.kind === 'gate') {
-          const [mu, w, , , , , , walk] = h.values;
-          const Y = yardAt(yards, h.points[0]);
-          const cols = Math.max(2, Math.round(w / 1.2));
-          const rows = Math.round((C.mouth.depth + walk) / 1.2);
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              const u0 = mu - w / 2 + (w * c) / cols;
-              const u1 = mu - w / 2 + (w * (c + 1)) / cols;
-              const v0 = -walk + 0.2 + ((C.mouth.depth + walk - 0.2) * r) / rows;
-              const v1 = -walk + 0.2 + ((C.mouth.depth + walk - 0.2) * (r + 1)) / rows;
-              const color = tmp.copy(COBBLE).multiplyScalar(0.8 + hash(c * 3 + 1, r * 7 + 2) * 0.4);
-              const q = [pt(Y, u0, v0), pt(Y, u1, v0), pt(Y, u1, v1), pt(Y, u0, v1)].map((p) => groundVertex(kit, kit.paint, p.x, p.z, 0.02, color));
-              kit.paint.quadFacing(q[0], q[1], q[2], q[3], 0, 1, 0);
-            }
-          }
-        } else if (h.kind === 'car') {
-          const [ux, uz, len, kind, tex] = h.values;
-          addCar(kit, cars, kit.glow, h.points[0], ux, uz, -uz, ux, len, kind, tex, !low);
-        } else if (h.kind === 'bank') {
-          const [rOut, , hold] = h.values;
-          banks.push({ c: h.points[0], R: rOut + hold / 2 });
-        } else if (h.kind === 'tower') {
-          const [kind, height, fx, fz, ax, az] = h.values;
-          if (kind === 0) floodTower(kit, pools, h.points[0], height, { x: fx, z: fz }, { x: ax, z: az });
-          else yardTower(kit, h.points[0], height, { x: fx, z: fz }, { x: ax, z: az });
-        } else if (h.kind === 'signal') {
-          const p = h.points[0];
-          const y = kit.h(p.x, p.z) + 1.1;
-          const colors = [col(0xff2a1a, 3.2), col(0xffb020, 3), col(0x30ff70, 2.8)];
-          cylinder(kit.glow, p.x, p.z, 0.1, y, y + 0.16, 8, colors[h.values[0] % 3]);
-        } else if (h.kind === 'hump') {
-          // Flush amber studs along both crest edges, the hazard blink the city's jump lips use.
-          const [top, , , , , , , v0, v1] = h.values;
-          const Y = yardAt(yards, h.points[0]);
-          const uc = Y.humpUc;
-          for (const s of [-1, 1]) {
-            for (let v = v0 + C.hump.edge + 1; v <= v1 - C.hump.edge - 1; v += 3.5) {
-              const p = pt(Y, uc + (s * top) / 2, v);
-              const y = kit.h(p.x, p.z);
-              cylinder(kit.hazard, p.x, p.z, 0.17, y + 0.02, y + 0.07, 8, col(0xffa020));
-            }
-          }
+      drawBridge(kit, lay);
+      drawSolids(kit, lay, pools, pool);
+      // Amber studs flush on the hump's crest and along the kicker's lip: the city's jump lip blink.
+      for (const w of [lay.hump, ...(lay.kicker ? [lay.kicker] : [])]) {
+        for (let b = -w.half + 0.8; b <= w.half - 0.8; b += w === lay.hump ? 3 : 1.2) {
+          const p = wedgePoint(w, w.run, b);
+          const y = kit.h(p.x, p.z);
+          cylinder(kit.hazard, p.x, p.z, 0.16, y + 0.02, y + 0.07, 6, col(0xffa020));
         }
       }
+      // Lanterns at the fence's mouths: a warm pool on the sidewalk either side.
+      if (pools) for (const m of lay.mouths) pool(pools, m.x, m.z, 9, col(0xffd8a0, 0.22));
     }
-    fences(kit, banks, lamps);
-    if (pools) for (const p of lamps) pool(kit, pools, p.x, p.z, 8, col(0xffd8a0, 0.2));
     if (cars.vertexCount) {
       const mesh = new THREE.Mesh(kit.track(cars.build()), carMaterial(kit, kit.track(makeYardAtlas())));
       mesh.name = 'railYardCars';
@@ -438,13 +395,3 @@ export const railYardRenderer: DistrictRenderer = {
     }
   },
 };
-
-/** The yard (block) whose rectangle holds p, else the first. */
-function yardAt(yards: Yard[], p: Vec2): Yard {
-  for (const Y of yards) {
-    const u = (p.x - Y.o.x) * Y.ux + (p.z - Y.o.z) * Y.uz;
-    const v = (p.x - Y.o.x) * Y.vx + (p.z - Y.o.z) * Y.vz;
-    if (u >= -1 && u <= Y.L + 1 && v >= -4 && v <= Y.D + 1) return Y;
-  }
-  return yards[0];
-}

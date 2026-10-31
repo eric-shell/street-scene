@@ -39,7 +39,7 @@ import { baysByEdge } from '../../city/busBays';
 import { planParking } from '../../city/parking';
 import { bayMouth } from './busBays';
 import { CROSSWALK, edgePaint } from './crosswalks';
-import { downtownFactor, isBendNode, isChannelEdge } from '../../city/roadGraph';
+import { downtownFactor, isBendNode, isChannelEdge, isFeatureEdge } from '../../city/roadGraph';
 import { regionAt } from '../buildings/architecture';
 import { signatureAt } from '../cityIdentity';
 import { StreetSpots } from './streetSpots';
@@ -256,7 +256,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
 
   // ---------- per edge ----------
   g.edges.forEach((e, ei) => {
-    if (isChannelEdge(e)) return;
+    if (isChannelEdge(e) || isFeatureEdge(e)) return;
     const m = mouths[ei];
     const alley = e.kind === 'backAlley' || e.kind === 'alley';
     const a = { x: (m.aP.curb.x + m.aN.curb.x) / 2, z: (m.aP.curb.z + m.aN.curb.z) / 2 };

@@ -8,6 +8,7 @@
 import type { World } from '../../city/world';
 import { routeSample } from '../../city/route';
 import { laneClosures } from '../../city/districts/roadworks';
+import { undergroundClosures } from '../../city/districts/underground';
 import { abs, clamp, sqrt, wrapIndex } from '../math';
 import { GRAVITY } from '../tuning';
 import { AI } from './drivers';
@@ -60,10 +61,10 @@ export function buildRacingLine(world: World): RacingLine {
       roomMin[i] = Math.min(roomMin[i], room[j]);
     }
   }
-  // Lane closures (roadworks) take the closed side's room away along their stretch.
+  // Lane closures (roadworks, and the Underground's kickers and bus on its trench floor) take the closed side's room away along their stretch.
   const lo = roomMin.map((v) => -v);
   const hi = Float64Array.from(roomMin);
-  for (const c of laneClosures(world.areas ?? [], world.graph)) {
+  for (const c of [...laneClosures(world.areas ?? [], world.graph), ...undergroundClosures(world.areas ?? [])]) {
     for (let i = 0; i < n; i++) {
       const rx = cx[i] - c.ax;
       const rz = cz[i] - c.az;

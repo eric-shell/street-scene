@@ -166,6 +166,9 @@
       "_sand": "A beach's sand (districts/waterfrontBeach.ts): the off road section of the waterfront. Loose and slidey, a little better than dirt's grip (offroadGrip 0.49) and with less drag than it (offroadDrag 900): it bleeds speed hard enough that the boardwalk is the fast line and the sand a detour for the dune jumps and the drift strip, but a racer who commits to it is not stranded. The boardwalk's planks drive as cobbles (cobbleGrip, cobbleDrag).",
       "sandGrip": 0.55,
       "sandDrag": 560,
+      "_slick": "Oil, mud and wet steel plates (a weekend special's patches, districts/weekendRegion.ts): firm ground with the grip gone, so a car that crosses one at the limit steps out or runs wide, then bites again on the far side. No drag beyond a road's: it costs grip, never speed, and a car driven straight over it barely notices.",
+      "slickGrip": 0.45,
+      "slickDrag": 0,
       "waterDrag": 3.5
     },
     "collision": {

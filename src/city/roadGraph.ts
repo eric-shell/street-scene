@@ -33,10 +33,14 @@ import { atan2, cos, DEG, exp, sin, sqrt, TAU } from '../sim/math';
  * wide as the loop, no sidewalks (the junction's corners cut the street's),
  * no frontage or buildings; never routed, nor closed off by the route (the
  * loop's own gates shut it in a race).
+ * 'feature': a weekend special's spine and lines (districts/weekendRegion.ts): a road through a carved region
+ * that the routes drive end to end, sized by its module (no sidewalks, frontage, buildings, furniture,
+ * crown or humps beside or on it), never driven by traffic, never closed off by the route, and never under
+ * a start grid, a finish line or the drag strip. Drawn as asphalt like a street; the module draws the rest.
  */
-export type RoadKind = 'street' | 'avenue' | 'diagonal' | 'boulevard' | 'alley' | 'backAlley' | 'channel' | 'ramp' | 'mouth';
+export type RoadKind = 'street' | 'avenue' | 'diagonal' | 'boulevard' | 'alley' | 'backAlley' | 'channel' | 'ramp' | 'mouth' | 'feature';
 
-/** Curb to curb width, lanes and sidewalk of a kind made from the CITY tables (channel and ramp edges are sized by the channel). */
+/** Curb to curb width, lanes and sidewalk of a kind made from the CITY tables (channel and ramp edges are sized by the channel, feature edges by their module). */
 export interface RoadDims {
   width: number;
   lanes: 2 | 4;
@@ -48,12 +52,17 @@ export type StreetKind = keyof typeof CITY.width;
 
 export function roadDims(kind: RoadKind): RoadDims {
   if (kind === 'channel' || kind === 'ramp' || kind === 'mouth') throw new Error(`${kind} edges are sized by their district`);
+  // A weekend module passes its own width to addEdge; this default keeps every caller that asks by kind alone working.
+  if (kind === 'feature') return { width: CITY.districts.weekend.spineWidth, lanes: 2, sidewalk: 0 };
   const k = kind as StreetKind;
   return { width: CITY.width[k], lanes: CITY.lanes[k], sidewalk: CITY.sidewalkWidth[k] };
 }
 
 /** An edge the channel owns: the channel floor or an entrance ramp. */
 export const isChannelEdge = (e: { kind: RoadKind }): boolean => e.kind === 'channel' || e.kind === 'ramp';
+
+/** A weekend region's spine or line (see RoadKind): open ground beside it, the module's to draw. */
+export const isFeatureEdge = (e: { kind: RoadKind }): boolean => e.kind === 'feature';
 
 /** An expressway loop's mouth stub (see RoadKind). */
 export const isMouthEdge = (e: { kind: RoadKind }): boolean => e.kind === 'mouth';
@@ -110,8 +119,6 @@ export interface RoadEdge {
   bridge?: boolean;
   /** Crosses the El's tracks at grade (a bluff's level crossing, districts/bluff.ts) this far from node a (m). */
   crossing?: number;
-  /** A piece of the Underground's sunken run (districts/underground.ts): no start grid or finish line stands on it. */
-  trench?: true;
 }
 
 export interface RoadGraph {
