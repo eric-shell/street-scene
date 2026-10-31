@@ -8,7 +8,7 @@ Authored cars: albrechtKombi, daltonFiend, kazamaRotor, nakayaHorizon, tachibana
 
 | Car | Size |
 |---|---|
-| nakayaGrove | 1247.5 KB |
+| nakayaGrove | 1222.9 KB |
 | albrechtKombi | 333.2 KB |
 | daltonFiend | 270.0 KB |
 | kazamaRotor | 267.6 KB |
@@ -244,7 +244,7 @@ Source: `assets/source/eshell/wheels/wheels.blend` (scripts/blender/carWheels.py
 
 Source: `assets/source/eshell/nakayaGrove/nakayaGrove.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/nakayaGrove.glb`: 1193.6 KB, 42558 tris, nodes `Body`, `Headlights`, `Taillights`, `Exhaust`, `Mirrors`, `Bumper_Front`, `Bumper_Rear`, `Skirts`, `Fenders`, `Hood`.
+- Base car `public/cars/nakayaGrove.glb`: 1169.1 KB, 41597 tris, nodes `Body`, `Headlights`, `Taillights`, `Exhaust`, `Mirrors`, `Bumper_Front`, `Bumper_Rear`, `Skirts`, `Fenders`, `Hood`.
 - Parts: fenders overMild, fenders overWild.
 - WARNING: wheel radius 0.344 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.344 m, width 0.24 m, wheelbase 2.475 m, track 1.382 m.
