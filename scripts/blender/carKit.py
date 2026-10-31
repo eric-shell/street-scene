@@ -2270,7 +2270,7 @@ def end_plate(target, edge, base, heights, thick=0.006, curl=0.025, curl_height=
 def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032, width_end=1.0, proud=0.07, proud_end=0.25,
                 lean=0.004, shelf=0.06, shelf_end=0.5, thick=0.004, foot=0.003, nose=0.002, stations=33, bolts=5,
                 bolt_r=0.006, bolt_inset=0.012, bolt_margin=10, bolt_degs=None, material='Paint', bolt_material='Black',
-                x_min=0.78):
+                x_min=0.78, r_min=0.30, lift=0.0, both=False, proud_at=None):
     """A bolt-on over-fender flare round one arch: the stock arch flange pushed straight out, a box in
     section. `proud` m out at the top of the arch and `proud_end` of that at both legs' ends (a cosine
     taper: the user wanted the ends half the middle, "more fluid"); the band, the face seen from the side,
@@ -2292,7 +2292,13 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
     needs to come from the outermost panel" and "the lip ... vertical". The arch is
     measured, never assumed: at each station angle about `center` (y, z of the wheel), rays along -x from
     outside find the painted edge (the first Paint hit outboard of `x_min`, so the well's black lip is
-    skipped) and the panel above it; the edge radius and x are smoothed over three stations so the donor's
+    skipped; the search runs out from `r_min` m: the Nakaya Grove's tucked arches come down to 0.24 over
+    its 0.344 m wheels) and the panel above it; `lift` m raises the whole flare up the body after the edge is
+    found, the panel read again where it lands (the Grove's rears, 15 mm, the painted arch showing under the lip);
+    `proud_at(deg)` (m) replaces the stand-out's taper, so one arch's shelf can match another's angle
+    station by station (the Grove's rears, read off its fronts: `shelf_match`);
+    `both` reads the panel on both sides of the car and rests on the outer of the two, so the two sides
+    come out alike and a recess on one side is bridged (the Grove's fuel door, under its right rear shelf); the edge radius and x are smoothed over three stations so the donor's
     ragged arch does not wobble the band. Angles run from the car's end (`toward_end` -1 at the front, +1
     at the rear) over the top to the middle, so the legs end where a real kit's do: a0 ahead over the
     bumper, a1 behind near the sill. `skin_objs` are every piece the band may sit on (the body, the
@@ -2314,11 +2320,18 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
         o, h = best
         return abs(h[0].x), o.data.materials[o.data.polygons[h[2]].material_index].name
 
-    def at(a, r):
-        return yc + toward_end * math.cos(a) * r, zc + math.sin(a) * r
+    def at(a, r, dz=lift):
+        return yc + toward_end * math.cos(a) * r, zc + math.sin(a) * r + dz
 
     def skin_x(a, r):
         h = hit(*at(a, r))
+        if both:
+            nonlocal side
+            side = -side
+            g = hit(*at(a, r))
+            side = -side
+            xs = [q[0] for q in (h, g) if q]
+            return max(xs) if xs else None
         return h[0] if h else None
 
     def taper(deg, full, end):
@@ -2326,7 +2339,7 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
         return full * (end + (1 - end) * math.sin(math.pi * t))
 
     band = lambda deg: taper(deg, width, width_end)
-    stand = lambda deg: taper(deg, proud, proud_end)
+    stand = proud_at or (lambda deg: taper(deg, proud, proud_end))
     climb = lambda deg: taper(deg, shelf, shelf_end)
 
     degs = [a0 + (a1 - a0) * i / (stations - 1) for i in range(stations)]
@@ -2334,9 +2347,9 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
     edges = []
     for a in angs:
         e = None
-        for i in range(140):
-            r = 0.30 + i * 0.001
-            h = hit(*at(a, r))
+        for i in range(140 + int(round((0.30 - r_min) * 1000))):
+            r = r_min + i * 0.001
+            h = hit(*at(a, r, 0.0))
             if h and h[1] == 'Paint' and h[0] > x_min:
                 e = (r, h[0])
                 break
@@ -2374,6 +2387,9 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
         r, x, xw, w, xp, pr, hh = re[i], xe[i], xo[i], ws[i], xf[i], ps[i], hs[i]
         x_in = skin_x(a, r + 0.012)
         x_in = (x_in if x_in is not None else x) + 0.001
+        if lift:
+            # Lifted, the lip's foot stands on the panel above the arch's edge, not on the edge.
+            x = skin_x(a, r - foot) or x
         secs.append([
             p3(a, r - foot, x + 0.002),            # the lip's foot, on the arch's painted edge
             p3(a, r - foot, xp + pr - nose),       # the lip's top, straight out from the panel's face
@@ -2402,6 +2418,47 @@ def over_fender(skin_objs, target, center, side, toward_end, a0, a1, width=0.032
         tube(target, c, d, bolt_r, 0.0035, bolt_material, n=8)
         out.append(('bolt', round(deg, 1), round(rb, 3), round(xb, 3)))
     return [(round(degs[i], 1), round(ws[i], 3), round(ps[i], 3), round(hs[i], 3), round(re[i], 4), round(xe[i], 4), round(xf[i], 4), round(xo[i], 4)) for i in range(stations)] + out
+
+
+def shelf_match(src, dst, lean=0.004, thick=0.004, smooth=1):
+    """The stand-out each station of an over-fender flare needs for its shelf to lie at the angle and run
+    the length of another flare's at the same station (both are `over_fender`'s station tables, the
+    same stations and the same climb): the shelf runs from the band's top (panel face + stand-out - lean)
+    to the panel (+ thick), so the stand-out is the source's run across plus the step, less the
+    destination's panel face. The Nakaya Grove's rear quarters are flatter than its front fenders, which
+    fall away above the arch, so a rear shelf matched to the front's stands 11.5 cm out at the top to
+    the front's 7 (the user: the shelf's angle the same front to rear, its length at least the
+    front's). Smoothed over `smooth` stations each way. Returns proud_at(deg) for `over_fender`."""
+    s = [r for r in src if r[0] != 'bolt']
+    d = [r for r in dst if r[0] != 'bolt']
+    need = [((a[6] + a[2] - lean) - (a[7] + thick)) + (b[7] + thick) + lean - b[6] for a, b in zip(s, d)]
+    n = len(need)
+    need = [sum(need[max(0, min(n - 1, j))] for j in range(i - smooth, i + smooth + 1)) / (2 * smooth + 1) for i in range(n)]
+    degs = [r[0] for r in s]
+
+    def at(deg):
+        i = min(range(n), key=lambda j: abs(degs[j] - deg))
+        return need[i]
+    return at
+
+
+def ramp_profile(a0, a1, e0, peak, e1, blend=15):
+    """A stand-out for `over_fender(proud_at=)` that climbs at one steady rate from each leg's end (`e0` at
+    a0, `e1` at a1, m) to `peak` at the arch's middle, the top rounded over `blend` degrees each way by
+    a quadratic meeting both ramps' slopes, so the band has no crease. The Nakaya Grove's rears: the
+    station-by-station `shelf_match` profile climbed steeply between the legs and the top and then ran
+    flat, which read as the band bumping out over the top ("make the ramp ... consistent"); the ends and
+    the top keep that match's values."""
+    mid = (a0 + a1) / 2
+    s0, s1 = (peak - e0) / (mid - a0), (e1 - peak) / (a1 - mid)
+    lin = lambda d: e0 + s0 * (d - a0) if d <= mid else peak + s1 * (d - mid)
+
+    def at(d):
+        if abs(d - mid) >= blend:
+            return lin(d)
+        x = d - (mid - blend)
+        return lin(mid - blend) + s0 * x + (s1 - s0) * x * x / (4 * blend)
+    return at
 
 
 def panel_groove(o, only, co, no, half=0.003, depth=0.003, reach=0.1, radius=0.15):
@@ -3209,11 +3266,13 @@ def split_off(src, name, pred, cname=None):
     `name` (in src's collection, or `cname`). Unlike split_parts this carries custom normals through the
     bmesh round trip (bmesh drops them): a donor body's authored shading (`authored_normals`) survives on
     both halves, so a stock bumper and the body it came off shade alike at the seam. `cut` the seam first
-    so the faces part along a clean edge. Returns the new object."""
+    so the faces part along a clean edge. `pred` may instead be a set of face indices (a split by
+    islands, carDonors.py split_donor). Returns the new object."""
     me = src.data
     names = [m.name.split('.')[0] for m in me.materials]
     carry = stash_normals(src)
-    keep = {p.index for p in me.polygons if pred(p.center, names[p.material_index], p.normal)}
+    keep = set(pred) if isinstance(pred, (set, frozenset)) else \
+        {p.index for p in me.polygons if pred(p.center, names[p.material_index], p.normal)}
     part = src.copy()
     part.data = me.copy()
     part.name = name

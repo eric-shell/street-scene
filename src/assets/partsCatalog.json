@@ -4797,6 +4797,34 @@
       ],
       "tris": 2573,
       "generated": true
+    },
+    {
+      "id": "nakayaGrove_fenders_overMild",
+      "displayName": "Over Fenders Mild",
+      "carId": "nakayaGrove",
+      "slot": "fenders",
+      "file": "parts/nakayaGrove_fenders_overMild.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 2504,
+      "generated": true
+    },
+    {
+      "id": "nakayaGrove_fenders_overWild",
+      "displayName": "Over Fenders Wild",
+      "carId": "nakayaGrove",
+      "slot": "fenders",
+      "file": "parts/nakayaGrove_fenders_overWild.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 2504,
+      "generated": true
     }
   ]
 }

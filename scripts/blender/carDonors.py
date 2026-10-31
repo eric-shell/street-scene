@@ -54,6 +54,14 @@ POPUP = lambda c: 0.47 < abs(c.x) < 0.76 and -1.86 < c.y < -1.48 and c.z > 0.6
 # wrap round its outer corner and bottom lip, and show through the cover): what its bands repaint.
 TAIL = lambda c, n, m: m in ('TailLight', 'Light', 'Chrome', 'Black') and c.y > 1.6 and 0.49 < abs(c.x) < 0.785 and 0.685 < c.z < 0.905
 
+def _xr(lo, hi):
+    """An island's |x| range (inner, outer) from its bounds; inner 0 when it crosses the middle.
+    Split rules (recipe `split`) use it so one rule takes both sides."""
+    if lo.x <= 0 <= hi.x:
+        return 0.0, max(-lo.x, hi.x)
+    return min(abs(lo.x), abs(hi.x)), max(abs(lo.x), abs(hi.x))
+
+
 DONORS = {
     'albrechtKombi': {
         'name': '1992 Audi S2 Avant',
@@ -407,30 +415,102 @@ DONORS = {
         # outer one wraps the corner), just behind the lens's front rim.
         'cull': [lambda c, n, m: m == 'TailLight' and c.y > 1.9
                  and (math.hypot(abs(c.x) - 0.453, c.z - 0.691) < 0.064 or math.hypot(abs(c.x) - 0.654, c.z - 0.687) < 0.064),
-                 # The black underside of the kit's aprons, skirts and undertray: only seen from
-                 # below, it kept 2,300 triangles the panels needed.
-                 lambda c, n, m: m == 'Black' and n.z < -0.6 and c.z < 0.45,
+                 # The black underside of the kit's front apron and the skirts: only seen from
+                 # below, it kept triangles the panels needed. The floor pan's underside behind the
+                 # front wheels stays (|x| < 0.80, y > -1.0): it is what closes the cabin, the rear
+                 # tubs and the trunk from below, and culled, the underglow neon lit the seats
+                 # (rays up from the road found the cabin's Interior in 261 of 697 cells).
+                 lambda c, n, m: m == 'Black' and n.z < -0.6 and c.z < 0.45 and (c.y < -1.0 or abs(c.x) > 0.80),
                  # The rest of the roll cage, suspension and exhaust pipe.
                  lambda c, n, m: m == 'Trim',
                  # The cabin's carpet below the sills, seen from the side through the slit between the
                  # door and the skirt (the chassis's floor pan is under it), and the door cards' tops
                  # by the A pillars, which stood 2 to 3 cm through the side glass.
                  lambda c, n, m: m == 'Interior' and c.z < 0.3,
-                 lambda c, n, m: m == 'Interior' and abs(c.x) > 0.56 and -0.45 < c.y < -0.15 and c.z > 0.95],
+                 lambda c, n, m: m == 'Interior' and abs(c.x) > 0.56 and -0.45 < c.y < -0.15 and c.z > 0.95,
+                 # The kick panel's lower front corner, seen through the door's front shut line
+                 # (the audit's one cabin vertex out, on the right).
+                 lambda c, n, m: m == 'Interior' and abs(c.x) > 0.6 and -0.72 < c.y < -0.6 and c.z < 0.36,
+                 # The rear seat's sides and the trunk trim's edges at and below the rear tubs' tops:
+                 # they poke through the tubs, seen from the rear wheel wells and lit by the underglow.
+                 lambda c, n, m: m == 'Interior' and abs(c.x) > 0.42 and 0.85 < c.y < 1.65 and c.z < 0.70,
+                 # The trunk carpet down in the spare wheel well, which the shell's collapse covers
+                 # 4 to 7 cm higher: it hung out under the black.
+                 lambda c, n, m: m == 'Interior' and abs(c.x) < 0.6 and 1.45 < c.y < 1.95 and c.z < 0.47],
         'discs': [((0.453, 2.119, 0.691), 0.058, 'TailLight', -8), ((-0.453, 2.119, 0.691), 0.058, 'TailLight', 8),
                   ((0.654, 2.069, 0.687), 0.053, 'TailLight', -15), ((-0.654, 2.069, 0.687), 0.053, 'TailLight', 15)],
-        'lampBudget': 7000,
+        'lampBudget': 10000,
+        # The wheel arches' painted bands (the lip and 10 cm of panel round it, about each wheel
+        # centre): at the shell's 1 % the collapse bent them up to 6 cm off the source's round,
+        # symmetric arches, unlike side to side, and an over-fender flare swept along them kinked.
+        # Reduced with the lamps (13 mm) and mirrored, so both sides match.
+        'details': [lambda c, n, m: m == 'Paint' and abs(c.x) > 0.70 and c.z > 0.30
+                    and any(0.20 < math.hypot(c.y - yc, c.z - 0.3435) < 0.47 for yc in (-1.2375, 1.2375))],
         # The hood's louvred vent (body colour slats) went to a black zigzag in the shell's
         # collapse: reduced with the lamps, at their finer error.
         'lamps': [lambda c, n, m: m == 'Paint' and abs(c.x) < 0.34 and -1.6 < c.y < -0.9 and c.z > 0.7],
         # The import is 240,000 triangles, a third of them a game mod's chassis (floor pan, frame
         # rails, engine bay) in the trim's black: collapsed to the usual 60,000 first, the paint
-        # kept 8,500 and the panels read faceted. A finer first pass and a larger shell.
+        # kept 8,500 and the panels read faceted. A finer first pass and a larger shell. Then the
+        # arches above and 2,000 more for the shell: the Paint was 8,567 against the Wendt Strom's
+        # 12,545 (its body and stock pieces) on a larger body. Then (2026-10-31, the mirrored shell
+        # and its stock pieces) measured at three shells against the Wendt Strom's pieces: at 22,500
+        # the Paint was about 11,100 and the bumper corners, hood and arches read faceted beside the R32;
+        # 30,000 (Paint 14,018) is smooth at the garage's three-quarter; 38,000 (Paint 17,472) adds
+        # little the eye sees and the chassis took 4,500 of its 8,000 more (docs/carDonors.md 17).
         'midBudget': 120000,
-        'shellBudget': 20500,
-        'carBudget': 30000,
+        'shellBudget': 30000,
+        'carBudget': 43000,
         # The rear tubs' liners sit on the drift tires (an arch gap of -0.118): lifted clear.
         'liftLiners': True,
+        # The shell is reduced as its +x half and mirrored, so the body is symmetric vertex for
+        # vertex and a part built on one side (a flare, a cut) fits the other alike. The source is
+        # mirror-symmetric to a fraction of a mm on the doors, roof and quarters (skin rays: p50
+        # 0.09 mm, p95 14 mm); the kit's skirts sit 13 mm further out on the right and the rear
+        # tubs 11 mm, and the right rear quarter's fuel door (y 1.69, z 0.72) goes with that half.
+        # The one exhaust tip is on the left (+x) and stays on that side only.
+        'mirrorShell': True,
+        'unmirrored': [lambda c, n, m: m == 'Chrome' and c.x > 0.3 and c.y > 1.8 and c.z < 0.32],
+        # The floor is judged from below too (the underglow): a black plate between the pan's edge
+        # and the sill, boxed in from the usual view directions, closes the slit along each side.
+        'fromBelow': True,
+        # The tunnel's roof is open where the shifter and handbrake boots were (and a 1 cm slit
+        # behind them): rays up from the road reached the console. A black quad under each,
+        # inside the tunnel's arch, and one under the rear seat's step on the seam (y 0.51 to 0.62
+        # as the collapse leaves it). The rear tubs are open in the source along their inner edge
+        # over the tires (slits 1 cm wide, |x| 0.52 to 0.58): a strip under each, inboard of the tire.
+        'underPanels': [(-0.1, 0.1, -0.82, -0.63, 0.29), (-0.1, 0.1, -0.46, -0.28, 0.235), (-0.08, 0.08, -0.24, -0.15, 0.22),
+                        (-0.07, 0.07, 0.46, 0.68, 0.255)],
+        'underStrips': [(0.51, 0.57, 0.96, 1.58)],
+        # The stock pieces (split_donor, run by ship_donor), each the donor's own panels: the game
+        # mod car models every panel as its own shell, so the pieces part on the car's shut lines by
+        # taking whole islands (docs/carDonors.md section 17, parts skill section 6). First match wins.
+        'split': [
+            # The pop-up units whole: the closed lid (paint), the bucket and the slim lamp under it,
+            # with the lamp pieces behind the bumper's top. A headlamp part replaces all of it.
+            ('Headlights', lambda k, lo, hi, m: 'HeadLight' in m and hi.y < -1.8 and lo.y > -2.1 and 0.35 < _xr(lo, hi)[0] and _xr(lo, hi)[1] < 0.7),
+            # The kouki tail bar: both lamps, the centre garnish with the reverse lamps, the housings.
+            # The lamps' pass welds them to the panel round their edges: the island's Paint rim stays.
+            ('Taillights', lambda k, lo, hi, m: lo.y > 1.93 and 0.57 < lo.z and hi.z < 0.79 and 'BrakeLight' not in m,
+             lambda c, m, n: m != 'Paint'),
+            ('Exhaust', lambda k, lo, hi, m: set(m) == {'Chrome'} and lo.y > 1.7 and hi.z < 0.3),
+            ('Mirrors', lambda k, lo, hi, m: 'Paint' in m and lo.y > -0.6 and hi.y < -0.28 and lo.z > 0.75 and hi.z < 0.96 and _xr(lo, hi)[1] > 0.9),
+            # The Type X bumper with its signals and the black quads closing its intakes, and the
+            # body colour posts behind the intakes (they would stand in front of another bumper).
+            ('Bumper_Front', lambda k, lo, hi, m: (lo.y < -2.0 and hi.z < 0.62 and set(m) <= {'Paint', 'Black', 'Light'})
+             or (set(m) == {'Paint'} and lo.y > -1.96 and hi.y < -1.82 and hi.z < 0.57 and _xr(lo, hi)[1] < 0.45)),
+            # The Type X rear bumper: the face, its sides to the rear arches, the lower centre and the
+            # black line along it.
+            ('Bumper_Rear', lambda k, lo, hi, m: (lo.y > 1.55 and hi.y > 2.0 and hi.z < 0.6 and 'Paint' in m and set(m) <= {'Paint', 'Black'})
+             or (set(m) == {'Black'} and lo.y > 1.9 and hi.y > 2.2 and hi.z < 0.6)),
+            # The Type X skirts: the sill moulding between the arches and the band over each door's
+            # bottom (the kit's, one line with the sill), with the black strip on the sill's top.
+            ('Skirts', lambda k, lo, hi, m: (set(m) == {'Paint'} and _xr(lo, hi)[0] > 0.74 and hi.z < 0.41 and lo.y > -0.9 and hi.y < 0.9)
+             or (set(m) == {'Black'} and _xr(lo, hi)[0] > 0.84 and hi.z < 0.41 and lo.y > 0.5 and hi.y < 0.9)),
+            ('Fenders', lambda k, lo, hi, m: set(m) == {'Paint'} and k > 100 and lo.y > -2.05 and hi.y < -0.55 and _xr(lo, hi)[0] > 0.6 and hi.z < 0.82),
+            # The hood with its louvred vent, and the washer jets on it.
+            ('Hood', lambda k, lo, hi, m: set(m) == {'Paint'} and ((lo.y < -1.9 and -0.8 < hi.y < -0.6 and lo.z > 0.6)
+                                                                   or (k < 40 and lo.y > -0.98 and hi.y < -0.94 and lo.z > 0.8)))],
         # The GT wing's end plates are in the body's own material: they would float beside the hatch.
         'islands': [lambda k, a, b, mats: set(mats) == {'Paint'} and k < 1000 and abs((a.x + b.x) / 2) > 0.85
                     and (a.y + b.y) / 2 > 1.9 and (a.z + b.z) / 2 > 0.95],
@@ -3005,6 +3085,69 @@ def back_panels(o, panels, material='Black'):
     me.update()
 
 
+def under_panels(o, panels, material='Black'):
+    """Flat quads facing the road, one per recipe `underPanels` entry `(x0, x1, y0, y1, z)`: a black
+    panel over a hole in the floor that opens into the cabin (the Grove's tunnel, open where the
+    shifter and handbrake boots were), so the underglow neon does not light the seats through it.
+    Place one inside the hole's tunnel or pan, under its roof, so nothing of it shows in the cabin
+    but the hole's black."""
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+    mi = mat_index(o, material)
+    for x0, x1, y0, y1, z in panels:
+        f = bm.faces.new([bm.verts.new(v) for v in ((x0, y0, z), (x1, y0, z), (x1, y1, z), (x0, y1, z))])
+        f.material_index = mi
+        f[own] = 1
+        f.smooth = False
+        f.normal_update()
+        if f.normal.z > 0:
+            f.normal_flip()
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
+def under_strips(o, strips, material='Black', step=0.02, gap=0.003):
+    """Black ribbons facing the road under slits in a curved floor or tub, one per recipe
+    `underStrips` entry `(x0, x1, y0, y1)` and its mirror at -x: at each station along y (every
+    `step` m) the strip sits `gap` m under the lower of the first surfaces straight above x0 and x1,
+    so it follows the panel and closes the slit from below (the Grove's rear tubs, open in the
+    source along their inner edge over the tires). Keep x1 inboard of the tire's inner face."""
+    from mathutils.bvhtree import BVHTree
+    me = o.data
+    tree = BVHTree.FromPolygons([v.co.copy() for v in me.vertices], [list(p.vertices) for p in me.polygons])
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+    mi = mat_index(o, material)
+    up = Vector((0, 0, 1))
+    for x0, x1, y0, y1 in strips:
+        for sx in (1, -1):
+            n = max(1, int(round((y1 - y0) / step)))
+            rows = []
+            for i in range(n + 1):
+                y = y0 + (y1 - y0) * i / n
+                zs = [h[0].z for h in (tree.ray_cast(Vector((sx * x, y, 0)), up, 3) for x in (x0, x1)) if h[0]]
+                z = min(zs) - gap if zs else None
+                rows.append(None if z is None else (bm.verts.new((sx * x0, y, z)), bm.verts.new((sx * x1, y, z))))
+            for a, b in zip(rows, rows[1:]):
+                if a is None or b is None:
+                    continue
+                f = bm.faces.new([a[0], a[1], b[1], b[0]])
+                f.material_index = mi
+                f[own] = 1
+                f.smooth = False
+                f.normal_update()
+                if f.normal.z > 0:
+                    f.normal_flip()
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
 def lamp_strip(o, points, height, material):
     """A thin lamp strip along a curve, mirrored across x = 0: `points` (x, y, z) from the middle
     out, z the strip's top edge, `height` m tall, its faces turned out of the nearer end. A recipe
@@ -3084,12 +3227,15 @@ def tuck_behind_glass(o, inset=0.004, reach=0.03, margin=0.02):
     return moved + len(over)
 
 
-def tuck_cabin(cabin, shell, inset=0.005, reach=0.05):
+def tuck_cabin(cabin, shell, inset=0.005, reach=0.05, floor=0.0):
     """Pull every cabin vertex the reduced shell does not cover back inside it, `inset` m: across
-    the car to the outermost skin at its height and station, down to the roof over it. The cabin
-    and the shell are reduced apart, and a headliner corner or a seat bolster can end up standing
-    through a door or the roof (the audit's `cabin inside the skin`; the Albrecht Kombi's
-    headliner by 29 mm at the windshield's top corner). Returns the vertices moved."""
+    the car to the outermost skin at its height and station, down to the roof over it, and with
+    `floor` (m, recipe `fromBelow`) up above the floor under it when it hangs below that by less
+    than `floor`. The cabin and the shell are reduced apart, and a headliner corner or a seat
+    bolster can end up standing through a door or the roof (the audit's `cabin inside the skin`;
+    the Albrecht Kombi's headliner by 29 mm at the windshield's top corner); the Grove's shell
+    collapse lifted its spare wheel well's black floor 7 cm, and the trunk carpet hung below it,
+    lit by the underglow. Returns the vertices moved."""
     me = shell.data
     tree = BVHTree.FromPolygons([v.co.copy() for v in me.vertices], [list(p.vertices) for p in me.polygons])
     moved = 0
@@ -3105,6 +3251,10 @@ def tuck_cabin(cabin, shell, inset=0.005, reach=0.05):
             co.x = sx * (abs(hit.x) - inset)
         if roof is not None and roof.z - inset < co.z < roof.z + reach:
             co.z = roof.z - inset
+        if floor:
+            under = tree.ray_cast(Vector((co.x, co.y, -1)), Vector((0, 0, 1)))[0]
+            if under is not None and under.z - floor < co.z < under.z + inset:
+                co.z = under.z + inset
         if co != c:
             v.co = co
             moved += 1
@@ -3145,6 +3295,59 @@ def _mirror_x(o):
     bm.to_mesh(o.data)
     bm.free()
     o.data.update()
+
+
+def _seam_to_x0(o, snap=0.002):
+    """After a half (_half_x) is collapsed: every open vertex within `snap` m of x = 0 put back on it,
+    so _mirror_x welds the two halves (the collapse keeps open borders but may slide a vertex a
+    fraction of a millimetre), and any face pushed across the plane deleted. Returns (moved, largest move m)."""
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    moved, worst = 0, 0.0
+    for v in bm.verts:
+        if abs(v.co.x) < snap and any(e.is_boundary for e in v.link_edges):
+            worst = max(worst, abs(v.co.x))
+            moved += v.co.x != 0
+            v.co.x = 0.0
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.calc_center_median().x < -1e-6], context='FACES')
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return moved, worst
+
+
+def mirror_shell(low, target, unmirrored=(), snap=0.002):
+    """The shell reduced as one half and mirrored (recipe `mirrorShell`): the +x half of `low` (the
+    lamps already welded in and held by its `lamp` face attribute) is collapsed to half of
+    `target` triangles and copied across x = 0, welded at the seam, so the two sides are alike
+    vertex for vertex. Collapsed whole, each side is triangulated its own way, and a part built on
+    one side (a flare, a cut) fits the other differently. The collapse keeps open borders where
+    they are but may slide a seam vertex a fraction of a millimetre off x = 0: every open vertex
+    within `snap` m of it is put back on it before the copy, so the two halves weld. `unmirrored`
+    are predicates (center, normal, material) for faces on the +x side that the donor has on that
+    side only (the Grove's one exhaust tip): held through the collapse and their mirrored copy
+    deleted. A one-sided feature on the -x side is lost with that half. The authored normals ride
+    in `src_normal` and are mirrored with the faces (_mirror_x); reduce_donor's mirror_normals then
+    gives every -x face its twin's shading. Returns the seam vertices snapped and their largest move (m)."""
+    me = low.data
+    names = [m.name.split('.')[0] if m else '' for m in me.materials]
+    one_side = {p.index for p in me.polygons if any(f(p.center, p.normal, names[p.material_index]) for f in unmirrored)}
+    if one_side:
+        held = me.attributes.get('lamp') or me.attributes.new('lamp', 'BOOLEAN', 'FACE')
+        vals = [False] * len(me.polygons)
+        held.data.foreach_get('value', vals)
+        held.data.foreach_set('value', [v or i in one_side for i, v in enumerate(vals)])
+    _half_x(low)
+    _collapse(low, target // 2, lock='lamp')
+    moved, worst = _seam_to_x0(low, snap)
+    _mirror_x(low)
+    if unmirrored:
+        names = [m.name.split('.')[0] if m else '' for m in me.materials]
+        _delete_indices(low, lambda p: p.center.x < 0 and any(
+            f(Vector((-p.center.x, p.center.y, p.center.z)), Vector((-p.normal.x, p.normal.y, p.normal.z)), names[p.material_index]) for f in unmirrored))
+    print(f'{low.name}: shell mirrored, {moved} seam vertices snapped onto x = 0 (at most {worst * 1000:.2f} mm)')
+    return moved, worst
 
 
 def mirror_normals(o):
@@ -3313,7 +3516,13 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     skin.data.attributes.remove(skin.data.attributes['lamp'])
     for g in list(skin.vertex_groups):
         skin.vertex_groups.remove(g)
-    gone, flipped = cull_hidden(skin)
+    # Recipe `fromBelow`: the cull also looks from under the car (straight up and 25 degrees off),
+    # as the underglow neon does. The usual directions stop 20 degrees below the horizon, so a
+    # floor's closing plate boxed in between the pan's edge and the sill (the Grove's) went, and
+    # the light reached the cabin through the gap.
+    below = [Vector((0, 0, -1))] + [Vector((math.sin(math.radians(25)) * math.cos(a), math.sin(math.radians(25)) * math.sin(a),
+                                            -math.cos(math.radians(25)))) for a in (0, math.pi / 2, math.pi, 1.5 * math.pi)]
+    gone, flipped = cull_hidden(skin, _view_dirs() + below if DONORS[cid].get('fromBelow') else None)
     # The cabin is reduced apart, to its own budget: it touches nothing of the shell, and in one
     # collapse its 30,000 triangles of seats and dash would starve the mirrors and handles.
     # The lamps go first, on their own: an error-driven collapse eats small features first, and a
@@ -3365,7 +3574,10 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     # fixed share set aside for lamps squeezed the Golf's shell (whose cabin is 938 triangles) to
     # 12,000 and its grille bars collapsed; squeezed to 10,000, the RX-7's doors fell inside its cabin.
     shell = min(budget, car_budget - kept - tris(cabin))
-    _collapse(low, shell + kept, lock='lamp')
+    if DONORS[cid].get('mirrorShell'):
+        mirror_shell(low, shell + kept, DONORS[cid].get('unmirrored', ()))
+    else:
+        _collapse(low, shell + kept, lock='lamp')
     if low.data.attributes.get('lamp'):
         low.data.attributes.remove(low.data.attributes['lamp'])
     for g in list(low.vertex_groups):
@@ -3373,6 +3585,10 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
     recolored, quads = grille_surface(low, full['wheelbase'] / 2)
     if DONORS[cid].get('backPanels'):
         back_panels(low, DONORS[cid]['backPanels'])
+    if DONORS[cid].get('underPanels'):
+        under_panels(low, DONORS[cid]['underPanels'])
+    if DONORS[cid].get('underStrips'):
+        under_strips(low, DONORS[cid]['underStrips'])
     for points, height, material in DONORS[cid].get('strips', ()):
         lamp_strip(low, points, height, material)
     for center, radius, material, *yaw in DONORS[cid].get('discs', ()):
@@ -3395,7 +3611,7 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET, lamps=
         print(f'{cid}: lifted {moved} liner vertices off the tires')
     turned = shade_from_source(low, skin)
     if cabin.data.polygons:
-        tucked = tuck_cabin(cabin, low)
+        tucked = tuck_cabin(cabin, low, floor=0.12 if DONORS[cid].get('fromBelow') else 0.0)
         if tucked:
             print(f'{cid}: {tucked} cabin vertices tucked inside the skin')
         turned += shade_from_source(cabin, skin)
@@ -3701,6 +3917,89 @@ def edit_diff(cid, edited, which='Low', tol=1e-5):
     bm.free()
 
 
+def _island_index(o):
+    """Each face's loose island (edge connected) and per island (faces, lo, hi, {material: faces})."""
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    bm.faces.ensure_lookup_table()
+    names = [m.name.split('.')[0] if m else '' for m in o.data.materials]
+    ids, info = [-1] * len(bm.faces), []
+    for f in bm.faces:
+        if ids[f.index] >= 0:
+            continue
+        k, stack, grp = len(info), [f], []
+        ids[f.index] = k
+        while stack:
+            g = stack.pop()
+            grp.append(g)
+            for e in g.edges:
+                for h in e.link_faces:
+                    if ids[h.index] < 0:
+                        ids[h.index] = k
+                        stack.append(h)
+        vs = [v.co for g in grp for v in g.verts]
+        mats = {}
+        for g in grp:
+            mats[names[g.material_index]] = mats.get(names[g.material_index], 0) + 1
+        info.append((len(grp), Vector([min(v[i] for v in vs) for i in range(3)]), Vector([max(v[i] for v in vs) for i in range(3)]), mats))
+    bm.free()
+    return ids, info
+
+
+def split_donor(cid, body):
+    """The car's stock pieces cut from its shipped `Body` (recipe `split`), so a rebuild from the
+    donor gives them again: each entry `(name, pred(k, lo, hi, mats)[, face_pred(c, m, n)])` takes the
+    loose islands its predicate accepts (face count, bounds, {material: faces}; first match wins), and
+    of those only the faces face_pred accepts when it is given, out of `body` into
+    `<cid>.<name>` in the body's collection, the authored normals carried (split_off). A donor
+    modelled as panels (the Grove's game mod car: bumpers, fenders, hood, skirts, pop-ups, mirrors
+    each their own shell) is cut where the car is already cut by taking whole islands; a donor whose
+    panels are one shell needs `cut` planes first (docs/carDonors.md, parts skill section 1).
+    A piece of the same name already in the collection is replaced. Returns {name: object}."""
+    rules = DONORS[cid].get('split', ())
+    ids, info = _island_index(body)
+    which = []
+    for n, lo, hi, mats in info:
+        which.append(next((j for j, (_, pred, *_f) in enumerate(rules) if pred(n, lo, hi, mats)), -1))
+    me = body.data
+    names = [m.name.split('.')[0] if m else '' for m in me.materials]
+    # A third element, face_pred(center, material, normal), keeps only those faces of the islands
+    # taken: the lamps are welded to the shell round their edges, so a tail lamp's island carries a
+    # rim of the panel's Paint, which stays with the body.
+    piece = []
+    for p in me.polygons:
+        j = which[ids[p.index]]
+        if j >= 0 and len(rules[j]) > 2 and not rules[j][2](p.center, names[p.material_index], p.normal):
+            j = -1
+        piece.append(j)
+    a = me.attributes.get('split_piece') or me.attributes.new('split_piece', 'INT', 'FACE')
+    a.data.foreach_set('value', piece)
+    out = {}
+    for j, (name, *_r) in enumerate(rules):
+        full = f'{cid}.{name}'
+        old = bpy.data.objects.get(full)
+        if old is not None and old is not body:
+            data = old.data
+            bpy.data.objects.remove(old)
+            if data.users == 0:
+                bpy.data.meshes.remove(data)
+        vals = [0] * len(me.polygons)
+        me.attributes['split_piece'].data.foreach_get('value', vals)
+        faces = {i for i, v in enumerate(vals) if v == j}
+        if not faces:
+            print(f'{cid}: split {name}: no island matched')
+            continue
+        part = split_off(body, full, faces)
+        if part.data.attributes.get('split_piece'):
+            part.data.attributes.remove(part.data.attributes['split_piece'])
+        out[name] = part
+        print(f'{cid}: split {name}: {sum(1 for k, w in enumerate(which) if w == j)} islands, {tris(part)} tris')
+    if me.attributes.get('split_piece'):
+        me.attributes.remove(me.attributes['split_piece'])
+    print(f'{cid}: Body keeps {tris(body)} tris')
+    return out
+
+
 def ship_donor(cid, work):
     """`donor:<cid>.Low` into `<cid>.Body` and a working copy of the session at `work` for
     saveCar.py (docs/carDonors.md, Ship). The car's collections come from its authored .blend
@@ -3765,6 +4064,9 @@ def ship_donor(cid, work):
     # The source's normals ride on the reduced faces (shade_from_source): exportCar.py keeps them
     # rather than reshade from the reduced geometry, whose slivers read as hard facets.
     body['authored_normals'] = me.has_custom_normals
+    # Recipe `split`: the stock pieces cut again from the new body (split_donor).
+    if DONORS[cid].get('split'):
+        split_donor(cid, body)
     bpy.ops.wm.save_as_mainfile(filepath=work, copy=True)
     print(f'{cid}: {len(me.polygons)} faces in {cid}.Body; then:\n'
           f'  /Applications/Blender.app/Contents/MacOS/Blender --background {work} --python scripts/blender/saveCar.py -- {cid} assets/source/eshell/{cid}/{cid}.blend\n'

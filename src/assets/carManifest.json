@@ -845,9 +845,9 @@
       "trackFront": 1.382,
       "trackRear": 1.382,
       "dimensions": {
-        "length": 4.49,
+        "length": 4.5,
         "width": 1.92,
-        "height": 1.12
+        "height": 1.13
       },
       "materialMap": {},
       "defaultWheel": "wheel_hari",
