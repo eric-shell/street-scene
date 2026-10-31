@@ -50,7 +50,7 @@ import type { Quality } from '../ui/settings';
 import { RailSteps, railInset, screenHead } from '../ui/rail/rail';
 import { Help, MUSIC_KEYS } from '../ui/panels/help';
 import type { HelpKey } from '../ui/panels/help';
-import { uiShutter, uiWhoosh } from '../audio/uiSound';
+import { preloadShutter, uiShutter, uiWhoosh } from '../audio/uiSound';
 import { BODY_PART_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { Axle, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, VinylShape, carOffered, validateBuild } from '../shared/carBuild';
 import { getBaseTuning } from '../sim/tuning';
@@ -229,6 +229,8 @@ export class GarageScreen implements TabHost {
     stage: GarageStage,
   ) {
     this.scene = new GarageScene(gr, assets, stage.street, stage.quality);
+    // The screenshot's shutter is a recording: fetched now so the first shot plays it at once.
+    preloadShutter();
     this.wheelThumbs = new WheelThumbs(assets);
     this.tabBar = h('div', { class: 'garage__tabs', role: 'tablist', 'aria-label': 'Categories' });
     this.body = h('div', { class: 'garage__body' });

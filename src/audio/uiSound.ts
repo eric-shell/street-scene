@@ -1,9 +1,12 @@
 /**
- * Menu sounds, synthesized like the rest of the game's effects (no files): a
- * soft tick as the pointer or keyboard focus lands on a control, a click when
- * one is pressed, a blip when a race type is picked, a camera shutter for the garage's screenshot, a whoosh as a menu step
- * slides, the rush of the screen wipe and the garage's roller door rattling
- * down onto a clunk and back up. They play on the interface bus
+ * Menu sounds, synthesized like the rest of the game's effects: a soft tick as
+ * the pointer or keyboard focus lands on a control, a click when one is
+ * pressed, a blip when a race type is picked, a whoosh as a menu step slides,
+ * the rush of the screen wipe and the garage's roller door rattling down onto
+ * a clunk and back up. The garage screenshot's camera shutter is the one
+ * recording (public/sfx/camera-shutter.mp3, credited in README and Settings),
+ * since a real shutter's mechanics are what make it read; it loads once the
+ * garage opens and falls back to a synthesized click if it cannot. They play on the interface bus
  * (engineAudio.ts AudioHub.uiBus, so the Interface level applies) and only
  * once the audio context runs: a suspended context would queue them up and
  * play them all at once on the first gesture. Hovering never creates the audio
@@ -31,6 +34,8 @@ const UI = {
   wipe: 0.32,
   rattle: 1.2,
   clunk: 0.67,
+  /** The shutter recording's peak into the bus, normalized on decode: the synthesized click's peak, so it sits where that did in the mix. */
+  shutter: 0.42,
   /** Ticks closer together than this are dropped (fast sweeps over a list). */
   tickGap: 0.045,
 } as const;
@@ -106,10 +111,45 @@ export function uiPress(back = false): void {
   tone(a, t, 0.06, back ? 720 : 1150, back ? 480 : 760, UI.press);
 }
 
-/** A camera shutter: two tight transients a few ms apart (the mirror, then the curtain) over a little filtered noise. */
+/** The shutter recording, fetched and decoded once, with the gain that brings its peak to UI.shutter; null if it cannot load. */
+let shutterClip: Promise<{ buffer: AudioBuffer; gain: number } | null> | null = null;
+
+function loadShutter(ctx: AudioContext): Promise<{ buffer: AudioBuffer; gain: number } | null> {
+  shutterClip ??= fetch(`${import.meta.env?.BASE_URL ?? '/'}sfx/camera-shutter.mp3`)
+    .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
+    .then((b) => ctx.decodeAudioData(b))
+    .then((buffer) => {
+      let peak = 0;
+      for (let c = 0; c < buffer.numberOfChannels; c++) for (const v of buffer.getChannelData(c)) peak = Math.max(peak, Math.abs(v));
+      return { buffer, gain: peak > 1e-4 ? UI.shutter / peak : 1 };
+    })
+    .catch(() => null);
+  return shutterClip;
+}
+
+/** Start loading the shutter recording (the garage opening), so the first screenshot plays it at once. Never creates the audio context before the first press. */
+export function preloadShutter(): void {
+  const a = live();
+  if (a) void loadShutter(a.ctx);
+}
+
+/** A camera shutter: the recording, or the synthesized click if it cannot load. */
 export function uiShutter(): void {
   const a = live(true);
   if (!a) return;
+  void loadShutter(a.ctx).then((clip) => {
+    if (!clip) return synthShutter(a);
+    const src = a.ctx.createBufferSource();
+    src.buffer = clip.buffer;
+    const g = a.ctx.createGain();
+    g.gain.value = clip.gain;
+    src.connect(g).connect(a.out);
+    src.start();
+  });
+}
+
+/** The stand-in shutter: two tight transients a few ms apart (the mirror, then the curtain) over a little filtered noise. */
+function synthShutter(a: NonNullable<ReturnType<typeof live>>): void {
   const t = a.ctx.currentTime;
   noise(a, t, 0.012, 'highpass', 2400, 0.8, UI.press * 1.1, 0.001);
   tone(a, t, 0.025, 240, 90, UI.press * 1.2, 'square');
