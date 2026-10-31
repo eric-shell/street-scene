@@ -2017,7 +2017,7 @@ def half_cup_nodes(o, skin, y0, y1, z_cut, z_top, cols=(0.17, 0.385), x_min=0.8,
     return off_o, on_o
 
 
-def pop_out_nodes(o, box, hinge, pop=0.04, reveal=0.03, seal=0.006, r=0.006, inset=0.03,
+def pop_out_nodes(o, box, hinge, pop=0.055, reveal=0.03, seal=0.006, r=0.012, inset=0.035, latch=0.5,
                   off='popOutWindows_off', on='popOutWindows_on'):
     """Pop out rear quarter windows, a body feature the garage switches (render/car/bodyFeatures.ts), after the
     vented quarter glass of a Grand Caravan or a three door Golf: hinged at its front edge, latched open at the
@@ -2025,12 +2025,21 @@ def pop_out_nodes(o, box, hinge, pop=0.04, reveal=0.03, seal=0.006, r=0.006, ins
     `<prefix>.<off>`, the stock glass; `<prefix>.<on>` is a copy turned about `hinge` (two points on the +x
     glass's front edge, mirrored) until its farthest corner stands `pop` (m) off the body, with a black seal
     `seal` deep round its edge (the glass is one sheet, edge on it is a line), a black reveal `reveal` deep
-    into the car round the opening (the wedge of the gap shows it, not the interior), and the latch: an arm of
-    radius `r` from the reveal at the glass's rearmost point to a pad on the glass `inset` ahead of its edge.
+    into the car round the opening (the wedge of the gap shows it, not the interior), and the latch `latch` of
+    the way up the rear edge (by height, 0.5 halfway): a two link arm of radius `r` from a base on the reveal's
+    wall through a knuckle to a pad on the glass `inset` ahead of its edge, a Caravan's over centre latch.
+    The first latch, one 6 mm arm at the rearmost point (low on the slanted edge), read flimsy and too low;
+    9 mm with the knuckle tucked 3 cm under the glass barely showed in the gap.
     The glass keeps its authored normals (turned with it), the rest is flat. Into o's collection."""
     prefix = o.name.split('.')[0]
     (x0, y0, z0), (x1, y1, z1) = box
     off_o = split_off(o, f'{prefix}.{off}', lambda c, m, n: m == 'Glass' and x0 < abs(c.x) < x1 and y0 < c.y < y1 and z0 < c.z < z1)
+    return off_o, pop_out_on(off_o, hinge, pop, reveal, seal, r, inset, latch, on)
+
+
+def pop_out_on(off_o, hinge, pop=0.055, reveal=0.03, seal=0.006, r=0.012, inset=0.035, latch=0.5, on='popOutWindows_on'):
+    """pop_out_nodes' open state from its `_off` glass (rebuilt alone when only the open look changes)."""
+    prefix = off_o.name.split('.')[0]
     on_o = off_o.copy()
     on_o.data = off_o.data.copy()
     on_o.name = on_o.data.name = f'{prefix}.{on}'
@@ -2075,7 +2084,7 @@ def pop_out_nodes(o, box, hinge, pop=0.04, reveal=0.03, seal=0.006, r=0.006, ins
         far = max(loop, key=lambda p: (p - A).cross(axis).length)
         ang = pop / (far - A).cross(axis).length
         R = next(R for R in (Matrix.Rotation(ang, 3, axis), Matrix.Rotation(-ang, 3, axis)) if abs((A + R @ (far - A)).x) > abs(far.x))
-        sides[s] = (A, R, n_out, loop)
+        sides[s] = (A, R, n_out, loop, far)
     for v in m.vertices:
         A, R = sides[1 if v.co.x > 0 else -1][:2]
         v.co = A + R @ (v.co - A)
@@ -2083,7 +2092,7 @@ def pop_out_nodes(o, box, hinge, pop=0.04, reveal=0.03, seal=0.006, r=0.006, ins
         R = sides[1 if p.center.x > 0 else -1][1]
         for li in p.loop_indices:
             ns[li] = R @ ns[li]
-    for s, (A, R, n_out, loop) in sides.items():
+    for s, (A, R, n_out, loop, far) in sides.items():
         n_on = R @ n_out
         q = [A + R @ (p - A) for p in loop]
         n = len(loop)
@@ -2091,22 +2100,37 @@ def pop_out_nodes(o, box, hinge, pop=0.04, reveal=0.03, seal=0.006, r=0.006, ins
             verts = [tuple(p) for p in ring] + [tuple(p - d * depth) for p in ring]
             quads = [(i, (i + 1) % n, n + (i + 1) % n, n + i) for i in range(n)]
             add_geom(on_o, verts, quads + [f[::-1] for f in quads], 'Black', outward='keep')
-        # The latch at the glass's rearmost point: from the reveal's floor to a pad on the glass's inside.
-        i = max(range(n), key=lambda i: loop[i].y)
-        fwd = (q[(i - 1) % n] + q[(i + 1) % n]) / 2 - q[i]
-        fwd = (fwd - n_on * fwd.dot(n_on)).normalized()
+        # The latch `latch` of the way up the rear edge: the edge is the loop behind the hinge's far half, and the
+        # point is where it crosses that height (the rear of the two crossings), on the opening and on the glass.
+        rear = [i for i in range(n) if loop[i].y > (A.y + far.y) / 2 and (loop[i] - A).cross(axis).length > 0.6 * (far - A).cross(axis).length]
+        za, zb = min(loop[i].z for i in rear), max(loop[i].z for i in rear)
+        zt = za + (zb - za) * latch
+        hits = []
+        for i in range(n):
+            a, b = loop[i], loop[(i + 1) % n]
+            if (a.z - zt) * (b.z - zt) <= 0 and a.z != b.z:
+                t = (zt - a.z) / (b.z - a.z)
+                hits.append((a.lerp(b, t), q[i].lerp(q[(i + 1) % n], t), i))
+        p_body, p_glass, i = max(hits, key=lambda h: h[0].y)
+        # Along the edge, and across it into the glass (forward).
+        edge = (loop[(i + 1) % n] - loop[i]).normalized()
+        fwd = edge.cross(n_out).normalized()
         if fwd.y > 0:
             fwd = -fwd
-        pad = q[i] + fwd * inset - n_on * seal
-        jamb = loop[i] - n_out * reveal * 0.7
-        tube(on_o, pad, n_on, r * 2.5, -0.004, 'Black', n=10)
-        tube(on_o, jamb, pad - jamb, r, (pad - jamb).length, 'Black', n=8)
+        pad = p_glass + (R @ fwd) * inset - n_on * seal
+        jamb = p_body - n_out * reveal * 0.75 - fwd * 0.004
+        knee = (pad + jamb) / 2 + fwd * 0.012
+        tube(on_o, pad, n_on, r * 2.6, -0.006, 'Black', n=12)
+        # The base stays under the skin: the reveal is only `reveal` deep.
+        tube(on_o, jamb - fwd * 0.004, fwd, r * 1.3, 0.008, 'Black', n=12)
+        tube(on_o, knee - edge * r * 1.4, edge, r * 1.6, r * 2.8, 'Black', n=12)
+        for a, b in ((jamb, knee), (knee, pad)):
+            tube(on_o, a, b - a, r, (b - a).length, 'Black', n=8)
     ns += [Vector(p.normal) for p in m.polygons[n_glass:] for _ in p.loop_indices]
     m.normals_split_custom_set(ns)
     m.update()
-    print(f'pop_out_nodes: {off} {len(off_o.data.polygons)} faces, {on} {len(m.polygons)} faces, '
-          f'{len(o.data.polygons)} left in {o.name}')
-    return off_o, on_o
+    print(f'pop_out_on: {off_o.name} {len(off_o.data.polygons)} faces, {on_o.name} {len(m.polygons)} faces')
+    return on_o
 
 
 def handle_tail(o, fit, y0, y1, zc, hw, proud, rc=0.012, r=0.003, crown=0.002, sink=(0.008, 0.003), cup=(0.322, 0.335),

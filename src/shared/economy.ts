@@ -10,7 +10,7 @@
  * priced the moment it is catalogued and two catalogs give the same prices. Every price is rounded to 50.
  *
  * Parts are bought, and so are the body features (fog lights, shaved markers ...): one price for all of them
- * (`ECONOMY.features`), above every bumper and fender part. Paint, calipers, wheel trims, stance, tires, tint, underglow, pops and the setup sliders
+ * (`ECONOMY.features`), above every bumper and fender part, but the few priced by hand (`featurePrices`). Paint, calipers, wheel trims, stance, tires, tint, underglow, pops and the setup sliders
  * are the garage's free hand from race 0; so are stock (a car's own wheel, its stock body pieces, no spoiler).
  * With FEATURES.economy off everything is free, unlocked and owned, and the garage shows no prices: the game plays
  * as it did before the economy.
@@ -48,11 +48,18 @@ export const ECONOMY = {
     body: { base: 32000, spread: 0.4, unlock: 10 },
   },
   /**
-   * Every body feature (BODY_FEATURES) costs this (points) and unlocks after this many races. One price: a
+   * Every body feature (BODY_FEATURES) not in `featurePrices` costs this (points) and unlocks after this many races. One price: a
    * feature is a switch on a part the car already has, so it is priced above every bumper and fender part
    * (about five races of points), not by triangles.
    */
   features: { price: 15000, unlock: 6 },
+  /**
+   * Features priced by hand rather than at the one feature price (points, races to unlock). The pop out windows are
+   * the user's "very very expensive" rarity: well above a whole body kit or the All Reds.
+   */
+  featurePrices: {
+    popOutWindows: { price: 75000, unlock: 10 },
+  } as Partial<Record<BodyFeature, { price: number; unlock: number }>>,
   /**
    * Parts priced by hand rather than by their slot and triangles (points, races to unlock): the collector's pieces.
    * The All Reds (Inpro's) are rare in real life and the user wants them about a body kit's price.
@@ -73,6 +80,7 @@ export const ECONOMY = {
 } as const satisfies {
   slots: Record<PartSlot, { base: number; spread: number; unlock: number }>;
   features: { price: number; unlock: number };
+  featurePrices: Partial<Record<BodyFeature, { price: number; unlock: number }>>;
   parts: Record<string, { price: number; unlock: number }>;
   multiPiece: number;
   round: number;
@@ -132,14 +140,17 @@ export function partBuyable(part: PartEntry, carId?: string): Buyable {
 /** A body feature's ledger id, stored beside the part ids in `purchases.v1`. */
 export const featureId = (f: BodyFeature): string => `feature.${f}`;
 
-/** A feature's price in points (0: free with the economy off). One price for every feature. */
-export const featurePrice = (): number => (FEATURES.economy ? ECONOMY.features.price : 0);
+/** A feature's terms: its own (`featurePrices`) or the one feature price. */
+const featureTerms = (f?: BodyFeature) => (f && ECONOMY.featurePrices[f]) || ECONOMY.features;
+
+/** A feature's price in points (0: free with the economy off): the one feature price unless `featurePrices` names it. */
+export const featurePrice = (f?: BodyFeature): number => (FEATURES.economy ? featureTerms(f).price : 0);
 
 /** Races finished that unlock buying a feature (0 with the economy off). */
-export const featureUnlockRaces = (): number => (FEATURES.economy ? ECONOMY.features.unlock : 0);
+export const featureUnlockRaces = (f?: BodyFeature): number => (FEATURES.economy ? featureTerms(f).unlock : 0);
 
 /** Races still to finish before a feature can be bought (0: unlocked). */
-export const featureRacesToUnlock = (stats: StatsSave): number => Math.max(0, featureUnlockRaces() - racesForUnlocks(stats));
+export const featureRacesToUnlock = (stats: StatsSave, f?: BodyFeature): number => Math.max(0, featureUnlockRaces(f) - racesForUnlocks(stats));
 
 /** A feature as something to buy; `label` is its name (carBuild.ts FEATURE_LABELS). */
-export const featureBuyable = (f: BodyFeature, label: string): Buyable => ({ id: featureId(f), name: label, price: featurePrice(), unlock: featureUnlockRaces() });
+export const featureBuyable = (f: BodyFeature, label: string): Buyable => ({ id: featureId(f), name: label, price: featurePrice(f), unlock: featureUnlockRaces(f) });

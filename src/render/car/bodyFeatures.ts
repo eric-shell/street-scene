@@ -14,8 +14,9 @@
  *   roof part.
  *   Its halfCupHandles is a swap patch over each door handle's upper cup: `_off` the stock cup, `_on` the door
  *   pressed flush down to behind the bar's middle with a ledge onto the lower cup (carDonors.py half_cup_nodes).
- *   Its popOutWindows is a swap of the rear quarter glass: `_off` the stock glass, `_on` the glass turned 4 cm out at
- *   the back about its front edge, with a black seal, a black reveal round the opening and the latch arm
+ *   Its popOutWindows is a swap of the rear quarter glass: `_off` the stock glass, `_on` the glass turned 5.5 cm out at
+ *   the back about its front edge, with a black seal, a black reveal round the opening and the two link latch halfway up
+ *   its rear edge
  *   (carDonors.py pop_out_nodes).
  *   A feature with a box and no nodes is a switch that changes nothing.
  * - blackGrille: the Paint pieces wholly inside the box (the grille's bars) become a child that takes the Black

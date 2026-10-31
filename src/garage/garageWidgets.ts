@@ -394,11 +394,11 @@ export function partTag(carId: string, part: PartEntry, saved: PurchasesSave, st
   return races > 0 ? { state: 'locked', races, price } : { state: 'buy', price };
 }
 
-/** A body feature's standing for `carId` (one price for all of them, economy.ts), like a part's. */
+/** A body feature's standing for `carId` (economy.ts `featurePrice`), like a part's. */
 export function featureTag(carId: string, f: BodyFeature, saved: PurchasesSave, stats: StatsSave): PartTag {
   if (ownsFeature(carId, f, saved)) return { state: 'owned' };
-  const races = featureRacesToUnlock(stats);
-  return races > 0 ? { state: 'locked', races, price: featurePrice() } : { state: 'buy', price: featurePrice() };
+  const races = featureRacesToUnlock(stats, f);
+  return races > 0 ? { state: 'locked', races, price: featurePrice(f) } : { state: 'buy', price: featurePrice(f) };
 }
 
 /** "3 more races" / "1 more race". */
