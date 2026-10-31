@@ -3640,3 +3640,37 @@ def side_fin(target, surface, profile, x_out, thick, side=1, z0=0.0, radius=0.01
         secs.reverse()
     sweep(target, secs, name)
     return secs
+
+
+def roof_wing(target, surface, xs, nose, tail, top, thick, sink=0.003, clear=0.003, chord=(0, 0.02, 0.05, 0.1, 0.2, 0.32, 0.45, 0.58, 0.7, 0.8, 0.88, 0.94, 0.98, 1), name='Black'):
+    """A hatch roof spoiler's blade (the Wendt Strom's Sport Mild and Sport Wild, replacing the stock
+    roof spoiler): one closed (y, z) section per station x, swept across the car. `tail(x)` is the
+    trailing edge's y, `top(x, y)` the upper surface, `thick(x, y)` how far the underside hangs below
+    it; the underside never goes below the hatch (`surface`, a world BVH, cast straight down, less
+    `sink`), and the top never below it plus `clear` (the roof's crown is not quite the quadratic a
+    top is written as, and poked through the nose by 3 mm). So where the roof and the stock
+    spoiler's black bed lie close under the blade it sits on them, and past the glass's top edge it
+    is a free blade. The ends are `side_fin`s on the D-pillars, their outer face from `side_x`.
+    Returns the sections."""
+    def under_body(x, y):
+        h = surface.ray_cast(Vector((x, y, 3.0)), Vector((0, 0, -1)))
+        return h[0].z - sink if h[0] else -9.0
+    secs = []
+    for x in xs:
+        t = tail(x)
+        ys = [nose + (t - nose) * s for s in chord]
+        tops = [max(top(x, y), under_body(x, y) + sink + clear) for y in ys]
+        unders = [max(under_body(x, y), zt - thick(x, y)) for y, zt in zip(ys, tops)]
+        unders = [min(u, zt - 0.004) for u, zt in zip(unders, tops)]
+        sec = [(x, y, z) for y, z in zip(ys, tops)] + [(x, y, z) for y, z in reversed(list(zip(ys, unders)))]
+        secs.append(sec)
+    sweep(target, secs, name)
+    return secs
+
+
+def side_x(surface_paint, xe):
+    """The car's side at (y, z), read by a ray from outboard (Paint only, outboard of 0.5), else `xe`."""
+    def f(y, z):
+        h = surface_paint.ray_cast(Vector((1.2, y, z)), Vector((-1, 0, 0)))
+        return h[0].x if h[0] and h[0].x > 0.5 else None
+    return f

@@ -406,6 +406,37 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_spoiler_sportMild",
+      "displayName": "Sport Mild",
+      "carId": "wendtStrom",
+      "slot": "spoiler",
+      "file": "parts/wendtStrom_spoiler_sportMild.glb",
+      "hides": [
+        "Spoiler"
+      ],
+      "materialSlots": [
+        "Black"
+      ],
+      "tris": 2012,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_spoiler_sportWild",
+      "displayName": "Sport Wild",
+      "carId": "wendtStrom",
+      "slot": "spoiler",
+      "file": "parts/wendtStrom_spoiler_sportWild.glb",
+      "hides": [
+        "Spoiler"
+      ],
+      "materialSlots": [
+        "Black",
+        "BrakeLight"
+      ],
+      "tris": 2398,
+      "generated": true
+    },
+    {
       "id": "wendtStrom_spoiler_sexSpec",
       "displayName": "Sex Spec",
       "carId": "wendtStrom",
