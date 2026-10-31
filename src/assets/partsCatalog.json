@@ -855,6 +855,25 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_headlights_twentiethRetros",
+      "displayName": "20th Retros",
+      "carId": "wendtStrom",
+      "slot": "headlights",
+      "file": "parts/wendtStrom_headlights_twentiethRetros.glb",
+      "hides": [
+        "Headlights"
+      ],
+      "materialSlots": [
+        "Chrome",
+        "Black",
+        "Lens",
+        "Light",
+        "HeadLight"
+      ],
+      "tris": 5965,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Seiryu",
