@@ -8,7 +8,7 @@ Authored cars: albrechtKombi, daltonFiend, kazamaRotor, nakayaHorizon, tachibana
 
 | Car | Size |
 |---|---|
-| nakayaGrove | 880.9 KB |
+| nakayaGrove | 881.1 KB |
 | albrechtKombi | 333.2 KB |
 | daltonFiend | 270.0 KB |
 | kazamaRotor | 267.6 KB |
