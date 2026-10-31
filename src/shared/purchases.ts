@@ -15,7 +15,7 @@
  * Body features (fog lights, shaved markers ...) are bought the same way, per car, under the ledger id
  * `feature.<name>` (economy.ts `featureId`), and enforced and grandfathered with the parts. A catalog part that
  * became a feature (carBuild.ts RETIRED_PARTS) reads as its replacement part plus the feature, in a build and in a
- * ledger alike.
+ * ledger alike, and a feature that became a part (RETIRED_FEATURES: the Wendt Strom's Euro mirrors) as that part.
  *
  * Visual only: the sim never reads ownership (a build's performance half is free), and nothing here touches a
  * race. With FEATURES.economy off every part is owned and nothing is recorded.
@@ -23,7 +23,7 @@
 import { loadJson, loadText, saveJson } from './store';
 import { FEATURES } from './features';
 import { PART_SLOTS, SLOT_LABELS, type PartEntry, type PartSlot } from './parts';
-import { BODY_FEATURES, FEATURE_LABELS, RETIRED_PARTS, type BodyFeature, type CarBuild, type VisualBuild } from './carBuild';
+import { BODY_FEATURES, FEATURE_LABELS, RETIRED_FEATURES, RETIRED_PARTS, type BodyFeature, type CarBuild, type VisualBuild } from './carBuild';
 import { catalogPart, featureId, isStock, partBuyable, priceOf, type Buyable } from './economy';
 import { spendPoints } from './points';
 import { loadStats, racesForUnlocks, type StatsSave } from './stats';
@@ -36,10 +36,12 @@ export type PurchasesSave = Record<string, string[]>;
 
 const ID = /^[A-Za-z0-9_\-.]{1,64}$/;
 
-/** A ledger id with a retired part swapped for what replaced it: the plain part (if any) and the feature. */
+/** A ledger id with a retired part swapped for what replaced it (the plain part, if any, and the feature), or a retired feature for its part. */
 const migrated = (id: string): string[] => {
   const r = RETIRED_PARTS[id];
-  return r ? [...(r.part ? [r.part] : []), featureId(r.feature)] : [id];
+  if (r) return [...(r.part ? [r.part] : []), featureId(r.feature)];
+  const name = id.startsWith('feature.') ? id.slice('feature.'.length) : '';
+  return Object.hasOwn(RETIRED_FEATURES, name) ? [RETIRED_FEATURES[name].part] : [id];
 };
 
 /** A save from storage or another device, cleaned: ids deduplicated and sorted, anything malformed dropped. */

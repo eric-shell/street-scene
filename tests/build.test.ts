@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyBuild, isStockSetup, stockPerformance, tuningForBuild, validatePerformance, PerformanceBuild } from '../src/sim/build';
 import { loadGhost, type ReplayData } from '../src/replay/replay';
 import { defaultBuild, validateBuild } from '../src/shared/carBuild';
+import { cleanPurchases } from '../src/shared/purchases';
 import { CAR_IDS, CarTuning, DEFAULT_CAR_ID, SETUP, SETUP_POSITIONS, SETUP_SLIDERS, STOCK_POSITION, getBaseTuning, validateSetup, type SetupPosition, type SetupSlider } from '../src/sim/tuning';
 import { measureStats } from '../src/sim/stats';
 import { createCar, stepCar } from '../src/sim/car';
@@ -220,7 +221,13 @@ describe('retired parts', () => {
     const b = validateBuild({ carId: 'wendtStrom', visual: { parts: { frontBumper: 'wendtStrom_frontBumper_cupraRFogs', fenders: 'wendtStrom_fenders_shaved' }, features: ['euroMirrors'] } });
     expect(b.visual.parts.frontBumper).toBe('wendtStrom_frontBumper_cupraR');
     expect(b.visual.parts.fenders).toBeUndefined();
-    expect(b.visual.features).toEqual(['euroMirrors', 'fogLights', 'shavedMarkers']);
+    expect(b.visual.features).toEqual(['fogLights', 'shavedMarkers']);
+  });
+
+  it('a retired feature becomes its part, in a build and a ledger', () => {
+    expect(validateBuild({ carId: 'wendtStrom', visual: { features: ['euroMirrors'] } }).visual.parts.mirrors).toBe('wendtStrom_mirrors_euro');
+    expect(validateBuild({ carId: 'wendtStrom', visual: { parts: { mirrors: 'wendtStrom_mirrors_shippu' }, features: ['euroMirrors'] } }).visual.parts.mirrors).toBe('wendtStrom_mirrors_shippu');
+    expect(cleanPurchases({ wendtStrom: ['feature.euroMirrors', 'feature.fogLights'] })).toEqual({ wendtStrom: ['feature.fogLights', 'wendtStrom_mirrors_euro'] });
   });
 });
 

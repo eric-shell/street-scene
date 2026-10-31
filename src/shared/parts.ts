@@ -79,7 +79,9 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   canards: 1500,
   diffuser: 3000,
   exhaust: 2500,
-  mirrors: 2500,
+  // The Wendt Strom's stock mirrors keep the donor's full detail (2,996 with their glass), and its Euro is that
+  // narrowed, vertex for vertex.
+  mirrors: 3000,
 };
 
 /** The lug circle of a wheel GLB, in the GLB's own space (glTF frame, meters, axle along X, face toward +X); render/car/lugNuts.ts seats the house nuts on it. */

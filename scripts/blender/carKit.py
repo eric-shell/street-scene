@@ -1050,6 +1050,623 @@ def punch_holes(o, holes, r, depth=0.015, sides=16, wall='Black', back='Black', 
     return added
 
 
+def mirror_patch(o, x0, y1, src=-1, tol=0.0015):
+    """Make a panel symmetric over a patch: the faces with |x| > x0 and y < y1 on the `src` side (-1 the
+    car's right, the US passenger side) copied mirrored over the other side's, so a feature built once
+    (the Boser Mild's brows) is the same both sides. Both sides are cut with the same two planes, the
+    target's patch deleted and the mirrored copy put in. A donor panel is near symmetric in shape (the
+    Wendt Strom's hood to 0.1 mm over its lamps) but not in triangulation, so the two cut edges cross
+    the panel at different points: each side's cut edge is split at the other's points before the weld
+    (`tol` m), leaving no crack. Carries authored normals (x negated on the copy). Returns the number of
+    faces copied."""
+    carry = stash_normals(o)
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    tgt = -src
+    # Every face straddling a plane inside the other's range is cut: a test by corners near the plane
+    # missed a sliver spanning 12 cm across it and left a crack.
+    for sgn in (src, tgt):
+        for co, no, side, rng in (((sgn * x0, 0, 0), (1, 0, 0), lambda c: c.x - sgn * x0, lambda c: c.y < y1 + 0.02),
+                                  ((0, y1, 0), (0, 1, 0), lambda c: c.y - y1, lambda c: sgn * c.x > x0 - 0.02)):
+            faces = [f for f in bm.faces if min(side(v.co) for v in f.verts) < -1e-6 < 1e-6 < max(side(v.co) for v in f.verts)
+                     and any(rng(v.co) for v in f.verts)]
+            geom = list({v for f in faces for v in f.verts}) + list({e for f in faces for e in f.edges}) + faces
+            bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=co, plane_no=no)
+    inside = lambda f, sgn: (lambda c: sgn * c.x > x0 and c.y < y1)(f.calc_center_median())
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if inside(f, tgt)], context='FACES')
+    dup = bmesh.ops.duplicate(bm, geom=[f for f in bm.faces if inside(f, src)])
+    nv = [g for g in dup['geom'] if isinstance(g, bmesh.types.BMVert)]
+    nf = [g for g in dup['geom'] if isinstance(g, bmesh.types.BMFace)]
+    for v in nv:
+        v.co.x = -v.co.x
+    if sn is not None:
+        for f in nf:
+            for lp in f.loops:
+                lp[sn] = Vector((-lp[sn][0], lp[sn][1], lp[sn][2]))
+    bmesh.ops.reverse_faces(bm, faces=nf)
+    new = set(nv)
+    on_cut = lambda v: v.is_boundary and ((abs(tgt * v.co.x - x0) < 1e-4 and v.co.y <= y1 + 1e-4)
+                                          or (abs(v.co.y - y1) < 1e-4 and tgt * v.co.x >= x0 - 1e-4))
+    # Each side's cut edge split at the other side's points, so the weld meets vertex to vertex.
+    for mine, theirs in ((lambda v: v not in new, lambda v: v in new), (lambda v: v in new, lambda v: v not in new)):
+        pts = [v.co.copy() for v in bm.verts if theirs(v) and on_cut(v)]
+        for p in pts:
+            for e in [e for e in bm.edges if e.is_boundary and all(mine(v) and on_cut(v) for v in e.verts)]:
+                a, b = e.verts[0].co, e.verts[1].co
+                ab = b - a
+                k = (p - a).dot(ab) / max(ab.length_squared, 1e-12)
+                if 0 < k < 1 and (a + ab * k - p).length < tol and min((p - a).length, (p - b).length) > tol:
+                    ne, nv2 = bmesh.utils.edge_split(e, e.verts[0], k)
+                    nv2.co = p
+                    break
+    bmesh.ops.remove_doubles(bm, verts=[v for v in bm.verts if on_cut(v)], dist=tol)
+    left = [e for e in bm.edges if e.is_boundary and all(on_cut(v) for v in e.verts)]
+    if left:
+        print(f'mirror_patch: {len(left)} cut edges left open')
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    if carry:
+        restore_normals(o)
+    return len(nf)
+
+
+def brow_to_line(o, a, c, behind, gap=0.002, rows=(0.08, 0.35, 0.65, 1.0), look=(0, 1, 0), a_line=None, c_line=None,
+                 follow='lens', clearance=0.0005, roll=0.03, reach=0.25, blend=0.04, nose_x=0.25, push=True,
+                 spread=0.03):
+    """Carry a panel's open edge on to a straight line seen along `look` (from the front: (0, 1, 0)), the
+    new skin lying `gap` m off whatever is behind it: a hood run on over the headlamps so their cut outs
+    become a straight brow (the Wendt Strom's Boser Mild). `a` and `c` are the line's ends, snapped to the
+    nearest vertices of o's open edge; the edge between them is walked (the shorter way round) and each
+    of its vertices gets a column of points out to the line at the same share of the length (at the
+    fractions `rows` of the way; the first close in, since the panel's edge sits on the lamp's trim
+    and a wide first band from there dipped 3 mm into the lens's top corner), each
+    cast along `look` onto `behind` (a list of objects) and lifted `gap` off the hit along its normal, so
+    the skin follows the lamp's top a hair clear of the lens instead of cutting through it. The ends are
+    shared (triangles there), so the new skin closes onto the panel without a seam, unless `a_line` or
+    `c_line` puts the line's end off the edge (the Boser Mild's inner end at the lens's top corner, below
+    where the user trimmed the hood's notch beside the grille: the end column then drops from the edge's
+    last vertex to it, closing the gap the trim opened there). `follow='hood'` (what the user wanted:
+    hugging the lens 2 mm off read as a depression in the hood) makes each column a smooth curve instead,
+    leaving the panel's edge along the panel's own slope there and ending on the line where it meets the
+    lamp's face, `clearance` in front of it, pushed forward only where the lamp would show in front of it,
+    so the brow runs on from the OEM surface. `follow='plane'` goes one further (the user's knife edge):
+    the panel's top surface behind its rolled lip (the band `roll` m from the edge, where a hood curls
+    down into the lamp cut out) is fitted with a quadratic over `reach` m, the lip's vertices are lifted
+    onto it (fading to nothing over `blend` m from the ends, which stay), and each column leaves along
+    the fitted surface's slope, so the brow is the hood's own plane carried on, not a step down from
+    it. `follow='nose'` is the one the user settled on after a Boser Wild reference (an ECS Mk4 whose
+    hood runs down over the lamps): the hood's own front edge section above the grille carried sideways.
+    The panel's profile at x = `nose_x` from its top plane down its nose to its front lip is read off
+    the panel first (forward distance against drop, 1 mm steps); each column then finds the point on
+    that profile with the panel's slope at its own edge vertex (the lamp cut out leaves the hood partway
+    down the same roll) and continues along the profile from there until it has dropped to the line's
+    height at that x, so the brow is the grille nose's curvature run on, ending in the same knife edge.
+    Carries authored
+    normals: the new skin smooth, its first row taking the panel's own normals. Returns the triangles
+    added."""
+    carry = stash_normals(o)
+    me = o.data
+    d = Vector(look).normalized()
+    tree = surface_tree(behind)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    for f in bm.faces:
+        f.tag = False
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    edge = {v.index for e in bm.edges if e.is_boundary for v in e.verts}
+    va = min(edge, key=lambda i: (bm.verts[i].co - Vector(a)).length)
+    vc = min(edge, key=lambda i: (bm.verts[i].co - Vector(c)).length)
+    nbr = {}
+    for e in bm.edges:
+        if e.is_boundary:
+            i, j = e.verts[0].index, e.verts[1].index
+            nbr.setdefault(i, []).append(j)
+            nbr.setdefault(j, []).append(i)
+    paths = []
+    for first in nbr[va]:
+        path, prev = [va, first], va
+        for _ in range(len(edge)):
+            if path[-1] == vc:
+                break
+            nxt = [j for j in nbr[path[-1]] if j != prev]
+            if not nxt:
+                break
+            prev = path[-1]
+            path.append(nxt[0])
+        if path[-1] == vc:
+            paths.append(path)
+    if not paths:
+        raise RuntimeError('brow_to_line: the ends are not on one open edge')
+    path = [bm.verts[i] for i in min(paths, key=len)]
+    lens = [0.0]
+    for p, q in zip(path, path[1:]):
+        lens.append(lens[-1] + (q.co - p.co).length)
+    # The line between the ends' own positions, so it meets the panel's edge exactly there.
+    A = Vector(a_line) if a_line else path[0].co.copy()
+    C = Vector(c_line) if c_line else path[-1].co.copy()
+    shut = (0.0 if not a_line else None, 1.0 if not c_line else None)
+    def clear(p):
+        """p cast along the view onto `behind` and lifted `gap` off it when it is not already in front."""
+        hit = tree.ray_cast(p - d * 1.0, d, 2.0)
+        # A ray passing over the lamp's top runs on into the cabin; only a hit within 3 cm behind p is
+        # the surface p must clear. The normal turned toward the viewer: the Wendt Strom's lens covers
+        # are wound inward.
+        if not hit[0] or (hit[0] - p).dot(d) > 0.03:
+            return p
+        return hit[0] + hit[1].normalized() * (gap if hit[1].dot(d) < 0 else -gap)
+    up = Vector((0, 0, 1)) - d * d.z
+    up = up.normalized() if up.length > 1e-6 else d.orthogonal()
+    def front(p):
+        """p moved along the view to `clearance` in front of `behind` where that is in front of it."""
+        hit = tree.ray_cast(p - d * 1.0, d, 2.0)
+        if hit[0] and (hit[0] - p).dot(d) < clearance and (p - hit[0]).dot(d) < 0.03:
+            return p + d * ((hit[0] - p).dot(d) - clearance)
+        return p
+
+    fit = None
+    nose = None
+    if follow == 'nose':
+        fwd = -d
+        # The nose profile at x = nose_x, by rays down onto the panel every millimetre from 6 cm ahead of
+        # the line's inner end back to 25 cm behind it: (forward m, z) from the back, and the drop per
+        # forward metre over a 6 mm window (the reduced donor's facets are 4 to 8 mm long).
+        szp = surface_z(o)
+        base = Vector((nose_x, 0, 0)) + d * (Vector(c).dot(d) - 0.06)
+        hits = [(k * 0.001, szp(*(base + d * (0.25 - k * 0.001)).xy)) for k in range(0, 251)]
+        hits = [(f, z) for f, z in hits if z is not None]
+        fwd_s = [f for f, z in hits]
+        zs = [z for f, z in hits]
+        n = len(zs)
+        slope = [(zs[max(k - 3, 0)] - zs[min(k + 3, n - 1)]) / (fwd_s[min(k + 3, n - 1)] - fwd_s[max(k - 3, 0)]) for k in range(n)]
+        nose = (fwd_s, zs, slope)
+        print(f'brow_to_line: nose profile {n} mm long, slope {slope[0]:.2f} at the back rising to {slope[-1]:.2f} at the lip')
+
+        def edge_slope(v):
+            inner = [e.other_vert(v) for e in v.link_edges if not e.is_boundary]
+            w = max(inner, key=lambda w: (v.co - w.co).normalized().dot(fwd)) if inner else None
+            return (w.co.z - v.co.z) / max((v.co - w.co).dot(fwd), 1e-6) if w else slope[0]
+        # One neighbour's slope alternates 0.3 / 0.8 along the reduced mesh's edge (a sawtooth brow);
+        # smoothed over five vertices it is the roll's.
+        raw = [edge_slope(v) for v in path]
+        m_s = [sum(raw[max(0, i - 2):i + 3]) / len(raw[max(0, i - 2):i + 3]) for i in range(len(raw))]
+    if follow == 'plane':
+        import numpy as np
+        flat = lambda p: p - up * p.dot(up)
+
+        def nearest(p):
+            """(plan distance to the edge polyline, its parameter 0..1, the closest point)."""
+            best = None
+            for k, (p0, p1) in enumerate(zip(path, path[1:])):
+                a0, b0 = flat(p0.co), flat(p1.co)
+                ab = b0 - a0
+                u = max(0.0, min(1.0, (flat(p) - a0).dot(ab) / max(ab.length_squared, 1e-12)))
+                q = p0.co.lerp(p1.co, u)
+                dist = (flat(p) - (a0 + ab * u)).length
+                if best is None or dist < best[0]:
+                    best = (dist, (lens[k] + u * (lens[k + 1] - lens[k])) / lens[-1], q)
+            return best
+        xs = [v for v in bm.verts if not any(f.tag for f in v.link_faces)
+              and min(v.co.x for v in path) - 0.05 < v.co.x < max(v.co.x for v in path) + 0.05
+              and abs((v.co - path[0].co).dot(d)) < reach + 0.05]
+        # The sample is the top surface only: facing up, and clear of every open edge (the hood's side
+        # edges roll down along the fender seam like the front one; with them in, the fit was 6 mm off).
+        bm.normal_update()
+        from mathutils import kdtree
+        rim = [v for v in bm.verts if v.is_boundary]
+        kd = kdtree.KDTree(len(rim))
+        for k, v in enumerate(rim):
+            kd.insert(flat(v.co), k)
+        kd.balance()
+        band, sample = [], []
+        for v in xs:
+            dist, t, q = nearest(v.co)
+            if (v.co - q).dot(d) < -0.005:
+                continue  # ahead of the edge: the fender's tip
+            if dist < roll:
+                band.append((v, t))
+            elif dist < reach and v.normal.dot(up) > 0.85 and kd.find(flat(v.co))[2] > roll:
+                sample.append(v)
+        M = np.array([[1, v.co.x, v.co.y, v.co.x ** 2, v.co.x * v.co.y, v.co.y ** 2] for v in sample])
+        coef, *_ = np.linalg.lstsq(M, np.array([v.co.z for v in sample]), rcond=None)
+        fit = lambda x, y: float(coef[0] + coef[1] * x + coef[2] * y + coef[3] * x * x + coef[4] * x * y + coef[5] * y * y)
+        grad = lambda x, y: Vector((coef[1] + 2 * coef[3] * x + coef[4] * y, coef[2] + coef[4] * x + 2 * coef[5] * y, 0))
+        res = [abs(fit(v.co.x, v.co.y) - v.co.z) for v in sample]
+        print(f'brow_to_line: plane fit over {len(sample)} vertices, rms {math.sqrt(sum(r * r for r in res) / len(res)) * 1000:.2f} mm, max {max(res) * 1000:.2f}; {len(band)} lip vertices lifted')
+        for v, t in band:
+            if v in (path[0], path[-1]):
+                continue
+            w = min(t, 1 - t) * lens[-1] / blend
+            w = min(1.0, max(0.0, w))
+            w = w * w * (3 - 2 * w)
+            v.co.z += (fit(v.co.x, v.co.y) - v.co.z) * w
+    cols = []
+    for i, (v, s) in enumerate(zip(path, lens)):
+        t = s / lens[-1]
+        g = A.lerp(C, t)
+        if t not in shut and follow not in ('hood', 'plane', 'nose'):
+            # The panel's edge tucked behind the lamp's top lip, so the first band ran behind the lens
+            # and a line of it showed through along the old cut out: the edge, inside the brow now, is
+            # lifted too.
+            q = clear(v.co)
+            if (v.co - q).dot(d) > 0:
+                v.co = q
+        col = [v]
+        if follow == 'nose' and t not in shut:
+            fwd_s, zs, slope = nose
+            m = m_s[i]
+            # The point of the nose profile with this edge's slope, then the profile from there on.
+            j = next((k for k in range(len(slope)) if slope[k] >= m), len(slope) - 1)
+            zl = A.z + (v.co.x - A.x) / (C.x - A.x) * (C.z - A.z)
+            need = v.co.z - zl
+            run = [(0.0, 0.0)]
+            for k in range(j + 1, len(zs)):
+                run.append((fwd_s[k] - fwd_s[j], zs[j] - zs[k]))
+            while run[-1][1] < need:  # past the lip: carry its last slope on
+                run.append((run[-1][0] + 0.001, run[-1][1] + 0.001 * slope[-1]))
+            def at(drop):
+                for (f0, d0), (f1, d1) in zip(run, run[1:]):
+                    if d1 >= drop:
+                        u = (drop - d0) / max(d1 - d0, 1e-9)
+                        return f0 + (f1 - f0) * u
+                return run[-1][0]
+            for fr in rows:
+                drop = max(need, 0.0) * fr
+                col.append(bm.verts.new(front(v.co + fwd * at(drop) - up * drop)))
+        elif follow in ('hood', 'plane') and t not in shut:
+            # The line's point onto the lamp's face along the view, keeping its place on the line.
+            hit = tree.ray_cast(g - d * 1.0, d, 2.0)
+            if hit[0] and abs((hit[0] - g).dot(d)) < 0.05:
+                g = g + d * ((hit[0] - g).dot(d) - clearance)
+            # A convex arc, as a hood rolls over to a crisp edge: a quadratic Bezier leaving v along the
+            # panel's own slope there (toward v from the neighbour most directly behind it) and arriving at
+            # the lamp's face square to it, its control point where the tangent line reaches the face's
+            # depth. The first build's Hermite flattened after the lip and then dived, a dimple in the brow.
+            if fit is not None:
+                fwd = -d
+                tan = (fwd + up * grad(v.co.x, v.co.y).dot(fwd)).normalized()
+            else:
+                inner = [e.other_vert(v) for e in v.link_edges if not e.is_boundary]
+                w = max(inner, key=lambda w: (v.co - w.co).normalized().dot(-d)) if inner else None
+                tan = (v.co - w.co).normalized() if w else (g - v.co).normalized()
+            depth = (g - v.co).dot(d)
+            k = depth / tan.dot(d) if tan.dot(d) * depth > 1e-9 else 0.0
+            ctrl = v.co + tan * k
+            if k <= 0 or (ctrl - g).dot(up) < 0 or k > 3 * (g - v.co).length:
+                ctrl = (v.co + g) / 2
+            for fr in rows:
+                p = v.co * (1 - fr) ** 2 + ctrl * 2 * fr * (1 - fr) + g * fr * fr
+                col.append(bm.verts.new(front(p)))
+        else:
+            for fr in rows:
+                col.append(v if t in shut else bm.verts.new(clear(v.co.lerp(g, fr))))
+        cols.append(col)
+    mp = mat_index(o, 'Paint')
+    made = []
+    for i in range(len(cols) - 1):
+        for k in range(len(rows)):
+            quad = [cols[i][k], cols[i + 1][k], cols[i + 1][k + 1], cols[i][k + 1]]
+            uniq = []
+            for v in quad:
+                if v not in uniq:
+                    uniq.append(v)
+            if len(uniq) < 3 or bm.faces.get(uniq):
+                continue
+            f = bm.faces.new(uniq)
+            f.material_index = mp
+            f.smooth = True
+            f.normal_update()
+            f.tag = True
+            made.append(f)
+    if follow in ('hood', 'plane', 'nose') and push:
+        # The lamp's top rim stands up to 6 mm in front of the panel's edge (the Wendt Strom's lens rims
+        # showed above the stock hood's edge from the front), so a face can still run behind it between
+        # its corners: sample every new face and push its corners forward by what the lamp needs, the
+        # line's two end vertices excepted.
+        # The panel's own faces along the old edge are sampled too, moving only their edge vertices.
+        fixed = {path[0], path[-1]}
+        movable = set(path[1:-1])
+        origin = {v: v.co.copy() for v in movable}
+        rim = list({f for v in movable for f in v.link_faces if not f.tag})
+        for _ in range(6):
+            need = {}
+            for f in made + rim:
+                c = f.calc_center_median()
+                for p in [c] + [(c + v.co) / 2 for v in f.verts] + [(a.co + b.co) / 2 for a, b in zip(f.verts, f.verts[1:] + f.verts[:1])]:
+                    q = front(p)
+                    dz = (p - q).dot(d)
+                    if dz > 1e-5:
+                        for v in f.verts:
+                            if v not in fixed and (f.tag or v in movable):
+                                # Pushing only some corners moves the sample by less: ask for more.
+                                need[v] = max(need.get(v, 0.0), dz * (1.0 if f.tag else 2.0))
+            if not need:
+                break
+            for v, dz in need.items():
+                v.co -= d * dz
+        # An edge vertex pushed forward on its own creased the hood along the old edge; the push is
+        # spread back over the lip behind it (`spread` m, fading), so the panel bows forward smoothly.
+        pushed = {v: (o0 - v.co).dot(d) for v, o0 in origin.items() if (o0 - v.co).dot(d) > 1e-5}
+        if pushed:
+            back = [w for w in bm.verts if w not in origin and not any(f.tag for f in w.link_faces)
+                    and min(((w.co - v.co) - d * (w.co - v.co).dot(d)).length for v in pushed) < spread]
+            for w in back:
+                v = min(pushed, key=lambda v: ((w.co - v.co) - d * (w.co - v.co).dot(d)).length)
+                r = ((w.co - v.co) - d * (w.co - v.co).dot(d)).length / spread
+                w.co -= d * pushed[v] * (1 - r * r * (3 - 2 * r))
+    # Seen from the view the new skin faces back toward it.
+    if made and sum(f.normal.dot(-d) * f.calc_area() for f in made) < 0:
+        for f in made:
+            f.normal_flip()
+    if sn is not None:
+        acc = {}
+        for f in made:
+            for v in f.verts:
+                acc.setdefault(v.index, Vector()).__iadd__(f.normal * f.calc_area())
+        old = {}
+        for v in path:
+            ls = [lp[sn] for lp in v.link_loops if not lp.face.tag and Vector(lp[sn]).length > 1e-6]
+            if ls:
+                old[v.index] = sum((Vector(n) for n in ls), Vector()).normalized()
+        for f in made:
+            for lp in f.loops:
+                lp[sn] = old.get(lp.vert.index, acc[lp.vert.index].normalized())
+    tris = sum(len(f.verts) - 2 for f in made)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    if carry:
+        restore_normals(o)
+    return tris
+
+
+# The NACA submerged duct (NACA RM A7I30, curved divergence, 7 degree ramp). Plan: the ramp's half width
+# over the entrance's at x / L = 0 (the nose) .. 1 (the entrance), 0.1 apart: a narrow nose, the walls
+# diverging slowly and then fast, parallel at the entrance.
+NACA_PLAN = (0.083, 0.157, 0.236, 0.317, 0.405, 0.503, 0.611, 0.727, 0.854, 0.975, 1.0)
+# The ramp floor's depth over its depth at the entrance (B), at x / L = 0 .. 1 by 1/12 (the report's
+# figure 5 from station 100 % to 0 %): tangent to the skin at the nose, flat at the entrance.
+NACA_RAMP = (0.0, 0.004, 0.0405, 0.1015, 0.187, 0.2935, 0.4109, 0.532, 0.6548, 0.772, 0.8762, 0.957, 1.0)
+# The entrance lip (figure 7), per unit entrance depth d: stations back from its nose (0) to where its top
+# meets the skin (1), the top's and the underside's depth below the skin. The nose is 0.197 d down.
+NACA_LIP_TOP = ((0.0, 0.197), (0.125, 0.087), (0.25, 0.058), (0.5, 0.021), (0.75, 0.005), (1.0, 0.0))
+NACA_LIP_UNDER = ((0.0, 0.197), (0.125, 0.325), (0.25, 0.375), (0.5, 0.44), (0.75, 0.481))
+
+
+def naca_vent(o, front, heading, width=0.12, ratio=4.0, ramp=7.0, corner=0.006, trim=0.0, step=0.03,
+              mat='Paint', trim_mat='Black', mouth='Black'):
+    """A NACA submerged duct cut into a panel (a hood vent, after the Porsche GT3 RS's), flush with the
+    skin: nothing stands above it. Built to the NACA report's curved divergent design (NACA RM A7I30):
+    the ramp's plan `NACA_PLAN` (a narrow nose, the walls diverging to the entrance `width` m across),
+    its floor `NACA_RAMP` (an S curve from the skin at the nose down to B at the entrance, B over the
+    ramp's length tan `ramp` degrees), sharp vertical side walls (the edge vortices are the point of the
+    shape), and at the entrance the skin ending in the rounded lip `NACA_LIP_*`, its nose 0.197 d below
+    the surface facing forward, d = width / `ratio` the entrance depth from the lip to the floor. The
+    hole is under that lip: a `mouth` coloured wall 0.75 d behind its nose closes the duct, which a real
+    one carries on under the panel. `front` is the nose in plan (x, y), `heading` degrees the axis turns
+    outboard (toward +x) going back. The skin is cut along the ramp's outline plus the lip's top (1 d
+    behind the entrance), and every ring inside is built off that cut edge's own vertices (the outline's
+    points plus where the panel's edges cross it, long runs split to `step`), each mapped onto its own
+    outline along the ray from a point on the axis near the entrance (the plan is star shaped from there,
+    so no ring crosses itself), so the duct closes onto the skin whatever the panel's triangulation.
+    `trim` > 0 rings the opening with a flat band that wide in `trim_mat`, level with the skin (a duct
+    insert's flange set flush, so the duct reads as a separate black piece like the car's other aero,
+    `mat='Black'`). Heights are read off the skin before it is cut. Carries authored normals: the trim,
+    the walls and the floor each their own group (a sharp edge at the skin), the lip smooth. Returns the
+    triangles added."""
+    carry = stash_normals(o)
+    me = o.data
+    sz = surface_z(o)
+    ax = Vector((math.sin(math.radians(heading)), math.cos(math.radians(heading))))
+    side = Vector((ax.y, -ax.x))  # outboard, perpendicular to the axis
+    f0 = Vector(front)
+    hw = width / 2
+    d = width / ratio
+    B = d * (1 + NACA_LIP_TOP[0][1])
+    length = B / math.tan(math.radians(ramp))
+    end = length + d  # the cut's back edge: where the lip's top meets the skin
+
+    def table(vals, s):
+        s = max(0.0, min(1.0, s)) * (len(vals) - 1)
+        i = min(int(s), len(vals) - 2)
+        return vals[i] + (vals[i + 1] - vals[i]) * (s - i)
+
+    def lerp_pairs(pairs, s):
+        for (a, va), (b, vb) in zip(pairs, pairs[1:]):
+            if s <= b:
+                return va + (vb - va) * (s - a) / (b - a)
+        return pairs[-1][1]
+    plan = lambda u: hw * table(NACA_PLAN, u / length)
+    floor_depth = lambda u: max(0.0015, B * table(NACA_RAMP, u / length))
+
+    def half(u, e, off=0.0):
+        """The half width at u of the outline whose back end is at e, grown by off all round (the trim's
+        outer edge: the nose's flat end rounded, the corners' radius grown with it)."""
+        if u < -off or u > e + off:
+            return 0.0
+        if u < 0:
+            return plan(0) + math.sqrt(max(0.0, off * off - u * u))
+        r = min(corner + off, (e + off) / 2)
+        h = plan(min(u, e)) + off
+        if u > e + off - r:
+            return max(0.0, h - r + math.sqrt(max(0.0, r * r - (u - (e + off - r)) ** 2)))
+        return h
+    loc = lambda p: ((p - f0).dot(ax), (p - f0).dot(side))
+    world = lambda u, v: f0 + ax * u + side * v
+    inside = lambda p, e, off=0.0: (lambda u, v: -off <= u <= e + off and abs(v) <= half(u, e, off))(*loc(p))
+    hub = world(length * 0.8, 0)
+
+    def onto(p, e, off=0.0):
+        """p moved along the ray from the hub onto the outline (e, off), by bisection."""
+        r0, r1, dv = 0.0, 1.0, p - hub
+        for _ in range(40):
+            if not inside(hub + dv * r1, e, off):
+                break
+            r1 *= 1.5
+        for _ in range(32):
+            r = 0.5 * (r0 + r1)
+            r0, r1 = (r, r1) if inside(hub + dv * r, e, off) else (r0, r)
+        return hub + dv * r0
+    # The cut: the trim's outer edge (the opening's when there is none).
+    us = [length * k / 14 for k in range(1, 15)] + [length + d * k / 3 for k in range(1, 3)]
+    rc = corner + trim
+    tail = [(end + trim - rc + rc * math.sin(a), half(end + trim - rc + rc * math.sin(a), end, trim))
+            for a in (math.pi / 2 * k / 3 for k in range(4))]
+    nose = [(-trim * math.cos(a), half(-trim * math.cos(a), end, trim)) for a in (math.pi / 2 * k / 3 for k in range(1, 3))] if trim else []
+    right = [(-trim, plan(0))] + nose + [(0.0, plan(0) + trim)] + [(u, half(u, end, trim)) for u in us if u < end + trim - rc] + tail
+    ring = ([world(-trim, 0)] + [world(u, v) for u, v in right]
+            + [world(u, -v) for u, v in reversed(right) if v > 1e-6])
+
+    def in_poly(p):
+        c, j = False, len(ring) - 1
+        for i in range(len(ring)):
+            a, b = ring[i], ring[j]
+            if (a.y > p.y) != (b.y > p.y) and p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x:
+                c = not c
+            j = i
+        return c
+    on_or_in = lambda p: in_poly(p) or any(((Vector((p.x, p.y)) - a) - (b - a) * max(0, min(1, (Vector((p.x, p.y)) - a).dot(b - a) / max((b - a).length_squared, 1e-12)))).length < 5e-4
+                                           for a, b in zip(ring, ring[1:] + ring[:1]))
+    lo = Vector((min(p.x for p in ring) - 0.05, min(p.y for p in ring) - 0.05))
+    hi = Vector((max(p.x for p in ring) + 0.05, max(p.y for p in ring) + 0.05))
+    box = lambda p: lo.x < p.x < hi.x and lo.y < p.y < hi.y
+    near = lambda f: f.normal.z > 0.3 and (any(box(v.co) for v in f.verts) or in_poly(f.calc_center_median()))
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    for _ in range(2):
+        for a, b in zip(ring, ring[1:] + ring[:1]):
+            if (b - a).length < 1e-6:
+                continue
+            t = (b - a).normalized()
+            faces = [f for f in bm.faces if near(f)]
+            geom = list({v for f in faces for v in f.verts}) + list({e for f in faces for e in f.edges}) + faces
+            bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-5, plane_co=(a.x, a.y, 0), plane_no=(-t.y, t.x, 0))
+    # The sides are concave, so a plane's line runs on through the outline; a face is doomed only when
+    # its centre and every corner are on or inside it (on: a sliver lying along the outline broke the loop).
+    doomed = [f for f in bm.faces if near(f) and on_or_in(f.calc_center_median()) and all(on_or_in(v.co) for v in f.verts)]
+    bmesh.ops.delete(bm, geom=doomed, context='FACES')
+    # Merge the slivers the cut lines leave outside it, never touching the panel's own outline (a dissolve
+    # took a vertex off the Wendt Strom hood's edge at the fender seam).
+    region = [f for f in bm.faces if near(f)]
+    rim_edge = lambda e: e.is_boundary and not all(on_or_in(v.co) for v in e.verts)
+    bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(0.5), use_dissolve_boundaries=False,
+                             verts=list({v for f in region for v in f.verts if not any(rim_edge(e) for e in v.link_edges)}),
+                             edges=list({e for f in region for e in f.edges if not rim_edge(e)}), delimit={'MATERIAL'})
+    cut_edges = lambda: [e for e in bm.edges if e.is_boundary and all(box(v.co) and on_or_in(v.co) for v in e.verts)]
+    # Bisects meeting at the outline's points leave cut edge vertices a fraction of a millimetre apart,
+    # sometimes out of order (the loop stepped back 0.7 mm and its rings crossed): weld them first.
+    bmesh.ops.remove_doubles(bm, verts=list({v for e in cut_edges() for v in e.verts}), dist=0.0015)
+    for e in cut_edges():
+        k = int(e.calc_length() / step)
+        if k:
+            bmesh.ops.subdivide_edges(bm, edges=[e], cuts=k)
+    edges = cut_edges()
+    # Walk the cut edge into one loop, by index and bounded (a wrapper walk can spin forever).
+    nbr = {}
+    for e in edges:
+        a, b = e.verts
+        nbr.setdefault(a.index, []).append(b)
+        nbr.setdefault(b.index, []).append(a)
+    if any(len(v) != 2 for v in nbr.values()):
+        bm.verts.ensure_lookup_table()
+        raise RuntimeError('naca_vent: the cut edge branches at ' + str([(tuple(round(c, 4) for c in bm.verts[i].co), len(v)) for i, v in nbr.items() if len(v) != 2]))
+    start = edges[0].verts[0]
+    loop, prev = [start], None
+    for _ in range(len(edges)):
+        cur = loop[-1]
+        nxt = [v for v in nbr[cur.index] if prev is None or v.index != prev.index]
+        prev = cur
+        if nxt[0].index == start.index:
+            break
+        loop.append(nxt[0])
+    if len(loop) != len(edges):
+        raise RuntimeError(f'naca_vent: the cut edge is not one loop ({len(loop)} of {len(edges)} edges)')
+    m = len(loop)
+    # Each cut edge point's profile in: down its side wall (fractions of the floor's depth there), or for
+    # the lip (the back end and the sides behind the entrance), forward over its top to the nose, back
+    # under it, and down the duct's black back wall to the floor. The corners blend the two.
+    # (station, depth / d): a few of the report's stations are enough at a hood vent's size.
+    lip_top, lip_under = (0.5, 0.2, 0.0), (0.25, 0.6)
+    lip = ([(s, lerp_pairs(NACA_LIP_TOP, s)) for s in lip_top] + [(s, lerp_pairs(NACA_LIP_UNDER, s)) for s in lip_under]
+           + [(0.75, B / d)])
+    wall = [0.04 + 0.96 * k / (len(lip) - 1) for k in range(len(lip))]
+    kt = 1 if trim else 0  # the trim band's row, level with the skin, from the cut to the opening
+    rows_pts = []
+    for v in loop:
+        p = Vector((v.co.x, v.co.y))
+        p = onto(p, end) if trim else p
+        u, _ = loc(p)
+        w = max(0.0, min(1.0, (u - length) / (0.3 * d)))
+        w = w * w * (3 - 2 * w)
+        prof = [(p, 0.0)] if trim else []
+        for (s, dl), fw in zip(lip, wall):
+            q = onto(p, length + s * d) if w > 0 else p
+            q = p.lerp(q, w)
+            prof.append((q, -((1 - w) * fw * floor_depth(loc(q)[0]) + w * dl * d)))
+        rows_pts.append((w, prof))
+
+    def crosses(a, b, c, e):
+        s = lambda p, q, r: (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)
+        return s(a, b, c) * s(a, b, e) < 0 and s(c, e, a) * s(c, e, b) < 0
+    fl = [prof[-1][0] for _, prof in rows_pts]
+    if sum(crosses(fl[i], fl[(i + 1) % m], fl[j], fl[(j + 1) % m]) for i in range(m) for j in range(i + 2, m) if (j + 1) % m != i):
+        raise RuntimeError('naca_vent: the floor outline crosses itself')
+    rows = [loop]
+    for k in range(kt + len(lip)):
+        rows.append([bm.verts.new((q.x, q.y, (lambda z: z if z is not None else v.co.z)(sz(q.x, q.y)) + h))
+                     for v, (_, prof) in zip(loop, rows_pts) for q, h in [prof[k]]])
+    mp, mm, mt = mat_index(o, mat), mat_index(o, mouth), mat_index(o, trim_mat)
+    groups, made = {}, []
+    # Winding: a side wall faces into the duct.
+    i0 = min(range(m), key=lambda i: abs(loc(Vector((loop[i].co.x, loop[i].co.y)))[0] - length / 2))
+    a, b, c = rows[kt][i0].co, rows[kt][(i0 + 1) % m].co, rows[kt + 1][i0].co
+    into = Vector((*(-side * (1 if loc(Vector((a.x, a.y)))[1] > 0 else -1)), 0))
+    flip = (b - a).cross(c - a).dot(into) < 0
+    for k in range(len(rows) - 1):
+        for i in range(m):
+            q = [rows[k][i], rows[k][(i + 1) % m], rows[k + 1][(i + 1) % m], rows[k + 1][i]]
+            f = bm.faces.new(q[::-1] if flip else q)
+            w = 0.5 * (rows_pts[i][0] + rows_pts[(i + 1) % m][0])
+            f.material_index = mt if k < kt else mm if (k == len(rows) - 2 and w > 0.5) else mp
+            f.smooth = True
+            groups[f] = 'trim' if k < kt else 'wall' if w < 0.5 else ('lip' if k - kt < len(lip) - 1 else 'mouth')
+            made.append(f)
+    fill = bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=False,
+                                   edges=[bm.edges.get((rows[-1][i], rows[-1][(i + 1) % m])) for i in range(m)], normal=(0, 0, 1))
+    floor = [g for g in fill['geom'] if isinstance(g, bmesh.types.BMFace)]
+    open_ = list({e for f in floor for e in f.edges if e.is_boundary})
+    if open_:
+        print(f'naca_vent: the floor fill left {len(open_)} open edges')
+    for f in floor:
+        f.normal_update()
+        if f.normal.z < 0:
+            f.normal_flip()
+        f.material_index = mp
+        groups[f] = 'floor'
+        made.append(f)
+    for f in made:
+        f.normal_update()
+    if sn is not None:
+        acc = {}
+        for f in made:
+            for v in f.verts:
+                acc.setdefault((groups[f], v.index), Vector()).__iadd__(f.normal * f.calc_area())
+        for f in made:
+            for lp in f.loops:
+                lp[sn] = acc[(groups[f], lp.vert.index)].normalized()
+    tris = sum(len(f.verts) - 2 for f in made)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    if carry:
+        restore_normals(o)
+    return tris
+
+
 # Stations for `sheet_lip`: coarse across the nearly straight nose, 3 degrees round the corner and 1.5
 # through its tightest part (51 to 69 degrees, where 3 degree steps turned the edge 11 degrees each).
 # They stop at 82: a station at 83 reached the wheel well but its bottom edge sits on the arch's lip,

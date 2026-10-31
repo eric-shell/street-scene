@@ -79,7 +79,7 @@ const GLOW_RENAMES: Record<string, GlowPattern> = { breathe: 'pulse', alternate:
 
 /**
  * A car's unique features, each a switch a car's manifest offers (`bodyFeatures`, render/car/bodyFeatures.ts):
- * Euro mirrors narrow the mirror housings, a shaved hatch loses its handle, a shaved rubstrip loses the moulded
+ * a shaved hatch loses its handle, a shaved rubstrip loses the moulded
  * strip along the doors and the quarters, half cup handles fill each door handle's cup flush above the bar's middle,
  * leaving its lower half, and a black grille
  * paints the grille's body colored bars flat black like the lips and diffusers. Fog lights are a pair of round
@@ -87,12 +87,11 @@ const GLOW_RENAMES: Record<string, GlowPattern> = { breathe: 'pulse', alternate:
  * repeaters flush, on every fender option; wind splitters are black rubber fins standing in the roof's drip rails
  * from the windshield to the spoiler (after the BMW 3.0 CSL's fender fins), on every roof option. Every feature is bought per car, like a part (shared/economy.ts).
  */
-export const BODY_FEATURES = ['euroMirrors', 'shavedHatch', 'shavedRubstrip', 'halfCupHandles', 'blackGrille', 'fogLights', 'shavedMarkers', 'windSplitters'] as const;
+export const BODY_FEATURES = ['shavedHatch', 'shavedRubstrip', 'halfCupHandles', 'blackGrille', 'fogLights', 'shavedMarkers', 'windSplitters'] as const;
 export type BodyFeature = (typeof BODY_FEATURES)[number];
 
 /** The features' names, for the garage's switches and the dialogs that list what a build wears. */
 export const FEATURE_LABELS: Record<BodyFeature, string> = {
-  euroMirrors: 'Euro mirrors',
   shavedHatch: 'Shaved hatch',
   shavedRubstrip: 'Shaved rubstrip',
   halfCupHandles: 'Half cup handles',
@@ -110,6 +109,16 @@ export const RETIRED_PARTS: Readonly<Record<string, { slot: PartSlot; part: stri
   wendtStrom_frontBumper_euroFogs: { slot: 'frontBumper', part: 'wendtStrom_frontBumper_euro', feature: 'fogLights' },
   wendtStrom_frontBumper_cupraRFogs: { slot: 'frontBumper', part: 'wendtStrom_frontBumper_cupraR', feature: 'fogLights' },
   wendtStrom_fenders_shaved: { slot: 'fenders', part: null, feature: 'shavedMarkers' },
+};
+
+/**
+ * Features that became a catalog part, the other way round: builds and share codes still switching one on wear the
+ * part in its slot (unless they name one there), and ledgers owning the feature (`feature.<name>`) own the part.
+ * The Wendt Strom's Euro mirrors were a load-time narrowing of the stock housings until the mirrors became a slot
+ * with the Shippu in it.
+ */
+export const RETIRED_FEATURES: Readonly<Record<string, { slot: PartSlot; part: string }>> = {
+  euroMirrors: { slot: 'mirrors', part: 'wendtStrom_mirrors_euro' },
 };
 
 /** Tire shapes (render/car/tireShapes.ts draws each). */
@@ -326,6 +335,13 @@ export function validateVisual(v: unknown): VisualBuild {
     if (r.part) parts[slot] = r.part;
     else delete parts[slot];
     migrated.add(r.feature);
+  }
+  // A feature that became a part: the part, unless the build already chose one for the slot.
+  if (Array.isArray(o.features)) {
+    for (const f of o.features as unknown[]) {
+      const r = typeof f === 'string' && Object.hasOwn(RETIRED_FEATURES, f) ? RETIRED_FEATURES[f] : undefined;
+      if (r && parts[r.slot] === undefined) parts[r.slot] = r.part;
+    }
   }
   const decals: DecalLayer[] = [];
   if (Array.isArray(o.decals)) {

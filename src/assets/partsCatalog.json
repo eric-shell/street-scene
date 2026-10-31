@@ -447,6 +447,70 @@
       "generated": true
     },
     {
+      "id": "wendtStrom_hood_trackBase",
+      "displayName": "Track Base",
+      "carId": "wendtStrom",
+      "slot": "hood",
+      "file": "parts/wendtStrom_hood_trackBase.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 2173,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_hood_boserMild",
+      "displayName": "Boser Mild",
+      "carId": "wendtStrom",
+      "slot": "hood",
+      "file": "parts/wendtStrom_hood_boserMild.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 1734,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_mirrors_euro",
+      "displayName": "Euro",
+      "carId": "wendtStrom",
+      "slot": "mirrors",
+      "file": "parts/wendtStrom_mirrors_euro.glb",
+      "hides": [
+        "Mirrors"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 2996,
+      "generated": true
+    },
+    {
+      "id": "wendtStrom_mirrors_shippu",
+      "displayName": "Shippu",
+      "carId": "wendtStrom",
+      "slot": "mirrors",
+      "file": "parts/wendtStrom_mirrors_shippu.glb",
+      "hides": [
+        "Mirrors"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 2606,
+      "generated": true
+    },
+    {
       "id": "wheel_akane",
       "displayName": "Akane",
       "group": "Seiryu",

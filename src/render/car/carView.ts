@@ -241,7 +241,7 @@ export class CarView {
   private rake = 0;
   private slotObjects = new Map<PartSlot, THREE.Object3D>();
   private baseModel: THREE.Object3D | null = null;
-  /** The base model's unique features (euro mirrors, shaved hatch, black grille), switched by applyVisual. */
+  /** The base model's unique features (shaved hatch, black grille, fog lights), switched by applyVisual. */
   private bodyFeatures: BodyFeatureView | null = null;
   private placeholder = false;
   private visual: VisualBuild = defaultVisual();
