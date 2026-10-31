@@ -3650,15 +3650,17 @@ def roof_wing(target, surface, xs, nose, tail, top, thick, sink=0.003, clear=0.0
     `sink`), and the top never below it plus `clear` (the roof's crown is not quite the quadratic a
     top is written as, and poked through the nose by 3 mm). So where the roof and the stock
     spoiler's black bed lie close under the blade it sits on them, and past the glass's top edge it
-    is a free blade. The ends are `side_fin`s on the D-pillars, their outer face from `side_x`.
-    Returns the sections."""
+    is a free blade. `nose` is a y or a callable of x: give it the hatch's side shut line, so the
+    ends start where the line reaches them and the whole spoiler mounts on the hatch (the first
+    builds wrapped the D-pillars outboard of it with `side_fin`s, and the user wanted the mounts
+    inside the trunk lines). Returns the sections."""
     def under_body(x, y):
         h = surface.ray_cast(Vector((x, y, 3.0)), Vector((0, 0, -1)))
         return h[0].z - sink if h[0] else -9.0
     secs = []
     for x in xs:
-        t = tail(x)
-        ys = [nose + (t - nose) * s for s in chord]
+        t, y0 = tail(x), (nose(x) if callable(nose) else nose)
+        ys = [y0 + (t - y0) * s for s in chord]
         tops = [max(top(x, y), under_body(x, y) + sink + clear) for y in ys]
         unders = [max(under_body(x, y), zt - thick(x, y)) for y, zt in zip(ys, tops)]
         unders = [min(u, zt - 0.004) for u, zt in zip(unders, tops)]
@@ -3666,11 +3668,3 @@ def roof_wing(target, surface, xs, nose, tail, top, thick, sink=0.003, clear=0.0
         secs.append(sec)
     sweep(target, secs, name)
     return secs
-
-
-def side_x(surface_paint, xe):
-    """The car's side at (y, z), read by a ray from outboard (Paint only, outboard of 0.5), else `xe`."""
-    def f(y, z):
-        h = surface_paint.ray_cast(Vector((1.2, y, z)), Vector((-1, 0, 0)))
-        return h[0].x if h[0] and h[0].x > 0.5 else None
-    return f

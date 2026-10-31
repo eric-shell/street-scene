@@ -415,9 +415,9 @@
         "Spoiler"
       ],
       "materialSlots": [
-        "Black"
+        "Paint"
       ],
-      "tris": 2012,
+      "tris": 1844,
       "generated": true
     },
     {
@@ -430,10 +430,10 @@
         "Spoiler"
       ],
       "materialSlots": [
-        "Black",
+        "Paint",
         "BrakeLight"
       ],
-      "tris": 2398,
+      "tris": 2182,
       "generated": true
     },
     {

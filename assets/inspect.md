@@ -15,7 +15,7 @@ Authored cars: albrechtKombi, daltonFiend, kazamaRotor, nakayaHorizon, tachibana
 | nakayaHorizon | 222.1 KB |
 | tachibanaRunabout | 141.7 KB |
 | tachibanaZenith | 1887.7 KB |
-| wendtStrom | 4233.2 KB |
+| wendtStrom | 4230.3 KB |
 
 ## Material vocabulary
 
